@@ -1,5 +1,14 @@
 #include "sysconfig.h"
+#ifdef _WIN32
 #include <Ws2tcpip.h>
+#else
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdlib.h>
+#endif
+
 #include "sysdeps.h"
 
 #include <thread>
@@ -13,20 +22,46 @@
 #include "inputdevice.h"
 #include "uae.h"
 #include "debugmem.h"
-#include "render.h" // AmigaMonitor
 #include "custom.h"
 #include "xwin.h" // xcolnr
 #include "drawing.h" // color_entry
-#include "win32.h"
 #include "savestate.h"
+#include "fsemu-log.h"
+#include "fsemu-action.h"
+#include "fsemu-video.h"
+#include "fs/conf.h"
 
-extern BITMAPINFO* screenshot_get_bi();
-extern void* screenshot_get_bits();
-extern int screenshot_prepare(int monid, struct vidbuffer* vb);
-extern void vsync_display_render();
+#define OPTION_REMOTE_DEBUGGER_START_TIMER "remote_debugger"
+#define OPTION_REMOTE_DEBUGGER_TRIGGER "remote_debugger_trigger"
+#define OPTION_REMOTE_DEBUGGER_PORT "remote_debugger_port"
+#define DEFAULT_PORT 2345
 
-// from main.cpp
-extern struct uae_prefs currprefs;
+#ifdef _WIN32
+	#define sock_err WSAGetLastError()
+#else
+	#define sock_err errno
+	#define closesocket ::close
+#endif
+
+#ifndef _countof
+#define _countof(array) (sizeof(array) / sizeof(array[0]))
+#endif
+
+#ifndef max
+#define max(a,b) (((a)>(b))?(a):(b))
+#endif
+#ifndef min
+#define min(a,b) (((a)<(b))?(a):(b))
+#endif
+
+#ifndef SOCKET_ERROR
+#define SOCKET_ERROR -1
+#endif
+#ifndef SOCKADDR_INET
+#define SOCKADDR_INET -1
+#endif
+
+#define barto_log(format, ...) fsemu_log_info(format, ##__VA_ARGS__)
 
 // from newcpu.cpp
 /*static*/ extern int baseclock;
@@ -39,13 +74,17 @@ extern uae_u8 *get_real_address_debug(uaecptr addr);
 extern void initialize_memwatch(int mode);
 extern void memwatch_setup();
 /*static*/ extern int trace_mode;
-/*static*/ extern uae_u32 trace_param[3];
+/*static*/ extern uae_u32 trace_param1;
+/*static*/ extern uae_u32 trace_param2;
 /*static*/ extern uaecptr processptr;
 /*static*/ extern uae_char *processname;
 /*static*/ extern int memwatch_triggered;
 /*static*/ extern struct memwatch_node mwhit;
 extern int debug_illegal;
 extern uae_u64 debug_illegal_mask;
+
+// from fsvideo.cpp
+extern fsemu_video_frame_t *uae_fsvideo_getframe();
 
 #include "barto_gdbserver.h"
 
@@ -61,6 +100,12 @@ namespace barto_gdbserver {
 	bool data_available();
 	void disconnect();
 
+	// Options:
+	bool enabled = false;
+	int port = DEFAULT_PORT;
+	int time_out;
+	char *debugging_trigger;
+
 	static bool in_handle_packet = false;
 	struct tracker {
 		tracker() { backup = in_handle_packet; in_handle_packet = true; }
@@ -68,9 +113,6 @@ namespace barto_gdbserver {
 	private: 
 		bool backup;
 	};
-
-	void barto_log(const char* format, ...);
-	void barto_log(const wchar_t* format, ...);
 
 	static std::string string_replace_all(const std::string& str, const std::string& search, const std::string& replace) {
 		std::string copy(str);
@@ -86,12 +128,15 @@ namespace barto_gdbserver {
 		return copy;
 	}
 
+	/*
 	static std::string string_to_utf8(LPCWSTR string) {
 		int len = WideCharToMultiByte(CP_UTF8, 0, string, -1, nullptr, 0, nullptr, nullptr);
 		std::unique_ptr<char[]> buffer(new char[len]);
 		WideCharToMultiByte(CP_UTF8, 0, string, -1, buffer.get(), len, nullptr, nullptr);
+		wcstombs(buffer.get(), string, len);
 		return std::string(buffer.get());
 	}
+	*/
 
 	static constexpr char hex[]{ "0123456789abcdef" };
 	static std::string hex8(uint8_t v) {
@@ -186,7 +231,6 @@ namespace barto_gdbserver {
 */
 
 	std::thread connect_thread;
-	PADDRINFOW socketinfo;
 	SOCKET gdbsocket{ INVALID_SOCKET };
 	SOCKET gdbconn{ INVALID_SOCKET };
 	char socketaddr[sizeof SOCKADDR_INET];
@@ -220,9 +264,9 @@ namespace barto_gdbserver {
 			fd_set fd;
 			tv.tv_sec = 0;
 			tv.tv_usec = 0;
-			fd.fd_array[0] = gdbsocket;
-			fd.fd_count = 1;
-			if(select(1, &fd, nullptr, nullptr, &tv)) {
+			FD_ZERO(&fd);
+			FD_SET(gdbsocket, &fd);
+			if(select(gdbsocket + 1, &fd, NULL, NULL, &tv)) {
 				gdbconn = accept(gdbsocket, (struct sockaddr*)socketaddr, &sa_len);
 				if(gdbconn != INVALID_SOCKET)
 					barto_log("GDBSERVER: connection accepted\n");
@@ -237,9 +281,9 @@ namespace barto_gdbserver {
 			fd_set fd;
 			tv.tv_sec = 0;
 			tv.tv_usec = 0;
-			fd.fd_array[0] = gdbconn;
-			fd.fd_count = 1;
-			int err = select(1, &fd, nullptr, nullptr, &tv);
+			FD_ZERO(&fd);
+			FD_SET(gdbconn, &fd);
+			int err = select(gdbconn + 1, &fd, nullptr, nullptr, &tv);
 			if(err == SOCKET_ERROR) {
 				disconnect();
 				return false;
@@ -255,63 +299,68 @@ namespace barto_gdbserver {
 
 		assert(debugger_state == state::inited);
 
+		#ifdef _WIN32
 		WSADATA wsaData = { 0 };
 		if(WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-			DWORD lasterror = WSAGetLastError();
-			barto_log(_T("GDBSERVER: can't open winsock, error %d\n"), lasterror);
+			barto_log(_T("GDBSERVER: can't open winsock, error %d\n"), sock_err);
 			return false;
 		}
+		#endif
+
 		int err;
 		const int one = 1;
 		const struct linger linger_1s = { 1, 1 };
 		constexpr auto name = _T("127.0.0.1");
-		constexpr auto port = _T("2345");
 
-		err = GetAddrInfoW(name, port, nullptr, &socketinfo);
-		if(err < 0) {
-			barto_log(_T("GDBSERVER: GetAddrInfoW() failed, %s:%s: %d\n"), name, port, WSAGetLastError());
-			return false;
-		}
-		gdbsocket = socket(socketinfo->ai_family, socketinfo->ai_socktype, socketinfo->ai_protocol);
+		sockaddr_in serv_addr;
+		serv_addr.sin_family=AF_INET;
+		serv_addr.sin_addr.s_addr = inet_addr(name);
+		serv_addr.sin_port = htons(port);
+
+		gdbsocket = socket(AF_INET, SOCK_STREAM, 0);
 		if(gdbsocket == INVALID_SOCKET) {
-			barto_log(_T("GDBSERVER: socket() failed, %s:%s: %d\n"), name, port, WSAGetLastError());
+			barto_log(_T("GDBSERVER: socket() failed\n"), sock_err);
 			return false;
 		}
-		err = ::bind(gdbsocket, socketinfo->ai_addr, (int)socketinfo->ai_addrlen);
-		if(err < 0) {
-			barto_log(_T("GDBSERVER: bind() failed, %s:%s: %d\n"), name, port, WSAGetLastError());
+		if(::bind(gdbsocket, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+			barto_log(_T("GDBSERVER: bind() failed\n"), sock_err);
 			return false;
 		}
-		err = ::listen(gdbsocket, 1);
-		if(err < 0) {
-			barto_log(_T("GDBSERVER: listen() failed, %s:%s: %d\n"), name, port, WSAGetLastError());
+		if(::listen(gdbsocket, 1) < 0) {
+			barto_log(_T("GDBSERVER: listen() failed\n"), sock_err);
 			return false;
 		}
-		err = setsockopt(gdbsocket, SOL_SOCKET, SO_LINGER, (char*)&linger_1s, sizeof linger_1s);
-		if(err < 0) {
-			barto_log(_T("GDBSERVER: setsockopt(SO_LINGER) failed, %s:%s: %d\n"), name, port, WSAGetLastError());
+		if(setsockopt(gdbsocket, SOL_SOCKET, SO_LINGER, (char*)&linger_1s, sizeof linger_1s) < 0) {
+			barto_log(_T("GDBSERVER: setsockopt(SO_LINGER) failed\n"), sock_err);
 			return false;
 		}
-		err = setsockopt(gdbsocket, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof one);
-		if(err < 0) {
-			barto_log(_T("GDBSERVER: setsockopt(SO_REUSEADDR) failed, %s:%s: %d\n"), name, port, WSAGetLastError());
+		if(setsockopt(gdbsocket, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof one) < 0) {
+			barto_log(_T("GDBSERVER: setsockopt(SO_REUSEADDR) failed\n"), sock_err);
 			return false;
 		}
 
-		barto_log("GDBSERVER: listen() succeeded\n");
+		barto_log("GDBSERVER: listen() succeeded on %s:%d\n", name, port);
 		return true;
 	}
 
 	bool init() {
-		if(currprefs.debugging_features & (1 << 2)) { // "gdbserver"
+		// Read options:
+		if(fs_config_exists(OPTION_REMOTE_DEBUGGER_START_TIMER)) {
+			enabled = true;
+			time_out = fs_config_get_int(OPTION_REMOTE_DEBUGGER_START_TIMER);
+		}
+		if(fs_config_exists(OPTION_REMOTE_DEBUGGER_TRIGGER)) {
+			debugging_trigger = fs_config_get_string(OPTION_REMOTE_DEBUGGER_TRIGGER);
+		}
+		if(fs_config_exists(OPTION_REMOTE_DEBUGGER_PORT)) {
+			port = fs_config_get_int(OPTION_REMOTE_DEBUGGER_PORT);
+		}
+
+		if(enabled) {
+			barto_log(_T("GDBSERVER: enabled (start_timer: %d trigger: %s port: %d)\n"), time_out, debugging_trigger, port);
 			close();
 
-			warpmode(1);
-			//cfgfile_modify(-1, _T("cpu_speed max"), 0, nullptr, 0);
-			//cfgfile_modify(-1, _T("cpu_cycle_exact false"), 0, nullptr, 0);
-			//cfgfile_modify(-1, _T("cpu_memory_cycle_exact false"), 0, nullptr, 0);
-			//cfgfile_modify(-1, _T("blitter_cycle_exact false"), 0, nullptr, 0);
-			//cfgfile_modify(-1, _T("warp true"), 0, nullptr, 0); // last
+			fsemu_action_process_command_in_main(FSEMU_ACTION_WARP, 1);
 
 			// disable console
 			static TCHAR empty[2] = { 0 };
@@ -320,12 +369,12 @@ namespace barto_gdbserver {
 			activate_debugger();
 			initialize_memwatch(0);
 
-			if(currprefs.debugging_trigger[0]) {
+			if(debugging_trigger) {
 				// from debug.cpp@process_breakpoint()
 				processptr = 0;
 				xfree(processname);
 				processname = nullptr;
-				processname = ua(currprefs.debugging_trigger);
+				processname = debugging_trigger;
 				trace_mode = TRACE_CHECKONLY;
 			} else {
 				// savestate debugging
@@ -348,10 +397,9 @@ namespace barto_gdbserver {
 		if(gdbsocket != INVALID_SOCKET)
 			closesocket(gdbsocket);
 		gdbsocket = INVALID_SOCKET;
-		if(socketinfo)
-			FreeAddrInfoW(socketinfo);
-		socketinfo = nullptr;
+		#ifdef _WIN32
 		WSACleanup();
+		#endif
 	}
 
 	void disconnect() {
@@ -399,7 +447,7 @@ namespace barto_gdbserver {
 	}
 
 	static std::string get_registers() {
-		barto_log("GDBSERVER: PC=%x\n", M68K_GETPC);
+		barto_log("PC=%x\n", M68K_GETPC);
 		std::string ret;
 		for(int reg = 0; reg < 18; reg++)
 			ret += get_register(reg);
@@ -429,7 +477,7 @@ namespace barto_gdbserver {
 			barto_log("GDBSERVER: <- %s\n", ack.c_str());
 			int result = send(gdbconn, ack.data(), (int)ack.length(), 0);
 			if(result == SOCKET_ERROR)
-				barto_log(_T("GDBSERVER: error sending ack: %d\n"), WSAGetLastError());
+				barto_log(_T("GDBSERVER: error sending ack: %d\n"), sock_err);
 		}
 	}
 
@@ -445,7 +493,7 @@ namespace barto_gdbserver {
 			response += hex[cksum & 0xf];
 			int result = send(gdbconn, response.data(), (int)response.length(), 0);
 			if(result == SOCKET_ERROR)
-				barto_log(_T("GDBSERVER: error sending data: %d\n"), WSAGetLastError());
+				barto_log(_T("GDBSERVER: error sending data: %d\n"), sock_err);
 		}
 	}
 
@@ -456,13 +504,13 @@ namespace barto_gdbserver {
 			auto result = recv(gdbconn, buf, sizeof(buf) - 1, 0);
 			if(result > 0) {
 				buf[result] = '\0';
-				barto_log("GDBSERVER: received %d bytes: >>%s<<\n", result, buf);
+				barto_log("received %d bytes: >>%s<<\n", result, buf);
 				std::string request{ buf }, ack{}, response;
 				while(!request.empty() && (request[0] == '+' || request[0] == '-')) {
 					if(request[0] == '+') {
 						request = request.substr(1);
 					} else if(request[0] == '-') {
-						barto_log("GDBSERVER: client non-ack'd our last packet\n");
+						barto_log("client non-ack'd our last packet\n");
 						request = request.substr(1);
 					}
 				}
@@ -483,7 +531,7 @@ namespace barto_gdbserver {
 						if(request.length() >= end + 2) {
 							if(tolower(request[end + 1]) == hex[cksum >> 4] && tolower(request[end + 2]) == hex[cksum & 0xf]) {
 								request = request.substr(1, end - 1);
-								barto_log("GDBSERVER: -> %s\n", request.c_str());
+								barto_log("-> %s\n", request.c_str());
 								ack = "+";
 								response = "$";
 								if(request.substr(0, strlen("qSupported")) == "qSupported") {
@@ -511,7 +559,7 @@ namespace barto_gdbserver {
 									response += "E01";
 									if(ThisTask) {
 										auto ln_Name = reinterpret_cast<char*>(get_real_address_debug(get_long_debug(ThisTask + 10)));
-										barto_log("GDBSERVER: ln_Name = %s\n", ln_Name);
+										barto_log("ln_Name = %s\n", ln_Name);
 										auto ln_Type = get_byte_debug(ThisTask + 8);
 										bool process = ln_Type == 13; // NT_PROCESS
 										sections.clear();
@@ -535,7 +583,7 @@ namespace barto_gdbserver {
 											int pr_TaskNum = get_long_debug(ThisTask + 140);
 											if(pr_CLI && pr_TaskNum) {
 												auto cli_CommandName = BSTR(get_real_address_debug(BADDR(get_long_debug(pr_CLI + 16))));
-												barto_log("GDBSERVER: cli_CommandName = %s\n", cli_CommandName.c_str());
+												barto_log("cli_CommandName = %s\n", cli_CommandName.c_str());
 												segList = BADDR(get_long_debug(pr_CLI + 60));
 												// don't know how to get the real stack except reading current stack pointer
 												auto pr_StackSize = get_long_debug(ThisTask + 132);
@@ -557,7 +605,7 @@ namespace barto_gdbserver {
 												// this is non-standard (we report addresses of all segments), works only with modified gdb
 												response += hex32(base);
 												sections.push_back(base);
-												barto_log("GDBSERVER:   base=%x; size=%x\n", base, size);
+												barto_log("  base=%x; size=%x\n", base, size);
 												segList = BADDR(get_long_debug(segList));
 											}
 										}
@@ -565,7 +613,7 @@ namespace barto_gdbserver {
 								} else if(request.substr(0, strlen("qRcmd,")) == "qRcmd,") {
 									// "monitor" command. used for profiling
 									auto cmd = from_hex(request.substr(strlen("qRcmd,")));
-									barto_log("GDBSERVER:   monitor %s\n", cmd.c_str());
+									barto_log("  monitor %s\n", cmd.c_str());
 									// syntax: monitor profile <num_frames> <unwind_file> <out_file>
 									if(cmd.substr(0, strlen("profile")) == "profile") {
 										auto s = cmd.substr(strlen("profile "));
@@ -631,7 +679,7 @@ namespace barto_gdbserver {
 											deactivate_debugger();
 											return; // response is sent when profile is finished (vsync)
 										}
-									} else if(cmd == "reset" && currprefs.debugging_trigger[0]) {
+									} else if(cmd == "reset" && debugging_trigger) {
 										savestate_quick(0, 0); // restore state saved at process entry
 										barto_debug_resources_count = 0;
 										response += "OK";
@@ -672,7 +720,7 @@ namespace barto_gdbserver {
 											//trace_param1 = nextpc;
 
 											// step in
-											trace_param[0] = 1;
+											trace_param1 = 1;
 											trace_mode = TRACE_SKIP_INS;
 
 											exception_debugging = 1;
@@ -695,14 +743,14 @@ namespace barto_gdbserver {
 												uaecptr start = strtoul(action.data() + 1, nullptr, 16);
 												uaecptr end = strtoul(action.data() + comma + 1, nullptr, 16);
 												trace_mode = TRACE_NRANGE_PC;
-												trace_param[0] = start;
-												trace_param[1] = end;
+												trace_param1 = start;
+												trace_param2 = end;
 												debugger_state = state::connected;
 												send_ack(ack);
 												return;
 											}
 										} else {
-											barto_log("GDBSERVER: unknown vCont action: %s\n", action.c_str());
+											barto_log("unknown vCont action: %s\n", action.c_str());
 										}
 									}
 								} else if(request[0] == 'H') {
@@ -735,8 +783,8 @@ namespace barto_gdbserver {
 										if(adr == 0xffffffff) {
 											// step out of kickstart
 											trace_mode = TRACE_RANGE_PC;
-											trace_param[0] = 0;
-											trace_param[1] = 0xF80000;
+											trace_param1 = 0;
+											trace_param2 = 0xF80000;
 											response += "OK";
 										} else {
 											for(auto& bpn : bpnodes) {
@@ -788,7 +836,7 @@ namespace barto_gdbserver {
 									if(comma != std::string::npos && comma2 != std::string::npos) {
 										uaecptr adr = strtoul(request.data() + strlen("Z2,"), nullptr, 16);
 										int size = strtoul(request.data() + comma2 + 1, nullptr, 16);
-										barto_log("GDBSERVER: write watchpoint at 0x%x, size 0x%x\n", adr, size);
+										barto_log("write watchpoint at 0x%x, size 0x%x\n", adr, size);
 										for(auto& mwn : mwnodes) {
 											if(mwn.size)
 												continue;
@@ -804,7 +852,7 @@ namespace barto_gdbserver {
 											mwn.frozen = 0;
 											mwn.modval_written = 0;
 											mwn.mustchange = 0;
-											mwn.bus_error = 0;
+											// mwn.bus_error = 0; GIGABATES
 											mwn.reportonly = false;
 											mwn.nobreak = false;
 											print_watchpoints();
@@ -842,7 +890,7 @@ namespace barto_gdbserver {
 										std::string mem;
 										uaecptr adr = strtoul(request.data() + strlen("m"), nullptr, 16);
 										int len = strtoul(request.data() + comma + 1, nullptr, 16);
-										barto_log("GDBSERVER: want 0x%x bytes at 0x%x\n", len, adr);
+										barto_log("want 0x%x bytes at 0x%x\n", len, adr);
 										while(len-- > 0) {
 											auto debug_read_memory_8_no_custom = [](uaecptr addr) -> int {
 												addrbank* ad;
@@ -854,7 +902,7 @@ namespace barto_gdbserver {
 
 											auto data = debug_read_memory_8_no_custom(adr);
 											if(data == -1) {
-												barto_log("GDBSERVER: error reading memory at 0x%x\n", len, adr);
+												barto_log("error reading memory at 0x%x\n", len, adr);
 												response += "E01";
 												mem.clear();
 												break;
@@ -869,11 +917,11 @@ namespace barto_gdbserver {
 										response += "E01";
 								}
 							} else
-								barto_log("GDBSERVER: packet checksum mismatch: got %c%c, want %c%c\n", tolower(request[end + 1]), tolower(request[end + 2]), hex[cksum >> 4], hex[cksum & 0xf]);
+								barto_log("packet checksum mismatch: got %c%c, want %c%c\n", tolower(request[end + 1]), tolower(request[end + 2]), hex[cksum >> 4], hex[cksum & 0xf]);
 						} else
-							barto_log("GDBSERVER: packet checksum missing\n");
+							barto_log("packet checksum missing\n");
 					} else
-						barto_log("GDBSERVER: packet end marker '#' not found\n");
+						barto_log("packet end marker '#' not found\n");
 				}
 
 				send_ack(ack);
@@ -881,7 +929,7 @@ namespace barto_gdbserver {
 			} else if(result == 0) {
 				disconnect();
 			} else {
-				barto_log(_T("GDBSERVER: error receiving data: %d\n"), WSAGetLastError());
+				barto_log(_T("GDBSERVER: error receiving data: %d\n"), sock_err);
 				disconnect();
 			}
 		}
@@ -894,18 +942,18 @@ namespace barto_gdbserver {
 
 	// called during pause_emulation
 	void vsync() {
-		if(!(currprefs.debugging_features & (1 << 2))) // "gdbserver"
+		if(!enabled) // "gdbserver"
 			return;
 
 		// continue emulation if receiving debug commands
 		if(debugger_state == state::connected && data_available()) {
-			resumepaused(9);
+			fsemu_action_process_command_in_main(FSEMU_ACTION_PAUSE, 0);
 			// handle_packet will be called in next call to vsync_pre
 		}
 	}
 
 	void vsync_pre() {
-		if(!(currprefs.debugging_features & (1 << 2))) // "gdbserver"
+		if(!enabled) // "gdbserver"
 			return;
 
 		static uae_u32 profile_start_cycles{};
@@ -1032,7 +1080,7 @@ start_profile:
 			}
 			if(last_idle & 0x80000000)
 				idle_cycles += profile_end_cycles - max(profile_start_cycles, (last_idle & 0x7fffffff));
-			//barto_log("idle_cycles: %d\n", idle_cycles);
+			//barto_log("GDBSERVER: idle_cycles: %d\n", idle_cycles);
 
 			fwrite(&profile_dmacon, sizeof(profile_dmacon), 1, profile_outfile);
 			fwrite(&profile_custom_regs, sizeof(uae_u16), _countof(profile_custom_regs), profile_outfile);
@@ -1058,53 +1106,45 @@ start_profile:
 			int profile_count = get_cpu_profiler_output_count();
 			fwrite(&profile_count, sizeof(int), 1, profile_outfile);
 			fwrite(get_cpu_profiler_output(), sizeof(uae_u32), profile_count, profile_outfile);
+
 			// write screenshot
-			vsync_display_render(); // make sure current frame is rendered, this may be a line or so too early, but don't know how to hook render
-			int monid = getfocusedmonitor();
-			AmigaMonitor* mon = &AMonitors[monid];
-			vidbuf_description* avidinfo = &adisplays[monid].gfxvidinfo;
-			vidbuffer* vb = &avidinfo->drawbuffer; // too old
-			// just write JPEGs if we do multi-frame profile (file too big with PNGs)
-			if(screenshot_prepare(monid, vb) == 1) {
-				auto bi = screenshot_get_bi();
-				auto bi_bits = (const uint8_t*)screenshot_get_bits();
-				if(bi->bmiHeader.biBitCount == 24) {
-					// need to flip bits and swap rgb channels
-					const auto w = bi->bmiHeader.biWidth;
-					const auto h = bi->bmiHeader.biHeight;
-					const auto pitch = bi->bmiHeader.biSizeImage / bi->bmiHeader.biHeight;
-					auto bits = std::make_unique<uint8_t[]>(w * 3 * h);
-					for(int y = 0; y < bi->bmiHeader.biHeight; y++) {
-						for(int x = 0; x < bi->bmiHeader.biWidth; x++) {
-							bits[y * w * 3 + x * 3 + 0] = bi_bits[(h - 1 - y) * pitch + x * 3 + 2];
-							bits[y * w * 3 + x * 3 + 1] = bi_bits[(h - 1 - y) * pitch + x * 3 + 1];
-							bits[y * w * 3 + x * 3 + 2] = bi_bits[(h - 1 - y) * pitch + x * 3 + 0];
-						}
-					}
-					struct write_context_t {
-						uint8_t data[2'000'000]{};
-						int size = 0;
-						int type = 0;
-					};
-					auto write_context = std::make_unique<write_context_t>();
-					auto write_func = [](void* _context, void* data, int size) {
-						auto context = (write_context_t*)_context;
-						memcpy(&context->data[context->size], data, size);
-						context->size += size;
-					};
-					if(profile_num_frames > 1) {
-						stbi_write_jpg_to_func(write_func, write_context.get(), w, h, 3, bits.get(), 50);
-						write_context->type = 0; // JPG
-					} else {
-						stbi_write_png_to_func(write_func, write_context.get(), w, h, 3, bits.get(), w * 3);
-						write_context->type = 1; // PNG
-					}
-					write_context->size = (write_context->size + 3) & ~3; // pad to 32bit
-					fwrite(&write_context->size, sizeof(int), 1, profile_outfile);
-					fwrite(&write_context->type, sizeof(int), 1, profile_outfile);
-					fwrite(write_context->data, 1, write_context->size, profile_outfile);
+			redraw_frame();
+			auto frame = uae_fsvideo_getframe();
+
+			// need to flip bits and swap rgb channels
+			int w = frame->width;
+			int h = frame->height;
+			uint8_t *bi_bits = frame->buffer;
+			auto bits = std::make_unique<uint8_t[]>(w * 3 * h);
+			for(int y = 0; y < h; y++) {
+				for(int x = 0; x < w; x++) {
+					bits[y * w * 3 + x * 3 + 0] = bi_bits[y * w * 4 + x * 4 + 2];
+					bits[y * w * 3 + x * 3 + 1] = bi_bits[y * w * 4 + x * 4 + 1];
+					bits[y * w * 3 + x * 3 + 2] = bi_bits[y * w * 4 + x * 4 + 0];
 				}
 			}
+			struct write_context_t {
+				uint8_t data[2'000'000]{};
+				int size = 0;
+				int type = 0;
+			};
+			auto write_context = std::make_unique<write_context_t>();
+			auto write_func = [](void* _context, void* data, int size) {
+				auto context = (write_context_t*)_context;
+				memcpy(&context->data[context->size], data, size);
+				context->size += size;
+			};
+			if(profile_num_frames > 1) {
+				stbi_write_jpg_to_func(write_func, write_context.get(), w, h, 3, bits.get(), 50);
+				write_context->type = 0; // JPG
+			} else {
+				stbi_write_png_to_func(write_func, write_context.get(), w, h, 3, bits.get(), w * 3);
+				write_context->type = 1; // PNG
+			}
+			write_context->size = (write_context->size + 3) & ~3; // pad to 32bit
+			fwrite(&write_context->size, sizeof(int), 1, profile_outfile);
+			fwrite(&write_context->type, sizeof(int), 1, profile_outfile);
+			fwrite(write_context->data, 1, write_context->size, profile_outfile);
 
 			if(profile_frame_count == profile_num_frames) {
 				fclose(profile_outfile);
@@ -1124,7 +1164,7 @@ start_profile:
 	}
 
 	void vsync_post() {
-		if(!(currprefs.debugging_features & (1 << 2))) // "gdbserver"
+		if(!enabled)
 			return;
 	}
 
@@ -1143,6 +1183,7 @@ start_profile:
 		}
 	}
 
+	/*
 	void log_output(const TCHAR* tstring) {
 		auto utf8 = string_to_utf8(tstring);
 		if(utf8.substr(0, 5) == "DBG: ") {
@@ -1159,42 +1200,18 @@ start_profile:
 		}
 		output(utf8.c_str());
 	}
-
-	void barto_log(const char* format, ...) {
-		char buffer[16*1024];
-		va_list parms;
-		va_start(parms, format);
-		vsprintf(buffer, format, parms);
-		OutputDebugStringA(buffer);
-		output(buffer);
-		va_end(parms);
-	}
-
-	void barto_log(const wchar_t* format, ...) {
-		wchar_t buffer[16*1024];
-		va_list parms;
-		va_start(parms, format);
-		vswprintf(buffer, format, parms);
-		OutputDebugStringW(buffer);
-		output(string_to_utf8(buffer).c_str());
-		va_end(parms);
-	}
+	*/
 
 	// returns true if gdbserver handles debugging
 	bool debug() {
-		if(!(currprefs.debugging_features & (1 << 2))) // "gdbserver"
+		if(!enabled)
 			return false;
 
-		warpmode(0);
-		//cfgfile_modify(-1, _T("warp false"), 0, nullptr, 0);
-		//cfgfile_modify(-1, _T("cpu_speed real"), 0, nullptr, 0);
-		//cfgfile_modify(-1, _T("cpu_cycle_exact true"), 0, nullptr, 0);
-		//cfgfile_modify(-1, _T("cpu_memory_cycle_exact true"), 0, nullptr, 0);
-		//cfgfile_modify(-1, _T("blitter_cycle_exact true"), 0, nullptr, 0);
+		fsemu_action_process_command_in_main(FSEMU_ACTION_WARP, 0);
 
 		// break at start of process
 		if(debugger_state == state::inited) {
-			if(currprefs.debugging_trigger[0]) {
+			if(debugging_trigger) {
 				//KPutCharX
 				auto execbase = get_long_debug(4);
 				KPutCharX = execbase - 0x204;
@@ -1273,7 +1290,7 @@ start_profile:
 
 				// enable break at exceptions - doesn't break when exceptions occur in Kickstart
 				debug_illegal = 1;
-				debug_illegal_mask = (1 << 3) || (1 << 4); // 3 = address error, 4 = illegal instruction
+				debug_illegal_mask = (1 << 3) | (1 << 4); // 3 = address error, 4 = illegal instruction
 
 				// from debug.cpp@process_breakpoint()
 				processptr = 0;
@@ -1282,15 +1299,17 @@ start_profile:
 				savestate_quick(0, 1); // save state for "monitor reset"
 			}
 			barto_log("GDBSERVER: Waiting for connection...\n");
-			while(!is_connected()) {
-				barto_log(".");
-				Sleep(100);
+			for (int i = 0; i < time_out * 10; i++)	{
+				if (is_connected()) {
+					barto_log("GDBSERVER: connected\n");
+					useAck = true;
+					debugger_state = state::debugging;
+					debugmem_enable_stackframe(true);
+					debugmem_trace = true;
+					break;
+				}
+				sleep_millis(100);
 			}
-			barto_log("\n");
-			useAck = true;
-			debugger_state = state::debugging;
-			debugmem_enable_stackframe(true);
-			debugmem_trace = true;
 		}
 
 		// something stopped execution and entered debugger
@@ -1375,11 +1394,13 @@ send_response:
 		while(debugger_state == state::debugging) {
 			handle_packet();
 
+			#ifdef _WIN32
 			MSG msg{};
 			while(PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
 				TranslateMessage(&msg);
 				DispatchMessage(&msg);
 			}
+			#endif
 			Sleep(1);
 		}
 

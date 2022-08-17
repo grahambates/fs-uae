@@ -13,6 +13,7 @@
 
 #include <ctype.h>
 #include <signal.h>
+#include <filesystem>
 
 #include "options.h"
 #include "uae.h"
@@ -68,6 +69,15 @@
 #define TRACE_RAM_PC 6
 #define TRACE_NRANGE_PC 7 //BARTO
 #define TRACE_CHECKONLY 10
+
+#ifdef _WIN32
+#define bswap_16(x) _byteswap_ushort(x)
+#define bswap_32(x) _byteswap_ulong(x)
+#endif
+
+#ifndef _countof
+#define _countof(array) (sizeof(array) / sizeof(array[0]))
+#endif
 
 // BARTO
 /*static*/ int trace_mode;
@@ -139,8 +149,7 @@ void activate_debugger (void)
 	debug_pc = 0xffffffff;
 	trace_mode = 0;
 	if (debugger_active) {
-		if(!(currprefs.debugging_features & (1 << 2))) // BARTO "gdb_server"
-			write_log(_T("Debugger already active!?\n"));
+		write_log(_T("Debugger already active!?\n"));
 		return;
 	}
 	debug_cycles();
@@ -464,8 +473,7 @@ uae_u32 get_ilong_debug (uaecptr addr)
 	}
 }
 
-static
-uae_u8 *get_real_address_debug(uaecptr addr)
+/*static*/ uae_u8 *get_real_address_debug(uaecptr addr)
 {
 	if (debug_mmu_mode) {
 		flagtype olds = regs.s;
@@ -1770,18 +1778,18 @@ extern int debug_barto_cmd(TrapContext* ctx, uae_u32 arg1, uae_u32 arg2, uae_u32
 		auto& resource = barto_debug_resources[barto_debug_resources_count++];
 		resource = {};
 		trap_get_bytes(ctx, &resource, arg2, sizeof(resource));
-		resource.address = _byteswap_ulong(resource.address);
-		resource.size = _byteswap_ulong(resource.size);
-		resource.type = _byteswap_ushort(resource.type);
-		resource.flags = _byteswap_ushort(resource.flags);
+		resource.address = bswap_32(resource.address);
+		resource.size = bswap_32(resource.size);
+		resource.type = bswap_16(resource.type);
+		resource.flags = bswap_16(resource.flags);
 		switch(resource.type) {
 		case debug_resource_type_bitmap:
-			resource.bitmap.width = _byteswap_ushort(resource.bitmap.width);
-			resource.bitmap.height = _byteswap_ushort(resource.bitmap.height);
-			resource.bitmap.numPlanes = _byteswap_ushort(resource.bitmap.numPlanes);
+			resource.bitmap.width = bswap_16(resource.bitmap.width);
+			resource.bitmap.height = bswap_16(resource.bitmap.height);
+			resource.bitmap.numPlanes = bswap_16(resource.bitmap.numPlanes);
 			break;
 		case debug_resource_type_palette:
-			resource.palette.numEntries = _byteswap_ushort(resource.palette.numEntries);
+			resource.palette.numEntries = bswap_16(resource.palette.numEntries);
 			break;
 		}
 
@@ -1821,13 +1829,13 @@ extern int debug_barto_cmd(TrapContext* ctx, uae_u32 arg1, uae_u32 arg2, uae_u32
 	case barto_cmd_load: {
 		barto_debug_resource resource{};
 		trap_get_bytes(ctx, &resource, arg2, sizeof(resource));
-		unsigned int address = _byteswap_ulong(resource.address);
+		unsigned int address = bswap_32(resource.address);
 		std::string fn = std::string("debug\\") + resource.name;
 		if(auto f = fopen(fn.c_str(), "rb")) {
 			fseek(f, 0, SEEK_END);
 			auto size = ftell(f);
 			fseek(f, 0, SEEK_SET);
-			resource.size = _byteswap_ulong(size);
+			resource.size = bswap_32(size);
 			auto data = new char[size]();
 			fread(data, 1, size, f);
 			trap_put_bytes(ctx, data, address, size);
@@ -1842,9 +1850,9 @@ extern int debug_barto_cmd(TrapContext* ctx, uae_u32 arg1, uae_u32 arg2, uae_u32
 	case barto_cmd_save: {
 		barto_debug_resource resource{};
 		trap_get_bytes(ctx, &resource, arg2, sizeof(resource));
-		unsigned int address = _byteswap_ulong(resource.address);
-		unsigned int size = _byteswap_ulong(resource.size);
-		CreateDirectory(_T("debug"), NULL);
+		unsigned int address = bswap_32(resource.address);
+		unsigned int size = bswap_32(resource.size);
+		std::__fs::filesystem::create_directory(_T("debug"));
 		std::string fn = std::string("debug\\") + resource.name;
 		if(auto f = fopen(fn.c_str(), "wb")) {
 			auto data = new char[size]();

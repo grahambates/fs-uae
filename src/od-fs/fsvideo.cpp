@@ -2362,3 +2362,21 @@ bool uae_fsvideo_renderframe(int monid, int mode, bool immediate)
 	}
 	return 1;
 }
+
+fsemu_video_frame_t *uae_fsvideo_getframe()
+{
+	struct AmigaMonitor *mon = &AMonitors[0];
+	fsemu_video_frame_t *frame = fsemu_video_alloc_frame();
+	frame->depth = g_amiga_video_bpp * 8;
+	if (mon->screen_is_picasso) {
+		frame->buffer = uae_fsvideo.picasso_framebuffer;
+		frame->width = uae_fsvideo.picasso_width;
+		frame->height = uae_fsvideo.picasso_height;
+
+	} else {
+		frame->buffer = uae_fsvideo.chipset_framebuffer;
+		frame->width = AMIGA_WIDTH;
+		frame->height = AMIGA_HEIGHT;
+	}
+	return frame;
+}

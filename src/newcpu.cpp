@@ -110,7 +110,7 @@ int cpu_tracer;
 // BARTO
 uaecptr cpu_profiler_start_addr = 0;
 uaecptr cpu_profiler_end_addr = 0;
-evt_t cpu_profiler_last_cycles = 0;
+uae_u32 cpu_profiler_last_cycles = 0;
 cpu_profiler_unwind* cpu_profiler_unwind_buffer = nullptr; // for each possible code location (every 2 bytes) 2 s16: cfa, return address
 #include <vector>
 std::vector<uint32_t> cpu_profiler_output;
@@ -139,7 +139,7 @@ void stop_cpu_profiler() {
 }
 
 struct cpu_profiler {
-	evt_t cycles = 0;
+	uae_u32 cycles = 0;
 	uae_u32 callstack[16];
 	uae_u32 callstack_depth = 0;
 	uae_u32 registers[16];

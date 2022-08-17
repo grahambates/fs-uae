@@ -62,7 +62,7 @@ AM_CFLAGS =
 AM_CFLAGS += $(CM_CFLAGS) -std=gnu99
 
 AM_CXXFLAGS =
-AM_CXXFLAGS += $(CM_CFLAGS)
+AM_CXXFLAGS += $(CM_CFLAGS) -std=c++14
 
 AM_CPPFLAGS =
 AM_CPPFLAGS += @OS_CPPFLAGS@
@@ -254,6 +254,7 @@ libuae_a_SOURCES = \
 	src/archivers/zip/unzip.h \
 	src/audio.cpp \
 	src/autoconf.cpp \
+	src/barto_gdbserver.cpp \
 	src/blitter.cpp \
 	src/blkdev.cpp \
 	src/blkdev_cdimage.cpp \

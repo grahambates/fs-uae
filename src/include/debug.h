@@ -21,6 +21,14 @@
 #define MAX_LINEWIDTH 10000
 
 // BARTO
+struct barto_debug_bitmap {
+	short width;
+	short height;
+	short numPlanes;
+};
+struct barto_debug_palette {
+	short numEntries;
+};
 struct barto_debug_resource {
 	unsigned int address;
 	unsigned int size;
@@ -29,14 +37,8 @@ struct barto_debug_resource {
 	unsigned short /*enum debug_resource_flags*/ flags;
 
 	union {
-		struct bitmap {
-			short width;
-			short height;
-			short numPlanes;
-		} bitmap;
-		struct palette {
-			short numEntries;
-		} palette;
+		barto_debug_bitmap bitmap;
+		barto_debug_palette palette;
 	};
 };
 extern int barto_debug_resources_count;
