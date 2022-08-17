@@ -4023,6 +4023,8 @@ static void draw_frame2(struct vidbuffer *vbin, struct vidbuffer *vbout)
 #endif
 }
 
+static bool barto_always_changed = false; // BARTO
+
 static void draw_frame_extras(struct vidbuffer *vb, int y_start, int y_end)
 {
 	if ((currprefs.leds_on_screen & STATUSLINE_CHIPSET) && softstatusline()) {
@@ -4036,7 +4038,9 @@ static void draw_frame_extras(struct vidbuffer *vb, int y_start, int y_end)
 			draw_status_line(vb->monitor_id, line, i);
 		}
 	}
-	if (debug_dma > 1 || debug_heatmap > 1) {
+	if (debug_barto > 0 || debug_dma > 1 || debug_heatmap > 1) {
+		if(debug_barto > 0)
+			barto_always_changed = true;
 		for (int i = 0; i < vb->outheight; i++) {
 			int line = i;
 			draw_debug_status_line(vb->monitor_id, line);
@@ -4543,6 +4547,7 @@ void hsync_record_line_state (int lineno, enum nln_how how, int changed)
 		((lineno >= lightpen_y1[0] && lineno < lightpen_y2[0]) ||
 		(lineno >= lightpen_y1[1] && lineno < lightpen_y2[1]) ||
 		(lineno >= statusbar_y1 && lineno < statusbar_y2));
+	changed |= barto_always_changed ? 1 : 0; // BARTO
 
 	switch (how) {
 	case nln_normal:

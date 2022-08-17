@@ -90,7 +90,7 @@ void moduleripper (void)
 	__try {
 #endif
 #endif
-		prowizard_search (buf, size);
+		//prowizard_search (buf, size);
 #ifdef _WIN32
 #ifdef FSUAE
 

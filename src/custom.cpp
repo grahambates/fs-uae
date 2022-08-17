@@ -301,7 +301,7 @@ static int dbplptl_on[8], dbplpth_on[8], dbplptl_on2, dbplpth_on2;
 #endif
 static int bitplane_line_crossing;
 
-static struct color_entry current_colors;
+/*static*/ struct color_entry current_colors; // BARTO
 uae_u16 bplcon0;
 static uae_u16 bplcon1, bplcon2, bplcon3, bplcon4;
 static int bplcon0d, bplcon0d_old;
