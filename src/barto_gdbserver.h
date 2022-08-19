@@ -7,4 +7,5 @@ namespace barto_gdbserver {
 	void vsync_pre();
 	void vsync_post();
 	bool debug();
+	bool remote_debug_copper(uaecptr addr, uae_u16 word1, uae_u16 word2, int hpos, int vpos);
 }

@@ -149,7 +149,7 @@ void activate_debugger (void)
 	debug_pc = 0xffffffff;
 	trace_mode = 0;
 	if (debugger_active) {
-		write_log(_T("Debugger already active!?\n"));
+		// write_log(_T("Debugger already active!?\n"));
 		return;
 	}
 	debug_cycles();
@@ -2429,6 +2429,9 @@ void record_copper_blitwait (uaecptr addr, int hpos, int vpos)
 
 void record_copper (uaecptr addr, uae_u16 word1, uae_u16 word2, int hpos, int vpos)
 {
+	if (barto_gdbserver::remote_debug_copper(addr, word1, word2, hpos, vpos)) {
+		return;
+	}
 	int t = nr_cop_records[curr_cop_set];
 	init_record_copper();
 	if (t < NR_COPPER_RECORDS) {
