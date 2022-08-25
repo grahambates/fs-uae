@@ -45,6 +45,10 @@
 #include "slirp.h"
 #include "stream.h"
 
+#ifdef __cplusplus
+#define typeof decltype
+#endif
+
 #define stringify(s) tostring(s)
 #define tostring(s) #s
 

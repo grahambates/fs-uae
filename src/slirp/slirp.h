@@ -11,6 +11,10 @@
 #include "sysconfig.h"
 #include "slirp_config.h"
 
+#ifdef __cplusplus
+#define typeof decltype
+#endif
+
 #ifdef FSUAE // NL
 #ifndef _MSC_VER
 #define container_of(ptr, type, member) ({ \

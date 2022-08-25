@@ -8,6 +8,10 @@
 #include <stddef.h>
 #endif
 
+#ifdef __cplusplus
+#define typeof decltype
+#endif
+
 extern void activate_debugger(void);
 
 //#define DEBUG_VGA_REG
