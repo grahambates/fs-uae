@@ -709,7 +709,7 @@ namespace barto_gdbserver {
 				auto last = s.find(' ', 1);
 				if(last != std::string::npos) {
 					profile_unwindname = s.substr(0, last);
-					s = s.substr(last + 1);
+					s = s.substr(last);
 				} else {
 					s.clear();
 				}
@@ -727,7 +727,7 @@ namespace barto_gdbserver {
 					s.clear();
 				}
 			} else {
-				profile_outname = s.substr(1);
+				profile_outname = s.c_str();
 			}
 
 			profile_unwind.reset();
