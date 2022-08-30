@@ -32,7 +32,7 @@
 //#define _timezone timezone
 //#define _daylight daylight
 #ifdef WINDOWS
-
+#define _cdecl __cdecl
 #else
 extern int _timezone;
 extern int _daylight;

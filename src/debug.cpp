@@ -1830,7 +1830,7 @@ extern int debug_barto_cmd(TrapContext* ctx, uae_u32 arg1, uae_u32 arg2, uae_u32
 		barto_debug_resource resource{};
 		trap_get_bytes(ctx, &resource, arg2, sizeof(resource));
 		unsigned int address = bswap_32(resource.address);
-		std::string fn = std::string("debug") + std::filesystem::path::preferred_separator + resource.name;
+		std::string fn = std::string("debug/") + resource.name;
 		if(auto f = fopen(fn.c_str(), "rb")) {
 			fseek(f, 0, SEEK_END);
 			auto size = ftell(f);
@@ -1853,7 +1853,7 @@ extern int debug_barto_cmd(TrapContext* ctx, uae_u32 arg1, uae_u32 arg2, uae_u32
 		unsigned int address = bswap_32(resource.address);
 		unsigned int size = bswap_32(resource.size);
 		std::filesystem::create_directory("debug");
-		std::string fn = std::string("debug") + std::filesystem::path::preferred_separator + resource.name;
+		std::string fn = std::string("debug/") + resource.name;
 		if(auto f = fopen(fn.c_str(), "wb")) {
 			auto data = new char[size]();
 			trap_get_bytes(ctx, data, address, size);
