@@ -48,9 +48,9 @@ endif
 # if W_MISSING_DECLARATIONS
 # CM_CFLAGS += -Wmissing-declarations
 # endif
-if W_ERROR_MISSING_DECLARATIONS
-CM_CFLAGS += -Werror=missing-declarations
-endif
+# if W_ERROR_MISSING_DECLARATIONS
+# CM_CFLAGS += -Werror=missing-declarations
+# endif
 if W_POINTER_ARITH
 CM_CFLAGS += -Wpointer-arith
 endif
@@ -62,7 +62,7 @@ AM_CFLAGS =
 AM_CFLAGS += $(CM_CFLAGS) -std=gnu99
 
 AM_CXXFLAGS =
-AM_CXXFLAGS += $(CM_CFLAGS) -std=c++14
+AM_CXXFLAGS += $(CM_CFLAGS) -std=c++17
 
 AM_CPPFLAGS =
 AM_CPPFLAGS += @OS_CPPFLAGS@

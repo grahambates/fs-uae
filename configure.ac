@@ -141,11 +141,11 @@ AX_CHECK_COMPILE_FLAG(-Wpointer-arith,
 AM_CONDITIONAL([W_POINTER_ARITH],
 [test x$w_pointer_arith = xyes])
 
-AX_CHECK_COMPILE_FLAG(-Werror=missing-declarations,
-[w_error_missing_declarations=yes],
-[w_error_missing_declarations=no])
-AM_CONDITIONAL([W_ERROR_MISSING_DECLARATIONS],
-[test x$w_error_missing_declarations = xyes])
+# AX_CHECK_COMPILE_FLAG(-Werror=missing-declarations,
+# [w_error_missing_declarations=yes],
+# [w_error_missing_declarations=no])
+# AM_CONDITIONAL([W_ERROR_MISSING_DECLARATIONS],
+# [test x$w_error_missing_declarations = xyes])
 
 AX_CHECK_COMPILE_FLAG(-Wno-format-truncation,
 [w_no_format_truncation=yes],
