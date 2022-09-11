@@ -106,21 +106,19 @@ jobs:
       - name: Dist (Windows)
         shell: msys2 {0}
         run: |
-          mkdir -p fs-uae-${{ matrix.os }}/fsemu/src
+          mkdir -p fs-uae-${{ matrix.os }}
           mv fs-uae.exe fs-uae-${{ matrix.os }}/
           mv fs-uae.dat fs-uae-${{ matrix.os }}/
           cp -r data fs-uae-${{ matrix.os }}/data
-          touch fs-uae-${{ matrix.os }}/fsemu/src/fsemu-all.c
           zip -r fs-uae-${{ matrix.os }}.zip fs-uae-${{ matrix.os }}
         if: matrix.os == 'windows-latest'
 
       - name: Dist (non-Windows)
         run: |
-          mkdir -p fs-uae-${{ matrix.os }}/fsemu/src
+          mkdir -p fs-uae-${{ matrix.os }}
           mv fs-uae fs-uae-${{ matrix.os }}/
           mv fs-uae.dat fs-uae-${{ matrix.os }}/
           cp -r data fs-uae-${{ matrix.os }}/data
-          touch fs-uae-${{ matrix.os }}/fsemu/src/fsemu-all.c
           zip -r fs-uae-${{ matrix.os }}.zip fs-uae-${{ matrix.os }}
         if: matrix.os != 'windows-latest'
 
