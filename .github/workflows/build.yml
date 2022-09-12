@@ -106,6 +106,7 @@ jobs:
       - name: Dist (Windows)
         shell: msys2 {0}
         run: |
+          strip fs-uae.exe
           mkdir -p fs-uae-${{ matrix.os }}
           mv fs-uae.exe fs-uae-${{ matrix.os }}/
           mv fs-uae.dat fs-uae-${{ matrix.os }}/
@@ -115,6 +116,7 @@ jobs:
 
       - name: Dist (non-Windows)
         run: |
+          strip fs-uae
           mkdir -p fs-uae-${{ matrix.os }}
           mv fs-uae fs-uae-${{ matrix.os }}/
           mv fs-uae.dat fs-uae-${{ matrix.os }}/
