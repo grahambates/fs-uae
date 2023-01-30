@@ -340,7 +340,7 @@ extern void record_cia_access(int r, int mask, uae_u16 value, bool rw, int hpos,
 extern void record_dma_ipl(int hpos, int vpos);
 extern void record_dma_ipl_sample(int hpos, int vpos);
 extern void debug_mark_refreshed(uaecptr);
-extern struct dma_rec* get_dma_records(); // BARTO
+extern struct dma_rec* get_dma_records(int toggle); // BARTO
 extern void debug_draw(uae_u8 *buf, int bpp, int line, int width, int height, uae_u32 *xredcolors, uae_u32 *xgreencolors, uae_u32 *xbluescolors);
 
 #define TRACE_SKIP_INS 1
