@@ -72,7 +72,7 @@ jobs:
             libtool
             make
             mingw-w64-x86_64-freetype
-            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-clang
             mingw-w64-x86_64-glew
             mingw-w64-x86_64-glib2
             mingw-w64-x86_64-libmpeg2
@@ -94,7 +94,7 @@ jobs:
         run: |
           ./bootstrap
           ./configure
-          make -j2
+          make -j2 CC=clang CXX=clang++
         if: matrix.os == 'windows-latest'
 
       - name: Make (non-Windows)
