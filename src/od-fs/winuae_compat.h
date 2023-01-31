@@ -73,6 +73,8 @@ typedef struct tagRECT {
 //#define DWORD UAE_DWORD
 //#define RECT UAE_RECT
 //#endif
+#else
+#define _cdecl __cdecl
 #endif
 
 // #define STATIC_INLINE static inline

@@ -23,6 +23,11 @@
 #include "fsdb.h"
 #include "uae/io.h"
 
+#ifdef FSUAE // NL
+#include "uae/fs.h"
+#undef _WIN32
+#endif
+
 /* The on-disk format is as follows:
 * Offset 0, 1 byte, valid
 * Offset 1, 4 bytes, mode

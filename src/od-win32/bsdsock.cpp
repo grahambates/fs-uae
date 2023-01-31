@@ -2456,9 +2456,6 @@ uae_u32 host_inet_addr(TrapContext *ctx, uae_u32 cp)
 #define GET_STATE_DONE 4
 #define GET_STATE_REALLY_DONE 5
 
-#ifdef FSUAE
-	// We don't mess with the dialer in FS-UAE
-#else
 static unsigned int thread_get2 (void *indexp)
 {
 	int index = *((int*)indexp);
@@ -2472,7 +2469,6 @@ static unsigned int thread_get2 (void *indexp)
 	SB;
 	TrapContext *ctx = NULL;
 
-#endif
 	while (bsd->hGetEvents[index]) {
 
 		if (WaitForSingleObject(bsd->hGetEvents[index], INFINITE) == WAIT_ABANDONED)
