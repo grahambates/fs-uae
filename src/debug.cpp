@@ -55,6 +55,11 @@
 #include "keybuf.h"
 #include "barto_gdbserver.h"
 
+#ifdef FSUAE // NL
+#include "uae/fs.h"
+#undef _WIN32
+#endif
+
 #define TRACE_SKIP_INS 1
 #define TRACE_MATCH_PC 2
 #define TRACE_MATCH_INS 3
@@ -64,7 +69,7 @@
 #define TRACE_NRANGE_PC 7 //BARTO
 #define TRACE_CHECKONLY 10
 
-#ifdef _WIN32
+#ifndef bswap_16
 #define bswap_16(x) _byteswap_ushort(x)
 #define bswap_32(x) _byteswap_ulong(x)
 #endif
@@ -1866,7 +1871,7 @@ static void debug_draw_barto(uae_u8* buf, int bpp, int line, int width, int heig
 	if(!(line >= 0 && line < barto_buf_height))
 		return;
 
-	for(int x = 0; x < min(width, barto_buf_width); x++) {
+	for(int x = 0; x < std::min(width, barto_buf_width); x++) {
 		uae_u32 c = barto_buf[line * barto_buf_width + x];
 		if(c & 0xff000000)
 			putpixel(buf, bpp, x, c);

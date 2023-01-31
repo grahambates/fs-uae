@@ -1314,7 +1314,7 @@ namespace barto_gdbserver {
         The value of the disconnected tracing flag. 1 means that tracing will continue after GDB disconnects, 0 means that the trace run will stop.
 	*/
 	std::string handle_qtstatus() {
-		string tframe_count = hex8(debugmem_get_traceframe_count(false));
+		std::string tframe_count = hex8(debugmem_get_traceframe_count(false));
 		return "T1;tstop::0;tframes:" + tframe_count + ";tcreated:" + tframe_count + ";tfree:ffffff;tsize:50*!;circular:1;disconn:1;starttime:;stoptime:;username:;notes::";
 	}
 

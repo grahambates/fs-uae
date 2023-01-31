@@ -426,7 +426,7 @@ static void cdda_unpack_func (void *v)
 						if (!mp3dec) {
 							try {
 								mp3dec = new mp3decoder();
-							} catch (exception) { };
+							} catch (std::exception) { };
 						}
 						if (mp3dec)
 							t->data = mp3dec->get (t->handle, t->data, (int)t->filesize);
@@ -1843,7 +1843,7 @@ static int parsecue (struct cdunit *cdu, struct zfile *zcue, const TCHAR *img, c
 						if (!mp3dec) {
 							try {
 								mp3dec = new mp3decoder();
-							} catch (exception) { }
+							} catch (std::exception) { }
 						}
 						if (mp3dec) {
 							t->offset = 0;

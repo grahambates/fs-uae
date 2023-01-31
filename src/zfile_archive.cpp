@@ -1877,8 +1877,8 @@ static time_t fat_time_fat2unix (uae_u16 time, uae_u16 date, int fat12)
 		day = (date >> 11);
 	} else {
 		year  = date >> 9;  
-		month = max(1, (date >> 5) & 0xf);
-		day   = max(1, date & 0x1f) - 1;
+		month = std::max(1, (date >> 5) & 0xf);
+		day   = std::max(1, date & 0x1f) - 1;
 	}
 
 	leap_day = (year + 3) / 4;

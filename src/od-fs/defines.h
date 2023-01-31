@@ -1,14 +1,9 @@
 #ifndef EXTRA_DEFINES_H
 #define EXTRA_DEFINES_H
 
-/*
 #ifdef WINDOWS
 #include <Windows.h>
-#undef _WIN32
-#undef WIN32
-#undef WCHAR
 #endif
-*/
 
 // #include "tchar.h"
 // rename init_audio to make init_audio available

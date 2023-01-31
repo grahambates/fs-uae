@@ -90,6 +90,8 @@ typedef unsigned int 	 (CALLING_CONVENSION* _BRIDGE_NumDrivers)(void);
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_GetDriverInfo)(unsigned int driverIndex, FloppyDiskBridge::BridgeDriver** driverInformation);
 #ifdef _WIN32
 typedef bool			 (CALLING_CONVENSION* _BRIDGE_ShowConfigDialog)(HWND hwndParent, unsigned int* profileID);
+#else
+typedef bool			 (CALLING_CONVENSION* _BRIDGE_ShowConfigDialog)(BridgeDriverHandle bridgeDriverHandle, unsigned int profileID);
 #endif
 typedef bool			 (CALLING_CONVENSION* _BRIDGE_GetAllProfiles)(FloppyBridgeProfileInformationDLL** profiles, unsigned int* numProfiles);
 typedef bool			 (CALLING_CONVENSION* _BRIDGE_ImportProfilesFromString)(char* profilesConfigString);
@@ -99,7 +101,6 @@ typedef bool			 (CALLING_CONVENSION* _BRIDGE_SetProfileConfigFromString)(unsigne
 typedef bool			 (CALLING_CONVENSION* _BRIDGE_SetProfileName)(unsigned int profileID, char* name);
 typedef bool			 (CALLING_CONVENSION* _BRIDGE_CreateNewProfile)(unsigned int driverIndex, unsigned int* profileID);
 typedef bool			 (CALLING_CONVENSION* _BRIDGE_DeleteProfile)(unsigned int profileID);
-typedef bool			 (CALLING_CONVENSION* _BRIDGE_ShowConfigDialog)(BridgeDriverHandle bridgeDriverHandle, unsigned int profileID);
 typedef bool		 	 (CALLING_CONVENSION* _BRIDGE_EnumComports)(char* output, unsigned int* bufferSize);
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_CreateDriver)(unsigned int driverIndex, BridgeDriverHandle* bridgeDriverHandle);
 typedef bool 			 (CALLING_CONVENSION* _BRIDGE_CreateDriverFromConfigString)(char* config, BridgeDriverHandle* bridgeDriverHandle);

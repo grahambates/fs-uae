@@ -25,7 +25,7 @@
 
 #ifdef __cplusplus
 #include <string>
-using namespace std;
+/* using namespace std; */
 #else
 #include <string.h>
 #include <ctype.h>
