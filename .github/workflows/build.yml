@@ -1,36 +1,26 @@
-name: Release
+name: Build
 
 on: [push]
 
 jobs:
-  release:
-    name: Create single release for all builds
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: Create a release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: true
-          prerelease: true
-    if: startsWith(github.ref, 'refs/tags/')
-
   build:
+    name: ${{ matrix.platform.name }}
+    runs-on: ${{ matrix.platform.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.platform.shell }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-11, windows-latest]
-    runs-on: ${{ matrix.os }}
+        platform:
+          - { name: Windows, os: windows-latest, shell: 'msys2 {0}', exe: fs-uae.exe }
+          - { name: Linux, os: ubuntu-latest, shell: sh, exe: fs-uae }
+          - { name: Mac, os: macos-11, shell: sh, exe: fs-uae }
     steps:
       # Linux
       - name: Update packages (Linux)
         run: sudo apt update
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
+
       - name: Install Dependencies (Linux)
         run: >-
           sudo apt install
@@ -53,12 +43,28 @@ jobs:
           libxtst-dev
           zip
           zlib1g-dev
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
 
       # Mac
       - name: Install Dependencies (Mac)
-        run: brew install autoconf automake freetype gettext glew glib jpeg libmpeg2 libpng libtool openal-soft pkg-config sdl2 sdl2_ttf zlib
-        if: matrix.os == 'macos-11'
+        run: >-
+          brew install
+          autoconf
+          automake
+          freetype
+          gettext
+          glew
+          glib
+          jpeg
+          libmpeg2
+          libpng
+          libtool
+          openal-soft
+          pkg-config
+          sdl2
+          sdl2_ttf
+          zlib
+        if: runner.os == 'macOS'
 
       # Windows:
       - name: Install Dependencies (Windows)
@@ -82,75 +88,36 @@ jobs:
             mingw-w64-x86_64-SDL2_ttf
             pkg-config
             zip
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Make (Windows)
-        shell: msys2 {0}
+      - name: Make
         run: |
           ./bootstrap
           ./configure
           make -j2 CC=clang CXX=clang++
-        if: matrix.os == 'windows-latest'
 
-      - name: Make (non-Windows)
+      - name: Dist
         run: |
-          ./bootstrap
-          ./configure
-          make -j2 CC=clang CXX=clang++
-        if: matrix.os != 'windows-latest'
-
-      - name: Dist (Windows)
-        shell: msys2 {0}
-        run: |
-          strip fs-uae.exe
-          mkdir -p fs-uae-${{ matrix.os }}
-          mv fs-uae.exe fs-uae-${{ matrix.os }}/
-          mv fs-uae.dat fs-uae-${{ matrix.os }}/
-          cp -r data fs-uae-${{ matrix.os }}/data
-        if: matrix.os == 'windows-latest'
-
-      - name: Dist (non-Windows)
-        run: |
-          strip fs-uae
-          mkdir -p fs-uae-${{ matrix.os }}
-          mv fs-uae fs-uae-${{ matrix.os }}/
-          mv fs-uae.dat fs-uae-${{ matrix.os }}/
-          cp -r data fs-uae-${{ matrix.os }}/data
-        if: matrix.os != 'windows-latest'
+          strip ${{ matrix.platform.exe }}
+          mkdir -p fs-uae-${{ matrix.platform.name }}
+          mv ${{ matrix.platform.exe }} fs-uae-${{ matrix.platform.name }}/
+          mv fs-uae.dat fs-uae-${{ matrix.platform.name }}/
+          cp -r data fs-uae-${{ matrix.platform.name }}/data
 
       - name: Copy Dependencies (Mac)
-        run: ci/make_portable.sh fs-uae-${{ matrix.os }}/fs-uae
-        if: matrix.os == 'macos-11'
+        run: ci/make_portable.sh fs-uae-${{ matrix.platform.name }}/fs-uae
+        if: runner.os == 'macOS'
 
-      - name: Zip (Windows)
-        shell: msys2 {0}
-        run: |
-          zip -r fs-uae-${{ matrix.os }}.zip fs-uae-${{ matrix.os }}
-        if: matrix.os == 'windows-latest'
-
-      - name: Zip (non-Windows)
-        run: |
-          zip -r fs-uae-${{ matrix.os }}.zip fs-uae-${{ matrix.os }}
-        if: matrix.os != 'windows-latest'
+      - name: Zip
+        run: zip -r fs-uae-${{ matrix.platform.name }}.zip fs-uae-${{ matrix.platform.name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: fs-uae-${{ matrix.os }}
-          path: fs-uae-${{ matrix.os }}
-
-      - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.once.outputs.upload_url }}
-          asset_path: ${{ github.workspace }}/Release/fs-uae-${{ matrix.os }}.zip
-          asset_name: fs-uae-${{ matrix.os }}.zip
-          asset_content_type: application/octet-stream
-        if: startsWith(github.ref, 'refs/tags/')
+          name: fs-uae-${{ matrix.platform.name }}
+          path: fs-uae-${{ matrix.platform.name }}
