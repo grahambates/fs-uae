@@ -687,7 +687,7 @@ namespace barto_gdbserver {
 											return; // response is sent when profile is finished (vsync)
 										}
 									} else if(cmd == "reset" && debugging_trigger) {
-										savestate_quick(0, 0); // restore state saved at process entry
+										savestate_quick(1, 0); // restore state saved at process entry
 										barto_debug_resources_count = 0;
 										response += "OK";
 									} else {
@@ -1318,7 +1318,7 @@ start_profile:
 				processptr = 0;
 				xfree(processname);
 				processname = nullptr;
-				savestate_quick(0, 1); // save state for "monitor reset"
+				savestate_quick(1, 1); // save state for "monitor reset"
 			}
 			barto_log("GDBSERVER: Waiting for connection...\n");
 			for (int i = 0; i < time_out * 10; i++)	{
