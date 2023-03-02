@@ -28,12 +28,12 @@
 #define MAX_LINEWIDTH 10000
 
 struct barto_debug_bitmap {
-	short width;
-	short height;
-	short numPlanes;
+	unsigned short width;
+	unsigned short height;
+	unsigned short numPlanes;
 };
 struct barto_debug_palette {
-	short numEntries;
+	unsigned short numEntries;
 };
 
 // BARTO
