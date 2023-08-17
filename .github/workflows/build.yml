@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         platform:
-          - { name: Windows, os: windows-latest, shell: 'msys2 {0}', exe: fs-uae.exe }
+          # - { name: Windows, os: windows-latest, shell: 'msys2 {0}', exe: fs-uae.exe }
           - { name: Linux, os: ubuntu-latest, shell: sh, exe: fs-uae }
           - { name: Mac, os: macos-11, shell: sh, exe: fs-uae }
     steps:
