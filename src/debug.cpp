@@ -7260,6 +7260,7 @@ void debug_exception(int nr)
 	if (debug_illegal) {
 		if (nr <= 63 && (debug_illegal_mask & ((uae_u64)1 << nr))) {
 			write_log(_T("Exception %d breakpoint\n"), nr);
+			barto_gdbserver::set_exception(nr);
 			activate_debugger();
 		}
 	}
