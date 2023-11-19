@@ -110,7 +110,7 @@ jobs:
           cp -r data fs-uae-${{ matrix.platform.name }}/data
 
       - name: Copy Dependencies (Mac)
-        run: ci/make_portable.sh fs-uae-${{ matrix.platform.name }}/fs-uae
+        run: sudo ci/make_portable.sh fs-uae-${{ matrix.platform.name }}/fs-uae
         if: runner.os == 'macOS'
 
       - name: Zip
