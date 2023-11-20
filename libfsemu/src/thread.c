@@ -329,3 +329,22 @@ int fs_semaphore_try_wait(fs_semaphore *semaphore)
 #error no thread support
 #endif
 }
+
+int fs_semaphore_wait_timeout_ms(fs_semaphore *semaphore,
+                                    int timeout_ms)
+{
+#if defined(USE_PSEM)
+#error not implemented
+#elif defined(USE_SDL)
+    int result = SDL_SemWaitTimeout(semaphore->semaphore, timeout_ms);
+    if (result == 0) {
+        return 0;
+    }
+    if (result == SDL_MUTEX_TIMEDOUT) {
+        return 1;
+    }
+    return -1;
+#else
+#error no thread support
+#endif
+}

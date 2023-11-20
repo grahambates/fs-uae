@@ -337,7 +337,7 @@ static uae_u32 emulib_Minimize (void)
 	return 0; // OSDEP_minimize_uae();
 }
 
-static int native_dos_op (uae_u32 mode, uae_u32 p1, uae_u32 p2, uae_u32 p3)
+static int native_dos_op (TrapContext *context, uae_u32 mode, uae_u32 p1, uae_u32 p2, uae_u32 p3)
 {
 	TCHAR tmp[MAX_DPATH];
 	char *s;
@@ -348,7 +348,7 @@ static int native_dos_op (uae_u32 mode, uae_u32 p1, uae_u32 p2, uae_u32 p3)
 	/* receive native path from lock
 	* p1 = dos.library:Lock, p2 = buffer, p3 = max buffer size
 	*/
-	v = get_native_path (p1, tmp);
+	v = get_native_path (context, p1, tmp);
 	if (v)
 		return v;
 	s = ua (tmp);
@@ -360,7 +360,7 @@ static int native_dos_op (uae_u32 mode, uae_u32 p1, uae_u32 p2, uae_u32 p3)
 	return 0;
 }
 
-static uae_u32 uaelib_demux_common(uae_u32 ARG0, uae_u32 ARG1, uae_u32 ARG2, uae_u32 ARG3, uae_u32 ARG4, uae_u32 ARG5)
+static uae_u32 uaelib_demux_common(TrapContext *context, uae_u32 ARG0, uae_u32 ARG1, uae_u32 ARG2, uae_u32 ARG3, uae_u32 ARG4, uae_u32 ARG5)
 {
 	switch (ARG0) {
 		case 0: return emulib_GetVersion();
@@ -392,13 +392,13 @@ static uae_u32 uaelib_demux_common(uae_u32 ARG0, uae_u32 ARG1, uae_u32 ARG2, uae
 		/* Disable possible ROM protection */
 		unprotect_maprom();
 		return currprefs.maprom;
-		case 81: return cfgfile_uaelib(ARG1, ARG2, ARG3, ARG4);
-		case 82: return cfgfile_uaelib_modify(ARG1, ARG2, ARG3, ARG4, ARG5);
+		case 81: return cfgfile_uaelib(context, ARG1, ARG2, ARG3, ARG4);
+		case 82: return cfgfile_uaelib_modify(context, ARG1, ARG2, ARG3, ARG4, ARG5);
 		case 83: currprefs.mmkeyboard = ARG1 ? 1 : 0; return currprefs.mmkeyboard;
 #ifdef DEBUGGER
 		case 84: return mmu_init(ARG1, ARG2, ARG3);
 #endif
-		case 85: return native_dos_op(ARG1, ARG2, ARG3, ARG4);
+		case 85: return native_dos_op(context, ARG1, ARG2, ARG3, ARG4);
 		case 86:
 		if (valid_address(ARG1, 1)) {
 			TCHAR *s = au((char*)get_real_address(ARG1));
@@ -429,7 +429,7 @@ uae_u32 uaeboard_demux(uae_u32 *board)
 	arg3 = do_get_mem_long(&board[4]);
 	arg4 = do_get_mem_long(&board[5]);
 	arg5 = do_get_mem_long(&board[6]);
-	return uaelib_demux_common(arg0, arg1, arg2, arg3, arg4, arg5);
+	return uaelib_demux_common(NULL, arg0, arg1, arg2, arg3, arg4, arg5);
 }
 
 static uae_u32 REGPARAM2 uaelib_demux2 (TrapContext *context)
@@ -445,7 +445,7 @@ static uae_u32 REGPARAM2 uaelib_demux2 (TrapContext *context)
 	if (ARG0 >= 16 && ARG0 <= 39)
 		return picasso_demux(ARG0, context);
 #endif
-	return uaelib_demux_common(ARG0, ARG1, ARG2, ARG3, ARG4, ARG5);
+	return uaelib_demux_common(NULL, ARG0, ARG1, ARG2, ARG3, ARG4, ARG5);
 }
 
 extern int uaelib_debug;

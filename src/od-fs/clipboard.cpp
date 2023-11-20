@@ -807,13 +807,13 @@ static int clipboard_put_bmp(HBITMAP hbmp)
 }
 #endif
 
-void amiga_clipboard_die(void)
+void amiga_clipboard_die(TrapContext *ctx)
 {
     signaling = 0;
     write_log(_T("clipboard not initialized\n"));
 }
 
-void amiga_clipboard_init(void)
+void amiga_clipboard_init(TrapContext *ctx)
 {
     signaling = 0;
     write_log(_T("clipboard initialized\n"));
@@ -821,21 +821,21 @@ void amiga_clipboard_init(void)
     clipboard_read();
 }
 
-void amiga_clipboard_task_start(uaecptr data)
+void amiga_clipboard_task_start(TrapContext *ctx, uaecptr data)
 {
     clipboard_data = data;
     signaling = 1;
     write_log(_T("clipboard task init: %08x\n"), clipboard_data);
 }
 
-uae_u32 amiga_clipboard_proc_start(void)
+uae_u32 amiga_clipboard_proc_start(TrapContext *ctx)
 {
     write_log(_T("clipboard process init: %08x\n"), clipboard_data);
     signaling = 1;
     return clipboard_data;
 }
 
-void amiga_clipboard_got_data(uaecptr data, uae_u32 size, uae_u32 actual)
+void amiga_clipboard_got_data(TrapContext *ctx, uaecptr data, uae_u32 size, uae_u32 actual)
 {
     uae_u8 *addr;
     if (!initialized) {
@@ -849,7 +849,7 @@ void amiga_clipboard_got_data(uaecptr data, uae_u32 size, uae_u32 actual)
     from_iff(data, actual);
 }
 
-int amiga_clipboard_want_data (void)
+int amiga_clipboard_want_data (TrapContext *ctx)
 {
     uae_u32 addr, size;
 

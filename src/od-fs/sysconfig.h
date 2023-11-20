@@ -276,8 +276,6 @@
 /* Define to 1 if you need to in order for `stat' and other things to work. */
 /* #undef _POSIX_SOURCE */
 
-typedef long uae_atomic;
-
 #include "defines.h"
 
 #endif /* FSUAE_SYSCONFIG_H */

@@ -21,6 +21,7 @@
 #include "debug.h"
 #include "threaddep/thread.h"
 #include "native2amiga.h"
+#include "inputdevice.h"
 
 /* Commonly used autoconfig strings */
 
@@ -35,7 +36,7 @@ uae_sem_t hardware_trap_event[RTAREA_TRAP_DATA_SIZE / RTAREA_TRAP_DATA_SLOT_SIZE
 
 static uaecptr rt_trampoline_ptr, trap_entry;
 extern volatile uae_atomic hwtrap_waiting;
-extern int filesystem_state;
+extern volatile int trap_mode;
 
 DECLARE_MEMORY_FUNCTIONS(rtarea);
 addrbank rtarea_bank = {
@@ -58,7 +59,7 @@ static void hwtrap_check_int(void)
 
 static bool istrapwait(void)
 {
-	for (int i = 0; i < RTAREA_TRAP_DATA_NUM; i++) {
+	for (int i = 0; i < RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM; i++) {
 		uae_u8 *data = rtarea_bank.baseaddr + RTAREA_TRAP_DATA + i * RTAREA_TRAP_DATA_SLOT_SIZE;
 		uae_u8 *status = rtarea_bank.baseaddr + RTAREA_TRAP_STATUS + i * RTAREA_TRAP_STATUS_SIZE;
 		if (get_long_host(data + RTAREA_TRAP_DATA_TASKWAIT) && status[3] && status[2] >= 0x80) {
@@ -86,13 +87,13 @@ bool rethink_traps(void)
 
 static bool rtarea_trap_data(uaecptr addr)
 {
-	if (addr >= RTAREA_TRAP_DATA && addr < RTAREA_TRAP_DATA + RTAREA_TRAP_DATA_SIZE)
+	if (addr >= RTAREA_TRAP_DATA && addr < RTAREA_TRAP_DATA + (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM) * RTAREA_TRAP_DATA_SLOT_SIZE)
 		return true;
 	return false;
 }
 static bool rtarea_trap_status(uaecptr addr)
 {
-	if (addr >= RTAREA_TRAP_STATUS && addr < RTAREA_TRAP_STATUS + RTAREA_TRAP_DATA_NUM * RTAREA_TRAP_STATUS_SIZE)
+	if (addr >= RTAREA_TRAP_STATUS && addr < RTAREA_TRAP_STATUS + (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM) * RTAREA_TRAP_STATUS_SIZE)
 		return true;
 	return false;
 }
@@ -130,7 +131,7 @@ static uae_u32 REGPARAM2 rtarea_bget (uaecptr addr)
 		int trap_slot = addr2 / RTAREA_TRAP_STATUS_SIZE;
 		if (trap_offset == 0) {
 			// 0 = busy wait, 1 = Wait()
-			rtarea_bank.baseaddr[addr] = filesystem_state ? 1 : 0;
+			rtarea_bank.baseaddr[addr] = trap_mode ? 1 : 0;
 		}
 	} else if (addr == RTAREA_INTREQ + 0) {
 		rtarea_bank.baseaddr[addr] = atomic_bit_test_and_reset(&uae_int_requested, 0);
@@ -163,6 +164,9 @@ static void REGPARAM2 rtarea_bput (uaecptr addr, uae_u32 value)
 	if (!rtarea_write(addr))
 		return;
 	rtarea_bank.baseaddr[addr] = value;
+	if (addr == RTAREA_INTREQ + 3) {
+		mousehack_wakeup();
+	}
 	if (!rtarea_trap_status(addr))
 		return;
 	addr -= RTAREA_TRAP_STATUS;
@@ -214,8 +218,9 @@ static void REGPARAM2 rtarea_lput (uaecptr addr, uae_u32 value)
 
 void rtarea_reset(void)
 {
-	memset(rtarea_bank.baseaddr + RTAREA_TRAP_DATA, 0, RTAREA_TRAP_DATA_SIZE);
-	memset(rtarea_bank.baseaddr + RTAREA_TRAP_STATUS, 0, RTAREA_TRAP_STATUS_SIZE * RTAREA_TRAP_DATA_NUM);
+	memset(rtarea_bank.baseaddr + RTAREA_TRAP_DATA, 0, RTAREA_TRAP_DATA_SLOT_SIZE * (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM));
+	memset(rtarea_bank.baseaddr + RTAREA_TRAP_STATUS, 0, RTAREA_TRAP_STATUS_SIZE * (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM));
+	trap_reset();
 }
 
 /* some quick & dirty code to fill in the rt area and save me a lot of

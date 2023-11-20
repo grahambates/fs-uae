@@ -430,7 +430,7 @@ struct uae_prefs {
 	int gfx_max_horizontal, gfx_max_vertical;
 	int gfx_saturation, gfx_luminance, gfx_contrast, gfx_gamma, gfx_gamma_ch[3];
 	bool gfx_blackerthanblack;
-	bool gfx_threebitcolors;
+	int gfx_threebitcolors;
 	int gfx_api;
 	int color_mode;
 	int gfx_extrawidth;

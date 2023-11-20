@@ -2,7 +2,7 @@
 #include "sysdeps.h"
 #include <fs/thread.h>
 
-int uae_start_thread_fast (void *(*f)(void *), void *arg,
+int uae_start_thread_fast (uae_thread_function f, void *arg,
         uae_thread_id *thread)
 {
     // FIXME: what is the supposed difference between uae_start_thread and

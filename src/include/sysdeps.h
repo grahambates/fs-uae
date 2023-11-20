@@ -225,11 +225,15 @@ typedef uae_u32 uaecptr;
 #endif
 #endif
 
+#ifdef FSUAE
+#include "uae/atomic.h"
+#else
 void atomic_and(volatile uae_atomic *p, uae_u32 v);
 void atomic_or(volatile uae_atomic *p, uae_u32 v);
 uae_atomic atomic_inc(volatile uae_atomic *p);
 uae_atomic atomic_dec(volatile uae_atomic *p);
 uae_u32 atomic_bit_test_and_reset(volatile uae_atomic *p, uae_u32 v);
+#endif
 
 #ifdef HAVE_STRDUP
 #define my_strdup _tcsdup
