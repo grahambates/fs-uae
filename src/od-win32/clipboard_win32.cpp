@@ -25,6 +25,7 @@ typedef unsigned int UINT;
 #include "uae/memory.h"
 #include "autoconf.h"
 
+#include "options.h"
 #include "threaddep/thread.h"
 #include "uae/memory.h"
 #include "native2amiga_api.h"
