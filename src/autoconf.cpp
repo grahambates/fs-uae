@@ -31,7 +31,7 @@ uaecptr EXPANSION_bootcode, EXPANSION_nullfunc;
 /* ROM tag area memory access */
 
 uaecptr rtarea_base = RTAREA_DEFAULT;
-HANDLE hardware_trap_event[RTAREA_TRAP_DATA_SIZE / RTAREA_TRAP_DATA_SLOT_SIZE];
+uae_sem_t hardware_trap_event[RTAREA_TRAP_DATA_SIZE / RTAREA_TRAP_DATA_SLOT_SIZE];
 
 static uaecptr rt_trampoline_ptr, trap_entry;
 extern volatile uae_atomic hwtrap_waiting;
@@ -178,8 +178,7 @@ static void REGPARAM2 rtarea_bput (uaecptr addr, uae_u32 value)
 			atomic_dec(&hwtrap_waiting);
 		if (v == 0x01 || v == 0x02) {
 			// signal call_hardware_trap_back()
-			// FIXME: OS specific code!
-			SetEvent(hardware_trap_event[trap_slot]);
+			uae_sem_post(&hardware_trap_event[trap_slot]);
 		}
 	}
 }

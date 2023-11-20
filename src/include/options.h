@@ -630,6 +630,7 @@ struct uae_prefs {
 	int nr_floppies;
 	struct floppyslot floppyslots[4];
 	bool floppy_read_only;
+	bool harddrive_read_only;
 	TCHAR dfxlist[MAX_SPARE_DRIVES][MAX_DPATH];
 	int dfxclickvolume_disk[4];
 	int dfxclickvolume_empty[4];
