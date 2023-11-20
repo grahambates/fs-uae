@@ -240,9 +240,6 @@ static int input_handler_loop(int line)
         last_frame = g_fs_uae_frame;
     }
 
-    // FIXME: Move to another place?
-    uae_clipboard_update();
-
     int action;
     //int reconfigure_input = 0;
     while ((action = fs_emu_get_input_event()) != 0) {

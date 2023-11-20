@@ -13,6 +13,8 @@ extern void amiga_clipboard_task_start(TrapContext *ctx, uaecptr);
 extern void clipboard_disable(bool);
 extern void clipboard_vsync(void);
 
+void target_paste_to_keyboard(void);
+
 #ifdef FSUAE
 void clipboard_init(void);
 void clipboard_changed(void);

@@ -503,7 +503,6 @@ libuae_a_SOURCES = \
 	src/od-fs/cda_play.h \
 	src/od-fs/cdimage_stubs.cpp \
 	src/od-fs/charset.cpp \
-	src/od-fs/clipboard.cpp \
 	src/od-fs/clock.cpp \
 	src/od-fs/defines.h \
 	src/od-fs/driveclick.cpp \
@@ -561,6 +560,8 @@ libuae_a_SOURCES = \
 	src/od-win32/caps/Comtype.h \
 	src/od-win32/caps/caps_win32.cpp \
 	src/od-win32/caps/caps_win32.h \
+	src/od-win32/clipboard_win32.cpp \
+	src/od-win32/clipboard_win32.h \
 	src/od-win32/debug_win32.h \
 	src/od-win32/dxwrap.h \
 	src/od-win32/md-fpp.h \
