@@ -345,6 +345,28 @@ void show_screen (int mode)
     }
 }
 
+double target_adjust_vblank_hz(double hz)
+{
+#ifdef FSUAE
+	/* FIXME: Can make small adjustments to vblank hertz here if rate
+	 * almost matches native vblank, but not quite? */
+#else
+	struct AmigaMonitor *mon = &AMonitors[monid];
+	int maxrate;
+	if (!currprefs.lightboost_strobo)
+		return hz;
+	if (isfullscreen() > 0) {
+		maxrate = mon->currentmode.freq;
+	} else {
+		maxrate = deskhz;
+	}
+	double nhz = hz * 2.0;
+	if (nhz >= maxrate - 1 && nhz < maxrate + 1)
+		hz -= 0.5;
+#endif
+	return hz;
+}
+
 bool show_screen_maybe (bool show) {
 #ifdef DEBUG_SHOW_SCREEN
     printf("show_screen_maybe %d (picasso_on=%d)\n", show, picasso_on);
