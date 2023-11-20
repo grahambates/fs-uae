@@ -8702,7 +8702,7 @@ static uae_u32 REGPARAM2 mousehack_done (TrapContext *ctx)
 		uaecptr diminfo = trap_get_areg(ctx, 2);
 		uaecptr dispinfo = trap_get_areg(ctx, 3);
 		uaecptr vp = trap_get_areg(ctx, 4);
-		return input_mousehack_status(mode, diminfo, dispinfo, vp, trap_get_dreg(ctx, 2));
+		return input_mousehack_status(ctx, mode, diminfo, dispinfo, vp, trap_get_dreg(ctx, 2));
 	} else if (mode == 10) {
 		amiga_clipboard_die();
 	} else if (mode == 11) {
