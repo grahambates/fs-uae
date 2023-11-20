@@ -304,6 +304,8 @@ bool render_screen(bool immediate)
     return render_ok;
 }
 
+int rtg_index = -1;
+
 bool toggle_rtg (int mode)
 {
     UAE_LOG_STUB("mode=%d", mode);
@@ -396,6 +398,7 @@ double vblank_calibrate (double approx_vblank, bool waitonly) {
 
 // FIXME: What is this?
 int extraframewait = 0;
+int extraframewait2 = 0;
 static int frame_missed, frame_counted, frame_errors;
 static int frame_usage, frame_usage_avg, frame_usage_total;
 //extern int log_vsync;

@@ -242,7 +242,7 @@ struct rtggfxboard
 
 static struct rtggfxboard rtggfxboards[MAX_RTG_BOARDS];
 static int rtg_visible = -1;
-static int total_active_gfx_boards;
+static int total_active_gfx_boards, only_gfx_board;
 static int vram_ram_a8;
 static DisplaySurface fakesurface;
 
@@ -669,7 +669,12 @@ bool gfxboard_vsync_handler (void)
 					gb->monswitch_current = gb->monswitch_new;
 					vga_update_size(gb);
 					write_log(_T("GFXBOARD %d ACTIVE=%d\n"), i, gb->monswitch_current);
-					gfxboard_rtg_enable_initial(i);
+					if (!gfxboard_rtg_enable_initial(i)) {
+						// Nothing visible and RTG on? Re-enable our display.
+						if (rtg_visible < 0 && picasso_on) {
+							gfxboard_toggle(i, 0);
+						}
+					}
 				}
 			} else {
 				gb->monswitch_delay = 0;
@@ -1310,7 +1315,7 @@ static struct rtggfxboard *lastgetgfxboard;
 static rtggfxboard *getgfxboard(uaecptr addr)
 {
 	if (total_active_gfx_boards == 1)
-		return &rtggfxboards[0];
+		return &rtggfxboards[only_gfx_board];
 	if (lastgetgfxboard) {
 		if (addr >= lastgetgfxboard->io_start && addr < lastgetgfxboard->io_end)
 			return lastgetgfxboard;
@@ -2532,9 +2537,12 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 	gfxboard_init (aci->prefs, gb);
 
 	total_active_gfx_boards = 0;
+	only_gfx_board = 0;
 	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
-		if (p->rtgboards[i].rtgmem_size && p->rtgboards[i].rtgmem_type >= GFXBOARD_HARDWARE)
+		if (p->rtgboards[i].rtgmem_size && p->rtgboards[i].rtgmem_type >= GFXBOARD_HARDWARE) {
 			total_active_gfx_boards++;
+			only_gfx_board = i;
+		}
 	}
 
 	memset (gb->automemory, 0xff, GFXBOARD_AUTOCONFIG_SIZE);
@@ -2610,13 +2618,13 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 	_stprintf (gb->lbsmemorybankname, _T("%s VRAM LONGSWAP"), gb->board->name);
 	_stprintf (gb->regbankname, _T("%s REG"), gb->board->name);
 
-	memcpy(&gb->gfxboard_bank_memory, &tmpl_gfxboard_bank_memory, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_wbsmemory, &tmpl_gfxboard_bank_wbsmemory, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_lbsmemory, &tmpl_gfxboard_bank_lbsmemory, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_nbsmemory, &tmpl_gfxboard_bank_nbsmemory, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_registers, &tmpl_gfxboard_bank_registers, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_special, &tmpl_gfxboard_bank_special, sizeof addrbank);
-	memcpy(&gb->gfxboard_bank_memory_nojit, &tmpl_gfxboard_bank_memory_nojit, sizeof addrbank);
+	memcpy(&gb->gfxboard_bank_memory, &tmpl_gfxboard_bank_memory, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_wbsmemory, &tmpl_gfxboard_bank_wbsmemory, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_lbsmemory, &tmpl_gfxboard_bank_lbsmemory, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_nbsmemory, &tmpl_gfxboard_bank_nbsmemory, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_registers, &tmpl_gfxboard_bank_registers, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_special, &tmpl_gfxboard_bank_special, sizeof(addrbank));
+	memcpy(&gb->gfxboard_bank_memory_nojit, &tmpl_gfxboard_bank_memory_nojit, sizeof(addrbank));
 
 	gb->gfxboard_bank_memory.name = gb->memorybankname;
 	gb->gfxboard_bank_memory_nojit.name = gb->memorybankname;
@@ -2666,7 +2674,7 @@ bool gfxboard_init_memory_p4_z2 (struct autoconfig_info *aci)
 		return true;
 	}
 	copyp4autoconfig (gb, 64);
-	memcpy(&gb->gfxboard_bank_memory, &tmpl_gfxboard_bank_memory, sizeof addrbank);
+	memcpy(&gb->gfxboard_bank_memory, &tmpl_gfxboard_bank_memory, sizeof(addrbank));
 	gb->gfxboard_bank_memory.bget = gfxboard_bget_mem_autoconfig;
 	gb->gfxboard_bank_memory.bput = gfxboard_bput_mem_autoconfig;
 	memcpy(aci->autoconfig_raw, gb->automemory, sizeof aci->autoconfig_raw);

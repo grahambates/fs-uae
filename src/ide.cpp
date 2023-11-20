@@ -16,7 +16,7 @@
 #include "filesys.h"
 #include "gui.h"
 #include "uae.h"
-#include "memory.h"
+#include "uae/memory.h"
 #include "newcpu.h"
 #include "threaddep/thread.h"
 #include "debug.h"

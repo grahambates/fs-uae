@@ -1031,7 +1031,6 @@ static void cyberstorm_maprom(void)
 #endif
 	if (a3000hmem_bank.allocated <= 2 * 524288)
 		return;
-	if (maprom_state && is_ppc()) {
 #ifdef FSUAE
 		write_log("map_banks(&blizzardmaprom2_bank\n");
 #endif

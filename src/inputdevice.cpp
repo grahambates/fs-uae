@@ -3021,7 +3021,7 @@ static void inputdevice_read(bool peek)
 			break;
 		got2 = 1;
 	}
-	if (inputread < 0) {
+	if (inputread <= 0) {
 		idev[IDTYPE_MOUSE].read();
 		idev[IDTYPE_JOYSTICK].read();
 		idev[IDTYPE_KEYBOARD].read();
@@ -3623,7 +3623,7 @@ void inputdevice_hsync (void)
 	//	cnt = 0;
 	//}
 		if ((vpos & 63) == 63 ) {
-			inputdevice_read ();
+			inputdevice_read (false);
 		}
 		// also effectively disable inputdelay here, don't seem to be essential,
 		// and it easier (for deterministic behavior) to leave it out.
@@ -3879,8 +3879,13 @@ static bool inputdevice_handle_inputcode2 (int code, int state)
 	static int tracer_enable;
 	int newstate;
 
-	if (code == 0)
-		goto end;
+	if (code == 0) {
+		if (tracer_enable) {
+			set_cpu_tracer (false);
+			tracer_enable = 0;
+		}
+		return false;
+	}
 	if (needcputrace (code) && can_cpu_tracer () == true && is_cpu_tracer () == false && !input_play && !input_record && !debugging) {
 		if (set_cpu_tracer (true)) {
 			tracer_enable = 1;

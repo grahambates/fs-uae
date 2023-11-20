@@ -62,23 +62,29 @@ void target_default_options (struct uae_prefs *p, int type) {
     return;
 }
 
-/**
- * sleep_millis_main was introduced to custom.cpp in WinUAE 2.4.0b5.
- * FIXME: what does _main signify here?
- */
-void sleep_millis_main (int ms) {
-    // FIXME: HOW EXACT MUST THE SLEEP BE?
-    //printf("sleep_millis_main %d\n", ms);
-    usleep(ms * 1000);
-    //uae_msleep(ms);
-}
-
-void sleep_millis (int ms) {
+static int sleep_millis2 (int ms, bool main)
+{
+    /* FIXME: Check sleep_millis2 against od-win32/win32.cpp implementation. */
     // FIXME: HOW EXACT MUST THE SLEEP BE?
     //printf("sleep_millis %d\n", ms);
     // FIXME: check usage of this for CD32
-    usleep(ms * 1000);
+    // usleep(ms * 1000);
     //uae_msleep(ms);
+    struct timespec req;
+    req.tv_sec = ms / 1000;
+    req.tv_nsec = (ms % 1000) * 1000;
+    // struct timespec rem
+    nanosleep(&req, NULL);
+    return 0;
+}
+
+int sleep_millis_main (int ms)
+{
+	return sleep_millis2(ms, true);
+}
+int sleep_millis (int ms)
+{
+	return sleep_millis2(ms, false);
 }
 
 void console_out_f(const TCHAR *fmt, ...) {
@@ -199,6 +205,16 @@ char *setconsolemode (char *buffer, int maxlen) {
     return ret;
 }
 
+int target_get_volume_name (
+        struct uaedev_mount_info *mtinf,
+        struct uaedev_config_info *ci, bool inserted, bool fullcheck, int cnt)
+{
+    /* FIXME: Check what target_get_volume_name in od-win32/win32_fileys.cpp
+     * does. */
+    STUB("");
+    return 0;
+}
+
 // writelog
 TCHAR* buf_out (TCHAR *buffer, int *bufsize, const TCHAR *format, ...) {
     if (buffer == NULL) {
@@ -224,10 +240,18 @@ void to_upper (TCHAR *s, int len) {
     }
 }
 
-TCHAR *target_expand_environment (const TCHAR *path) {
-    // FIXME:
-    return strdup(path);
+TCHAR *target_expand_environment (const TCHAR *path, TCHAR *out, int maxlen)
+{
+	if (!path)
+		return NULL;
+	if (out == NULL) {
+		return strdup(path);
+	} else {
+		_tcscpy(out, path);
+		return out;
+	}
 }
+
 
 #if 0
 #include <signal.h>

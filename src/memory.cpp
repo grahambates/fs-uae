@@ -30,7 +30,6 @@
 #include "arcadia.h"
 #include "enforcer.h"
 #include "threaddep/thread.h"
-#include "a2091.h"
 #include "gayle.h"
 #include "debug.h"
 #include "gfxboard.h"
@@ -1880,7 +1879,7 @@ bool mapped_malloc (addrbank *ab)
 		return ab->baseaddr != NULL;
 	}
 
-	id = uae_shmget (UAE_IPC_PRIVATE, ab->allocated, 0x1ff, ab->label);
+	id = uae_shmget (UAE_IPC_PRIVATE, ab, 0x1ff);
 	if (id == -1) {
 		nocanbang ();
 		if (recurse)
@@ -3353,8 +3352,8 @@ int uae_get_memory_checksum(void *data, int size)
         mem++;
     }
 
-    mem = (uint32_t *) fastmem_bank.baseaddr;
-    bank_size = fastmem_bank.allocated / 4;
+    mem = (uint32_t *) fastmem_bank[0].baseaddr;
+    bank_size = fastmem_bank[0].allocated / 4;
     if (data) {
         if (pos + bank_size * 4 <= size) {
             memcpy((char *) data + pos, mem, bank_size * 4);
