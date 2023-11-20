@@ -218,8 +218,13 @@ static void REGPARAM2 rtarea_lput (uaecptr addr, uae_u32 value)
 
 void rtarea_reset(void)
 {
-	memset(rtarea_bank.baseaddr + RTAREA_TRAP_DATA, 0, RTAREA_TRAP_DATA_SLOT_SIZE * (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM));
-	memset(rtarea_bank.baseaddr + RTAREA_TRAP_STATUS, 0, RTAREA_TRAP_STATUS_SIZE * (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM));
+	uae_u8 *p = rtarea_bank.baseaddr;
+	if (p) {
+		memset(p + RTAREA_TRAP_DATA, 0, RTAREA_TRAP_DATA_SLOT_SIZE * (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM));
+		memset(p + RTAREA_TRAP_STATUS, 0, RTAREA_TRAP_STATUS_SIZE * (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM));
+		memset(p + RTAREA_HEARTBEAT, 0, 0x10000 - RTAREA_HEARTBEAT);
+		memset(p + RTAREA_VARIABLES, 0, RTAREA_VARIABLES_SIZE);
+	}
 	trap_reset();
 }
 
@@ -347,7 +352,11 @@ static uae_u32 REGPARAM2 getchipmemsize (TrapContext *ctx)
 
 static uae_u32 REGPARAM2 uae_puts (TrapContext *ctx)
 {
-	puts ((char*)get_real_address(trap_get_areg(ctx, 0)));
+	uae_char buf[MAX_DPATH];
+	trap_get_string(ctx, buf, trap_get_areg(ctx, 0), sizeof(uae_char));
+	TCHAR *s = au(buf);
+	write_log(_T("%s"), s);
+	xfree(s);
 	return 0;
 }
 

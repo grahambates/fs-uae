@@ -50,8 +50,8 @@ static long adjust_blocks (long blocks, int fromsize, int tosize)
 #ifdef FSUAE
 static int get_fs_usage_fake (const TCHAR *path, const TCHAR *disk,
 		struct fs_usage *fsp) {
-	fsp->fsu_blocks = 0x7fffff;
-	fsp->fsu_bavail = 0x3fffff;
+	fsp->total = 0x7fffff;
+	fsp->avail = 0x3fffff;
 	return 0;
 }
 #endif
@@ -94,12 +94,9 @@ int get_fs_usage (const TCHAR *path, const TCHAR *disk, struct fs_usage *fsp)
 		return -1;
 	}
 
-	fsp->fsu_blocks = 0x7fffffff;
-	fsp->fsu_bavail = 0x7fffffff;
-	if (TotalNumberOfBytes.QuadPart / 1024 < (1 << 31))
-		fsp->fsu_blocks = (unsigned long)(TotalNumberOfBytes.QuadPart / 1024);
-	if (FreeBytesAvailable.QuadPart / 1024 < (1 << 31))
-		fsp->fsu_bavail = (unsigned long)(FreeBytesAvailable.QuadPart / 1024);
+	fsp->total = TotalNumberOfBytes.QuadPart;
+	fsp->avail = TotalNumberOfFreeBytes.QuadPart;
+
 	return 0;
 }
 

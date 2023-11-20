@@ -2302,13 +2302,13 @@ uae_s32 getz2size (struct uae_prefs *p)
 {
 	ULONG start;
 	start = p->fastmem_size;
-	if (p->rtgmem_size && gfxboard_get_configtype(p->rtgmem_type) == 2) {
-		while (start & (p->rtgmem_size - 1) && start < 8 * 1024 * 1024)
+	if (p->rtgboards[0].rtgmem_size && gfxboard_get_configtype(&p->rtgboards[0]) == 2) {
+		while (start & (p->rtgboards[0].rtgmem_size - 1) && start < 8 * 1024 * 1024)
 			start += 1024 * 1024;
-		if (start + p->rtgmem_size > 8 * 1024 * 1024)
+		if (start + p->rtgboards[0].rtgmem_size > 8 * 1024 * 1024)
 			return -1;
 	}
-	start += p->rtgmem_size;
+	start += p->rtgboards[0].rtgmem_size;
 	return start;
 }
 
@@ -2316,10 +2316,10 @@ uae_u32 getz2endaddr (void)
 {
 	ULONG start;
 	start = currprefs.fastmem_size;
-	if (currprefs.rtgmem_size && gfxboard_get_configtype(currprefs.rtgmem_type) == 2) {
+	if (currprefs.rtgboards[0].rtgmem_size && gfxboard_get_configtype(&currprefs.rtgboards[0]) == 2) {
 		if (!start)
 			start = 0x00200000;
-		while (start & (currprefs.rtgmem_size - 1) && start < 4 * 1024 * 1024)
+		while (start & (currprefs.rtgboards[0].rtgmem_size - 1) && start < 4 * 1024 * 1024)
 			start += 1024 * 1024;
 	}
 	return start + 2 * 1024 * 1024;
@@ -3288,19 +3288,19 @@ uae_u8 *save_rom (int first, int *len, uae_u8 *dstptr)
 
 /* memory helpers */
 
-void memcpyha_safe (uaecptr dst, const uae_u8 *src, int size)
+void memcpyha_safe(uaecptr dst, const uae_u8 *src, int size)
 {
 	if (!addr_valid (_T("memcpyha"), dst, size))
 		return;
 	while (size--)
 		put_byte (dst++, *src++);
 }
-void memcpyha (uaecptr dst, const uae_u8 *src, int size)
+void memcpyha(uaecptr dst, const uae_u8 *src, int size)
 {
 	while (size--)
 		put_byte (dst++, *src++);
 }
-void memcpyah_safe (uae_u8 *dst, uaecptr src, int size)
+void memcpyah_safe(uae_u8 *dst, uaecptr src, int size)
 {
 	if (!addr_valid (_T("memcpyah"), src, size))
 		return;

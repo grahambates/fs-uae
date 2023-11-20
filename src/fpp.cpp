@@ -134,7 +134,7 @@ static floatx80 fxzero;
 static floatx80 fx_1e0, fx_1e1, fx_1e2, fx_1e4, fx_1e8;
 struct float_status_t fxstatus;
 #endif
-static fptype fsizes[] = { -128.0, 127.0, -32768.0, 32767.0, -2147483648.0, 2147483647.0 };
+static const fptype fsizes[] = { -128.0, 127.0, -32768.0, 32767.0, -2147483648.0, 2147483647.0 };
 
 #define FP_INEXACT (1 << 9)
 #define FP_DIVBYZERO (1 << 10)
@@ -545,7 +545,7 @@ static inline void set_fpucw_softfloat(uae_u32 m68k_cw)
  * SSE2 registers. */
 
 static uae_u16 x87_cw;
-static char *x87_fldcw_code;
+static uae_u8 *x87_fldcw_code = NULL;
 typedef void (uae_cdecl *x87_fldcw_function)(void);
 
 static void init_fpucw_x87(void)
@@ -553,13 +553,13 @@ static void init_fpucw_x87(void)
 	if (x87_fldcw_code) {
 		return;
 	}
-	x87_fldcw_code = (char *) uae_vm_alloc(
+	x87_fldcw_code = (uae_u8 *) uae_vm_alloc(
 		uae_vm_page_size(), UAE_VM_32BIT, UAE_VM_READ_WRITE_EXECUTE);
 	if (!x87_fldcw_code) {
 		write_log("WARNING: Could not initialize fpucw_x87\n");
 		return;
 	}
-	char *c = x87_fldcw_code;
+	uae_u8 *c = x87_fldcw_code;
 	/* mov eax,0x0 */
 	*(c++) = 0xb8;
 	*(c++) = 0x00;
@@ -591,12 +591,14 @@ static inline void set_fpucw_x87(uae_u32 m68k_cw)
 	static const unsigned int fp87_round[4] = { _RC_NEAR, _RC_CHOP, _RC_DOWN, _RC_UP };
 	// Extend X, Single S, Double D, Undefined
 	static const unsigned int fp87_prec[4] = { _PC_64, _PC_24, _PC_53, 0 };
+	int round = (m68k_cw >> 4) & 3;
 #ifdef WIN64
 	// x64 only sets SSE2, must also call x87_fldcw_code() to set FPU rounding mode.
-	_controlfp(ex | fp87_round[(m68k_cw >> 4) & 3], _MCW_RC);
+	_controlfp(ex | fp87_round[round], _MCW_RC);
 #else
+	int prec = (m68k_cw >> 6) & 3;
 	// x86 sets both FPU and SSE2 rounding mode, don't need x87_fldcw_code()
-	_control87(ex | fp87_round[(m68k_cw >> 4) & 3] | fp87_prec[(m68k_cw >> 6) & 3], _MCW_RC | _MCW_PC);
+	_control87(ex | fp87_round[round] | fp87_prec[prec], _MCW_RC | _MCW_PC);
 	return;
 #endif
 #endif
@@ -624,8 +626,6 @@ static void native_set_fpucw(uae_u32 m68k_cw)
 #ifdef WITH_SOFTFLOAT
 	if (currprefs.fpu_softfloat) {
 		set_fpucw_softfloat(m68k_cw);
-		/* FIXME: consider removing return to *also* set x87 fpucw? */
-		return;
 	}
 #endif
 #if defined(CPU_i386) || defined(CPU_x86_64)
@@ -2697,7 +2697,7 @@ static bool arithmetic_fp(fptype src, int reg, int extra)
 			return false;
 	}
 	// round to float?
-	if (sgl || (extra & 0x44) == 0x40)
+	if (sgl || (extra & 0x44) == 0x40 || ((regs.fpcr >> 6) & 3) == 1)
 		fround (reg);
 	MAKE_FPSR (&regs.fp[reg].fp);
 	return true;

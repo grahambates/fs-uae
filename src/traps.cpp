@@ -224,7 +224,7 @@ struct TrapContext
 	uaecptr amiga_trap_data;
 	uaecptr amiga_trap_status;
 	/* do not ack automatically */
-	volatile int trap_background;
+	volatile uae_atomic trap_background;
 	volatile bool trap_done;
 	uae_u32 calllib_regs[16];
 	uae_u8 calllib_reg_inuse[16];
@@ -392,9 +392,12 @@ void trap_background_set_complete(TrapContext *ctx)
 		return;
 	if (!ctx || !ctx->trap_background)
 		return;
-	ctx->trap_background--;
+	atomic_dec(&ctx->trap_background);
 	if (!ctx->trap_background) {
-		while (!ctx->trap_done);
+		if (!ctx->trap_done) {
+			write_log(_T("trap_background_set_complete(%d) still waiting!?\n"), ctx->tindex);
+			while (!ctx->trap_done);
+		}
 		hardware_trap_ack(ctx);
 	}
 }
@@ -422,19 +425,25 @@ static volatile uae_atomic outtrap_alloc[RTAREA_TRAP_DATA_SEND_NUM];
 
 TrapContext *alloc_host_main_trap_context(void)
 {
-	int trap_slot = RTAREA_TRAP_DATA_NUM;
-	if (atomic_inc(&outtrap_alloc[trap_slot - RTAREA_TRAP_DATA_NUM])) {
-		while (outtrap_alloc[trap_slot - RTAREA_TRAP_DATA_NUM] > RTAREA_TRAP_DATA_SEND_NUM)
-			sleep_millis(1);
+	if (trap_is_indirect()) {
+		int trap_slot = RTAREA_TRAP_DATA_NUM;
+		if (atomic_inc(&outtrap_alloc[trap_slot - RTAREA_TRAP_DATA_NUM])) {
+			while (outtrap_alloc[trap_slot - RTAREA_TRAP_DATA_NUM] > RTAREA_TRAP_DATA_SEND_NUM)
+				sleep_millis(1);
+		}
+		TrapContext *ctx = &outtrap[trap_slot - RTAREA_TRAP_DATA_NUM];
+		return ctx;
+	} else {
+		return NULL;
 	}
-	TrapContext *ctx = &outtrap[trap_slot - RTAREA_TRAP_DATA_NUM];
-	return ctx;
 }
 
 void free_host_trap_context(TrapContext *ctx)
 {
-	int trap_slot = RTAREA_TRAP_DATA_NUM;
-	atomic_dec(&outtrap_alloc[trap_slot]);
+	if (trap_is_indirect()) {
+		int trap_slot = RTAREA_TRAP_DATA_NUM;
+		atomic_dec(&outtrap_alloc[trap_slot]);
+	}
 }
 
 static uae_u32 call_hardware_trap_back_back(TrapContext *ctx, uae_u16 cmd, uae_u32 p1, uae_u32 p2, uae_u32 p3, uae_u32 p4)
@@ -517,6 +526,24 @@ void trap_callback(TRAP_CALLBACK cb, void *ud)
 	}
 }
 
+TrapContext *alloc_host_thread_trap_context(void)
+{
+	if (trap_is_indirect()) {
+		int trap_slot = RTAREA_TRAP_DATA_NUM;
+		TrapContext *ctx = alloc_host_main_trap_context();
+		ctx->host_trap_data = rtarea_bank.baseaddr + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
+		ctx->amiga_trap_data = rtarea_base + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
+		ctx->host_trap_status = rtarea_bank.baseaddr + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
+		ctx->amiga_trap_status = rtarea_base + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
+
+		// Set status to allocated, we are skipping hwtrap_entry()
+		put_long_host(ctx->host_trap_status + 4, 0x00000000);
+		put_long_host(ctx->host_trap_status, 0x00000080);
+		return ctx;
+	} else {
+		return NULL;
+	}
+}
 
 /*
 * Set up extended trap context and call handler function
@@ -885,7 +912,7 @@ void trap_set_background(TrapContext *ctx)
 		return;
 	if (!trap_is_indirect())
 		return;
-	ctx->trap_background++;
+	atomic_inc(&ctx->trap_background);
 }
 
 bool trap_valid_address(TrapContext *ctx, uaecptr addr, uae_u32 size)
@@ -944,7 +971,13 @@ void trap_set_areg(TrapContext *ctx, int reg, uae_u32 v)
 		m68k_areg(regs, reg) = v;
 	}
 }
-
+void trap_put_quad(TrapContext *ctx, uaecptr addr, uae_u64 v)
+{
+	uae_u8 out[8];
+	put_long_host(out + 0, v >> 32);
+	put_long_host(out + 4, (uae_u32)(v >> 0));
+	trap_put_bytes(ctx, out, addr, 8);
+}
 void trap_put_long(TrapContext *ctx, uaecptr addr, uae_u32 v)
 {
 	if (trap_is_indirect_null(ctx)) {
@@ -970,6 +1003,12 @@ void trap_put_byte(TrapContext *ctx, uaecptr addr, uae_u8 v)
 	}
 }
 
+uae_u64 trap_get_quad(TrapContext *ctx, uaecptr addr)
+{
+	uae_u8 in[8];
+	trap_get_bytes(ctx, in, addr, 8);
+	return ((uae_u64)get_long_host(in + 0) << 32) | get_long_host(in + 4);
+}
 uae_u32 trap_get_long(TrapContext *ctx, uaecptr addr)
 {
 	if (trap_is_indirect_null(ctx)) {
@@ -1186,6 +1225,13 @@ int trap_get_string(TrapContext *ctx, void *haddrp, uaecptr addr, int maxlen)
 	}
 	return len;
 }
+uae_char *trap_get_alloc_string(TrapContext *ctx, uaecptr addr, int maxlen)
+{
+	uae_char *buf = xmalloc(uae_char, maxlen);
+	trap_get_string(ctx, buf, addr, maxlen);
+	return buf;
+}
+
 int trap_get_bstr(TrapContext *ctx, uae_u8 *haddr, uaecptr addr, int maxlen)
 {
 	int len = 0;
@@ -1336,5 +1382,22 @@ void trap_multi(TrapContext *ctx, struct trapmd *data, int items)
 				data[md->trapmd_index].params[md->parm_num] = v;
 			}
 		}
+	}
+}
+
+void trap_memcpyha_safe(TrapContext *ctx, uaecptr dst, const uae_u8 *src, int size)
+{
+	if (trap_is_indirect()) {
+		trap_put_bytes(ctx, src, dst, size);
+	} else {
+		memcpyha_safe(dst, src, size);
+	}
+}
+void trap_memcpyah_safe(TrapContext *ctx, uae_u8 *dst, uaecptr src, int size)
+{
+	if (trap_is_indirect()) {
+		trap_get_bytes(ctx, dst, src, size);
+	} else {
+		memcpyah_safe(dst, src, size);
 	}
 }

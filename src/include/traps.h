@@ -101,7 +101,11 @@ void trap_reset(void);
 typedef uae_u32 (*TRAP_CALLBACK)(TrapContext*, void*);
 void trap_callback(TRAP_CALLBACK, void*);
 
+void trap_memcpyha_safe(TrapContext *ctx, uaecptr dst, const uae_u8 *src, int size);
+void trap_memcpyah_safe(TrapContext *ctx, uae_u8 *dst, uaecptr src, int size);
+
 TrapContext *alloc_host_main_trap_context(void);
+TrapContext *alloc_host_thread_trap_context(void);
 void free_host_trap_context(TrapContext*);
 
 uae_u32 trap_get_dreg(TrapContext *ctx, int reg);
@@ -109,10 +113,12 @@ uae_u32 trap_get_areg(TrapContext *ctx, int reg);
 void trap_set_dreg(TrapContext *ctx, int reg, uae_u32 v);
 void trap_set_areg(TrapContext *ctx, int reg, uae_u32 v);
 
+void trap_put_quad(TrapContext *ctx, uaecptr addr, uae_u64 v);
 void trap_put_long(TrapContext *ctx, uaecptr addr, uae_u32 v);
 void trap_put_word(TrapContext *ctx, uaecptr addr, uae_u16 v);
 void trap_put_byte(TrapContext *ctx, uaecptr addr, uae_u8 v);
 
+uae_u64 trap_get_quad(TrapContext *ctx, uaecptr addr);
 uae_u32 trap_get_long(TrapContext *ctx, uaecptr addr);
 uae_u16 trap_get_word(TrapContext *ctx, uaecptr addr);
 uae_u8 trap_get_byte(TrapContext *ctx, uaecptr addr);
@@ -126,6 +132,7 @@ void trap_get_words(TrapContext *ctx, uae_u16 *haddr, uaecptr addr, int cnt);
 
 int trap_put_string(TrapContext *ctx, const void *haddrp, uaecptr addr, int maxlen);
 int trap_get_string(TrapContext *ctx, void *haddrp, uaecptr addr, int maxlen);
+uae_char *trap_get_alloc_string(TrapContext *ctx, uaecptr addr, int maxlen);
 
 void trap_set_longs(TrapContext *ctx, uaecptr addr, uae_u32 v, int cnt);
 void trap_set_words(TrapContext *ctx, uaecptr addr, uae_u16 v, int cnt);

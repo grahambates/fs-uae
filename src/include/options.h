@@ -74,6 +74,7 @@ struct jport_custom {
 struct inputdevconfig {
 	TCHAR name[MAX_JPORTNAME];
 	TCHAR configname[MAX_JPORTNAME];
+	TCHAR shortid[16];
 };
 struct jport {
 	int id;
@@ -82,6 +83,7 @@ struct jport {
 	struct inputdevconfig idc;
 	bool nokeyboardoverride;
 };
+#define JPORT_UNPLUGGED -2
 #define JPORT_NONE -1
 
 #define JPORT_AF_NORMAL 1
@@ -251,18 +253,22 @@ enum { CP_GENERIC = 1, CP_CDTV, CP_CDTVCR, CP_CD32, CP_A500, CP_A500P, CP_A600, 
 #define CHIPSET_REFRESH_NTSC (MAX_CHIPSET_REFRESH + 1)
 struct chipset_refresh
 {
+	bool inuse;
 	int index;
 	bool locked;
 	bool rtg;
 	int horiz;
 	int vert;
 	int lace;
+	int resolution;
+	int resolution_pct;
 	int ntsc;
 	int vsync;
 	int framelength;
 	double rate;
 	TCHAR label[16];
 	TCHAR commands[256];
+	TCHAR filterprofile[64];
 };
 
 #define APMODE_NATIVE 0
@@ -334,6 +340,12 @@ struct boardromconfig
 	int device_type;
 	int device_num;
 	struct romconfig roms[MAX_BOARD_ROMS];
+};
+#define MAX_RTG_BOARDS 4
+struct rtgboardconfig
+{
+	int rtgmem_type;
+	uae_u32 rtgmem_size;
 };
 
 #define Z3MAPPING_AUTO 0
@@ -594,7 +606,6 @@ struct uae_prefs {
 	uae_u32 mbresmem_low_size;
 	uae_u32 mbresmem_high_size;
 	uae_u32 mem25bit_size;
-	uae_u32 rtgmem_size;
 	int cpuboard_type;
 	int cpuboard_subtype;
 	int cpuboard_settings;
@@ -603,8 +614,8 @@ struct uae_prefs {
 	int ppc_implementation;
 	bool rtg_hardwareinterrupt;
 	bool rtg_hardwaresprite;
-	int rtgmem_type;
 	bool rtg_more_compatible;
+	struct rtgboardconfig rtgboards[MAX_RTG_BOARDS];
 	uae_u32 custom_memory_addrs[MAX_CUSTOM_MEMORY_ADDRS];
 	uae_u32 custom_memory_sizes[MAX_CUSTOM_MEMORY_ADDRS];
 	uae_u32 custom_memory_mask[MAX_CUSTOM_MEMORY_ADDRS];
@@ -700,6 +711,11 @@ struct uae_prefs {
 #endif
 	int statecapturerate, statecapturebuffersize;
 	int aviout_width, aviout_height, aviout_xoffset, aviout_yoffset;
+	int screenshot_width, screenshot_height, screenshot_xoffset, screenshot_yoffset;
+	int screenshot_min_width, screenshot_min_height;
+	int screenshot_max_width, screenshot_max_height;
+	int screenshot_output_width, screenshot_output_height;
+	int screenshot_xmult, screenshot_ymult;
 
 	/* input */
 
@@ -761,7 +777,7 @@ extern void error_log (const TCHAR*, ...);
 extern TCHAR *get_error_log (void);
 extern bool is_error_log (void);
 
-extern void default_prefs (struct uae_prefs *, int);
+extern void default_prefs (struct uae_prefs *, bool, int);
 extern void discard_prefs (struct uae_prefs *, int);
 
 int parse_cmdline_option (struct uae_prefs *, TCHAR, const TCHAR*);

@@ -25,7 +25,7 @@
 
 #define RTAREA_TRAPS 0x3000
 #define RTAREA_RTG 0x3600
-#define RTAREA_TRAMPOLINE 0x3900
+#define RTAREA_TRAMPOLINE 0x390056
 #define RTAREA_DATAREGION 0xF000
 
 #define RTAREA_FSBOARD 0xFFEC
@@ -46,6 +46,8 @@
 #define RTAREA_TRAP_STATUS_SIZE 8
 #define RTAREA_TRAP_STATUS_SECOND 4
 
+#define RTAREA_VARIABLES 0x3F00
+#define RTAREA_VARIABLES_SIZE 0x100
 #define RTAREA_SYSBASE 0x3FFC
 #define RTAREA_GFXBASE 0x3FF8
 #define RTAREA_INTBASE 0x3FF4
@@ -56,6 +58,9 @@
 
 #define RTAREA_TRAP_SEND_STATUS (RTAREA_TRAP_STATUS + RTAREA_TRAP_STATUS_SIZE * RTAREA_TRAP_DATA_NUM)
 #define RTAREA_TRAP_SEND_DATA (RTAREA_TRAP_DATA + RTAREA_TRAP_DATA_SLOT_SIZE * RTAREA_TRAP_DATA_NUM)
+
+#define UAEBOARD_DATAREGION_START 0x4000
+#define UAEBOARD_DATAREGION_SIZE 0xc000
 
 extern uae_u32 addr (int);
 extern void db (uae_u8);
@@ -145,6 +150,8 @@ extern void expansion_clear (void);
 extern void expansion_autoconfig_put(int, uae_u8);
 extern uaecptr expansion_startaddress(uaecptr addr, uae_u32 size);
 extern bool expansion_is_next_board_fastram(void);
+extern uaecptr uaeboard_alloc_ram(uae_u32);
+extern uae_u8 *uaeboard_map_ram(uaecptr);
 
 extern void uaegfx_install_code (uaecptr);
 

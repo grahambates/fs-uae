@@ -303,7 +303,8 @@ int zfile_gettype (struct zfile *z)
 			return ZFILE_NVR;
 		if (strcasecmp (ext, _T("uae")) == 0)
 			return ZFILE_CONFIGURATION;
-		if (strcasecmp (ext, _T("cue")) == 0 || strcasecmp (ext, _T("iso")) == 0 || strcasecmp (ext, _T("ccd")) == 0 || strcasecmp (ext, _T("mds")) == 0 || strcasecmp (ext, _T("chd")) == 0)
+		if (strcasecmp(ext, _T("cue")) == 0 || strcasecmp(ext, _T("iso")) == 0 || strcasecmp(ext, _T("ccd")) == 0 ||
+			strcasecmp(ext, _T("mds")) == 0 || strcasecmp(ext, _T("chd")) == 0 || strcasecmp(ext, _T("nrg")) == 0)
 			return ZFILE_CDIMAGE;
 	}
 	memset (buf, 0, sizeof (buf));
@@ -2655,7 +2656,6 @@ static struct zvolume *zvolume_alloc_2 (const TCHAR *name, struct zfile *z, unsi
 	zv->archive = z;
 	zv->handle = handle;
 	zv->id = id;
-	zv->blocks = 4;
 	if (z)
 		zv->zfdmask = z->zfdmask;
 	root->volume = zv;
@@ -3004,7 +3004,6 @@ static void addvolumesize (struct zvolume *zv, uae_s64 size)
 	if (blocks == 0)
 		blocks++;
 	while (zv) {
-		zv->blocks += blocks;
 		zv->size += size;
 		zv = zv->parent;
 	}
@@ -3413,8 +3412,8 @@ int zfile_fs_usage_archive (const TCHAR *path, const TCHAR *disk, struct fs_usag
 
 	if (!zv)
 		return -1;
-	fsp->fsu_blocks = zv->blocks;
-	fsp->fsu_bavail = 0;
+	fsp->total = zv->size;
+	fsp->avail = 0;
 	return 0;
 }
 
