@@ -14,6 +14,7 @@
 #include "uae/memory.h"
 #include "uae/limits.h"
 #endif
+#include "traps.h"
 
 #define AFTERDOS_INIT_PRI ((-121) & 0xff)
 #define AFTERDOS_PRI ((-122) & 0xff)
@@ -25,7 +26,7 @@
 
 #define RTAREA_TRAPS 0x3000
 #define RTAREA_RTG 0x3600
-#define RTAREA_TRAMPOLINE 0x390056
+#define RTAREA_TRAMPOLINE 0x3900
 #define RTAREA_DATAREGION 0xF000
 
 #define RTAREA_FSBOARD 0xFFEC
@@ -74,6 +75,9 @@ extern void calltrap (uae_u32);
 extern void org (uae_u32);
 extern uae_u32 here (void);
 extern uaecptr makedatatable (uaecptr resid, uaecptr resname, uae_u8 type, uae_s8 priority, uae_u16 ver, uae_u16 rev);
+extern uae_u32 boot_rom_copy(TrapContext*, uaecptr, int);
+extern void add_rom_absolute(uaecptr addr);
+extern void save_rom_absolute(uaecptr addr);
 
 extern void align (int);
 

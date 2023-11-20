@@ -45,7 +45,7 @@ static int using_ce;
 static int using_tracer;
 static int using_waitstates;
 static int using_simple_cycles;
-static int cpu_level;
+static int cpu_level, cpu_generic;
 static int count_read, count_write, count_cycles, count_ncycles;
 static int count_cycles_ce020;
 static int count_read_ea, count_write_ea, count_cycles_ea;
@@ -252,12 +252,6 @@ static void get_prefetch_020 (void)
 	if (!isprefetch020() || no_prefetch_ce020)
 		return;
 	printf ("\tregs.irc = %s (%d);\n", prefetch_word, m68k_pc_offset);
-}
-static void get_prefetch_020_0 (void)
-{
-	if (!isprefetch020() || no_prefetch_ce020)
-		return;
-	printf ("\tregs.irc = %s (0);\n", prefetch_word);
 }
 static void get_prefetch_020_continue(void)
 {
@@ -3052,6 +3046,14 @@ static void gen_opcode (unsigned int opcode)
 
 	m68k_pc_offset = 2;
 
+	// do not unnecessarily create useless mmuop030
+	// functions when CPU is not 68030
+	if (curi->mnemo == i_MMUOP030 && cpu_level != 3 && !cpu_generic) {
+		printf("\top_illg (opcode);\n");
+		did_prefetch = -1;
+		goto end;
+	}
+
 	switch (curi->plev) {
 	case 0: /* not privileged */
 		break;
@@ -5367,26 +5369,27 @@ bccl_not68020:
 		printf ("\tmmu_op (opcode, 0);\n");
 		break;
 	case i_MMUOP030:
-		printf ("\tuaecptr pc = %s;\n", getpc);
-		printf ("\tuae_u16 extra = %s (2);\n", prefetch_word);
+		printf("\tuaecptr pc = %s;\n", getpc);
+		printf("\tuae_u16 extra = %s (2);\n", prefetch_word);
 		m68k_pc_offset += 2;
-		sync_m68k_pc ();
+		sync_m68k_pc();
 		if (curi->smode == Areg || curi->smode == Dreg)
 			printf("\tuae_u16 extraa = 0;\n");
 		else
-			genamode (curi, curi->smode, "srcreg", curi->size, "extra", 0, 0, 0);
-		sync_m68k_pc ();
+			genamode(curi, curi->smode, "srcreg", curi->size, "extra", 0, 0, 0);
+		sync_m68k_pc();
 		if (using_ce020 || using_prefetch_020) {
-			printf ("\tif (mmu_op30 (pc, opcode, extra, extraa)) goto %s;\n", endlabelstr);
+			printf("\tif (mmu_op30 (pc, opcode, extra, extraa)) goto %s;\n", endlabelstr);
 			need_endlabel = 1;
 		} else {
-			printf ("\tmmu_op30 (pc, opcode, extra, extraa);\n");
+			printf("\tmmu_op30 (pc, opcode, extra, extraa);\n");
 		}
 		break;
 	default:
 		term ();
 		break;
 	}
+end:
 	if (!genastore_done)
 		returntail (0);
 	finish_braces ();
@@ -5837,6 +5840,7 @@ static void generate_cpu (int id, int mode)
 	mmu_postfix = "";
 	using_simple_cycles = 0;
 	using_indirect = 0;
+	cpu_generic = false;
 
 	if (id == 11 || id == 12) { // 11 = 68010 prefetch, 12 = 68000 prefetch
 		cpu_level = id == 11 ? 1 : 0;
@@ -5923,8 +5927,10 @@ static void generate_cpu (int id, int mode)
 			opcode_next_clev[rp] = cpu_level;
 	} else if (id < 6) {
 		cpu_level = 5 - (id - 0); // "generic"
+		cpu_generic = true;
 	} else if (id >= 40 && id < 46) {
 		cpu_level = 5 - (id - 40); // "generic" + direct
+		cpu_generic = true;
 		if (id == 40) {
 			read_counts();
 			for (rp = 0; rp < nr_cpuop_funcs; rp++)
@@ -5933,6 +5939,7 @@ static void generate_cpu (int id, int mode)
 		using_indirect = -1;
 	} else if (id >= 50 && id < 56) {
 		cpu_level = 5 - (id - 50); // "generic" + indirect
+		cpu_generic = true;
 		if (id == 50) {
 			read_counts();
 			for (rp = 0; rp < nr_cpuop_funcs; rp++)

@@ -246,14 +246,18 @@ void dummy_put (uaecptr addr, int size, uae_u32 val)
 uae_u32 dummy_get_safe(uaecptr addr, int size, bool inst, uae_u32 defvalue)
 {
 	uae_u32 v = defvalue;
+	uae_u32 mask = size == 4 ? 0xffffffff : (1 << (size * 8)) - 1;
 	if (currprefs.cpu_model >= 68040)
-		return v;
+		return v & mask;
 	if (!currprefs.cpu_compatible)
-		return v;
+		return v & mask;
 	if (currprefs.address_space_24)
 		addr &= 0x00ffffff;
 	if (addr >= 0x10000000)
-		return v;
+		return v & mask;
+	// CD32 returns zeros from all unmapped addresses
+	if (currprefs.cs_cd32cd)
+		return 0;
 	if ((currprefs.cpu_model <= 68010) || (currprefs.cpu_model == 68020 && (currprefs.chipset_mask & CSMASK_AGA) && currprefs.address_space_24)) {
 		if (size == 4) {
 			v = regs.db & 0xffff;
@@ -269,7 +273,7 @@ uae_u32 dummy_get_safe(uaecptr addr, int size, bool inst, uae_u32 defvalue)
 			v = (addr & 1) ? (v & 0xff) : ((v >> 8) & 0xff);
 		}
 	}
-	return v;
+	return v & mask;
 }
 
 uae_u32 dummy_get (uaecptr addr, int size, bool inst, uae_u32 defvalue)
@@ -2454,7 +2458,7 @@ void memory_reset (void)
 	currprefs.cs_ramseyrev = changed_prefs.cs_ramseyrev;
 	cpuboard_reset();
 
-	gayleorfatgary = (currprefs.chipset_mask & CSMASK_AGA) || currprefs.cs_pcmcia || currprefs.cs_ide > 0 || currprefs.cs_mbdmac;
+	gayleorfatgary = ((currprefs.chipset_mask & CSMASK_AGA) || currprefs.cs_pcmcia || currprefs.cs_ide > 0 || currprefs.cs_mbdmac) && !currprefs.cs_cd32cd;
 
 	init_mem_banks ();
 	allocate_memory ();
@@ -2487,7 +2491,7 @@ void memory_reset (void)
 	bnk = chipmem_bank.allocated >> 16;
 	if (bnk < 0x20 + (currprefs.fastmem_size >> 16))
 		bnk = 0x20 + (currprefs.fastmem_size >> 16);
-	bnk_end = gayleorfatgary ? 0xBF : 0xA0;
+	bnk_end = currprefs.cs_cd32cd ? 0xBE : (gayleorfatgary ? 0xBF : 0xA0);
 	map_banks (&dummy_bank, bnk, bnk_end - bnk, 0);
 	if (gayleorfatgary) {
 		 // a3000 or a4000 = custom chips from 0xc0 to 0xd0
@@ -2495,6 +2499,11 @@ void memory_reset (void)
 			map_banks (&dummy_bank, 0xd0, 8, 0);
 		else
 			map_banks (&dummy_bank, 0xc0, 0xd8 - 0xc0, 0);
+	} else if (currprefs.cs_cd32cd) {
+		// CD32: 0xc0 to 0xd0
+		map_banks(&dummy_bank, 0xd0, 8, 0);
+		// strange 64k custom mirror
+		map_banks(&custom_bank, 0xb9, 1, 0);
 	}
 
 	if (bogomem_bank.baseaddr) {

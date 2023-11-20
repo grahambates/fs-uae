@@ -10,10 +10,10 @@
 * Copyright 1996 Ed Hanway
 */
 
-#define NEW_TRAP_DEBUG 0
-
 #include "sysconfig.h"
 #include "sysdeps.h"
+
+#define NEW_TRAP_DEBUG 0
 
 #include "options.h"
 #include "uae/memory.h"
@@ -23,6 +23,7 @@
 #include "autoconf.h"
 #include "traps.h"
 #include "uae.h"
+#include "debug.h"
 
 /*
 * Traps are the mechanism via which 68k code can call emulator code
@@ -232,6 +233,8 @@ struct TrapContext
 	int tcnt;
 	TRAP_CALLBACK callback;
 	void *callback_ud;
+	int trap_mode;
+	int trap_slot;
 };
 
 static void copytocpucontext(struct TrapCPUContext *cpu)
@@ -303,278 +306,37 @@ static void *trap_thread (void *arg)
 	return 0;
 }
 
-/* UAE board traps */
-
-#define TRAP_THREADS (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM)
-static smp_comm_pipe trap_thread_pipe[TRAP_THREADS];
-static uae_thread_id trap_thread_id[TRAP_THREADS];
-static volatile uae_atomic trap_thread_index;
-static volatile int hardware_trap_kill[TRAP_THREADS];
-static volatile int trap_cnt;
-volatile int trap_mode;
-
-static void hardware_trap_ack(TrapContext *ctx)
-{
-	uae_u8 *data = ctx->host_trap_data;
-	uae_u8 *status = ctx->host_trap_status;
-	uaecptr addr = ctx->amiga_trap_status;
-
-#if NEW_TRAP_DEBUG
-	write_log(_T("%d: A%d\n"), ctx->tcnt, ctx->tindex);
-#endif
-
-	// ack call_hardware_trap
-	uaecptr task = get_long_host(data + RTAREA_TRAP_DATA_TASKWAIT);
-	put_byte_host(status + 2, 0xff);
-	if (task) {
-		atomic_or(&uae_int_requested, 0x4000);
-		set_special_exter(SPCFLAG_UAEINT);
-	}
-	xfree(ctx);
-}
-
-static void *hardware_trap_thread(void *arg)
-{
-	int tid = (size_t)arg;
-	for (;;) {
-		TrapContext *ctx = (TrapContext*)read_comm_pipe_pvoid_blocking(&trap_thread_pipe[tid]);
-		if (!ctx)
-			break;
-
-		uae_u8 *data = ctx->host_trap_data;
-		uae_u8 *status = ctx->host_trap_status;
-		ctx->tindex = tid;
-		ctx->tcnt = ++trap_cnt;
-
-		for (int i = 0; i < 15; i++) {
-			uae_u32 v = get_long_host(data + 4 + i * 4);
-			ctx->saved_regs.regs[i] = v;
-		}
-		put_long_host(status + RTAREA_TRAP_STATUS_SECOND, 0);
-
-		int trap_num = get_word_host(status);
-		struct Trap *trap = &traps[trap_num];
-
-#if NEW_TRAP_DEBUG
-		if (_tcscmp(trap->name, _T("exter_int_helper")))
-			write_log(_T("%d: T%d,%d,%08x\n"), ctx->tcnt, tid, trap_num, trap->addr);
-#endif
-
-		uae_u32 ret;
-
-		if (ctx->callback) {
-			ret = ctx->callback(ctx, ctx->callback_ud);
-		} else {
-			ret = trap->handler(ctx);
-		}
-
-		if (!ctx->trap_background) {
-			for (int i = 0; i < 15; i++) {
-				uae_u32 v = ctx->saved_regs.regs[i];
-				put_long_host(data + 4 + i * 4, v);
-			}
-			if ((trap->flags & TRAPFLAG_NO_RETVAL) == 0) {
-				put_long_host(data + 4, ret);
-			}
-
-			hardware_trap_ack(ctx);
-		} else {
-			ctx->trap_done = true;
-		}
-	}
-	hardware_trap_kill[tid] = -1;
-	return 0;
-}
-
-void trap_background_set_complete(TrapContext *ctx)
-{
-	if (!trap_is_indirect())
-		return;
-	if (!ctx || !ctx->trap_background)
-		return;
-	atomic_dec(&ctx->trap_background);
-	if (!ctx->trap_background) {
-		if (!ctx->trap_done) {
-			write_log(_T("trap_background_set_complete(%d) still waiting!?\n"), ctx->tindex);
-			while (!ctx->trap_done);
-		}
-		hardware_trap_ack(ctx);
-	}
-}
-
-void trap_dos_active(void)
-{
-	trap_mode = 1;
-}
-
-void call_hardware_trap(uae_u8 *host_base, uaecptr amiga_base, int slot)
-{
-	TrapContext *ctx = xcalloc(TrapContext, 1);
-	ctx->host_trap_data = host_base + RTAREA_TRAP_DATA + slot * RTAREA_TRAP_DATA_SLOT_SIZE;
-	ctx->amiga_trap_data = amiga_base + RTAREA_TRAP_DATA + slot * RTAREA_TRAP_DATA_SLOT_SIZE;
-	ctx->host_trap_status = host_base + RTAREA_TRAP_STATUS + slot * RTAREA_TRAP_STATUS_SIZE;
-	ctx->amiga_trap_status = amiga_base + RTAREA_TRAP_STATUS + slot * RTAREA_TRAP_STATUS_SIZE;
-	uae_u32 idx = atomic_inc(&trap_thread_index) & (RTAREA_TRAP_DATA_NUM - 1);
-	write_comm_pipe_pvoid(&trap_thread_pipe[idx], ctx, 1);
-}
-
-extern uae_sem_t hardware_trap_event[];
-
-static struct TrapContext outtrap[RTAREA_TRAP_DATA_SEND_NUM];
-static volatile uae_atomic outtrap_alloc[RTAREA_TRAP_DATA_SEND_NUM];
-
-TrapContext *alloc_host_main_trap_context(void)
-{
-	if (trap_is_indirect()) {
-		int trap_slot = RTAREA_TRAP_DATA_NUM;
-		if (atomic_inc(&outtrap_alloc[trap_slot - RTAREA_TRAP_DATA_NUM])) {
-			while (outtrap_alloc[trap_slot - RTAREA_TRAP_DATA_NUM] > RTAREA_TRAP_DATA_SEND_NUM)
-				sleep_millis(1);
-		}
-		TrapContext *ctx = &outtrap[trap_slot - RTAREA_TRAP_DATA_NUM];
-		return ctx;
-	} else {
-		return NULL;
-	}
-}
-
-void free_host_trap_context(TrapContext *ctx)
-{
-	if (trap_is_indirect()) {
-		int trap_slot = RTAREA_TRAP_DATA_NUM;
-		atomic_dec(&outtrap_alloc[trap_slot]);
-	}
-}
-
-static uae_u32 call_hardware_trap_back_back(TrapContext *ctx, uae_u16 cmd, uae_u32 p1, uae_u32 p2, uae_u32 p3, uae_u32 p4)
-{
-	int trap_slot = ((ctx->amiga_trap_data & 0xffff) - RTAREA_TRAP_DATA) / RTAREA_TRAP_DATA_SLOT_SIZE;
-	uae_u8 *data = ctx->host_trap_data + RTAREA_TRAP_DATA_SECOND;
-	uae_u8 *status = ctx->host_trap_status + RTAREA_TRAP_STATUS_SECOND;
-
-#if NEW_TRAP_DEBUG
-	write_log(_T("%d: B%dS%d\n"), ctx->tcnt, cmd, trap_slot);
-#endif
-
-	put_long_host(data + 4, p1);
-	put_long_host(data + 8, p2);
-	put_long_host(data + 12, p3);
-	put_long_host(data + 16, p4);
-	put_word_host(status, cmd);
-
-	atomic_inc(&hwtrap_waiting);
-	atomic_or(&uae_int_requested, 0x2000);
-	set_special_exter(SPCFLAG_UAEINT);
-
-	volatile uae_u8 *d = status + 3;
-
-	*d = 0xff;
-
-	for (;;) {
-		if (hardware_trap_kill[trap_slot] < 0)
-			return 0;
-		uae_u8 v = *d;
-		if (v == 0x01 || v == 0x02)
-			break;
-		if (hardware_trap_kill[trap_slot] == 0) {
-			hardware_trap_kill[trap_slot] = 2;
-			return  0;
-		}
-		if (uae_sem_trywait_delay(&hardware_trap_event[trap_slot], 100) == -2) {
-			hardware_trap_kill[trap_slot] = 3;
-			return 0;
-		}
-	}
-
-	// get result
-	uae_u32 v = get_long_host(data + 4);
-
-	put_long_host(status, 0);
-
-#if NEW_TRAP_DEBUG
-	write_log(_T("%d: =%08x\n"), ctx->tcnt, v, hwtrap_waiting);
-#endif
-
-	return v;
-}
-
-static uae_u32 call_hardware_trap_back(TrapContext *ctx, uae_u16 cmd, uae_u32 p1, uae_u32 p2, uae_u32 p3, uae_u32 p4)
-{
-	return call_hardware_trap_back_back(ctx, cmd, p1, p2, p3, p4);
-}
-
-// Executes trap from C-code
-void trap_callback(TRAP_CALLBACK cb, void *ud)
-{
-	if (trap_is_indirect()) {
-		int trap_slot = RTAREA_TRAP_DATA_NUM;
-		TrapContext *ctx = xcalloc(TrapContext, 1);
-		ctx->host_trap_data = rtarea_bank.baseaddr + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
-		ctx->amiga_trap_data = rtarea_base + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
-		ctx->host_trap_status = rtarea_bank.baseaddr + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
-		ctx->amiga_trap_status = rtarea_base + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
-		
-		// Set status to allocated, we are skipping hwtrap_entry()
-		put_long_host(ctx->host_trap_status + 4, 0x00000000);
-		put_long_host(ctx->host_trap_status, 0x00000080);
-
-		ctx->callback = cb;
-		ctx->callback_ud = ud;
-		write_comm_pipe_pvoid(&trap_thread_pipe[trap_slot], ctx, 1);
-	} else {
-		cb(NULL, ud);
-	}
-}
-
-TrapContext *alloc_host_thread_trap_context(void)
-{
-	if (trap_is_indirect()) {
-		int trap_slot = RTAREA_TRAP_DATA_NUM;
-		TrapContext *ctx = alloc_host_main_trap_context();
-		ctx->host_trap_data = rtarea_bank.baseaddr + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
-		ctx->amiga_trap_data = rtarea_base + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
-		ctx->host_trap_status = rtarea_bank.baseaddr + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
-		ctx->amiga_trap_status = rtarea_base + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
-
-		// Set status to allocated, we are skipping hwtrap_entry()
-		put_long_host(ctx->host_trap_status + 4, 0x00000000);
-		put_long_host(ctx->host_trap_status, 0x00000080);
-		return ctx;
-	} else {
-		return NULL;
-	}
-}
 
 /*
 * Set up extended trap context and call handler function
 */
-static void trap_HandleExtendedTrap (TrapHandler handler_func, int has_retval)
+static void trap_HandleExtendedTrap(TrapHandler handler_func, int has_retval)
 {
-	struct TrapContext *context = xcalloc (TrapContext, 1);
+	struct TrapContext *context = xcalloc(TrapContext, 1);
 
 	if (context) {
-		uae_sem_init (&context->switch_to_trap_sem, 0, 0);
-		uae_sem_init (&context->switch_to_emu_sem, 0, 0);
+		uae_sem_init(&context->switch_to_trap_sem, 0, 0);
+		uae_sem_init(&context->switch_to_emu_sem, 0, 0);
 
 		context->trap_handler = handler_func;
 		context->trap_has_retval = has_retval;
 
 		//context->saved_regs = regs;
-		copytocpucontext (&context->saved_regs);
+		copytocpucontext(&context->saved_regs);
 
 		/* Start thread to handle new trap context. */
-		uae_start_thread_fast (trap_thread, (void *)context, &context->thread);
+		uae_start_thread_fast(trap_thread, (void *)context, &context->thread);
 
 		/* Switch to trap context to begin execution of
 		* trap handler function.
 		*/
-		uae_sem_post (&context->switch_to_trap_sem);
+		uae_sem_post(&context->switch_to_trap_sem);
 
 		/* Wait for trap context to switch back to us.
 		*
 		* It'll do this when the trap handler is done - or when
 		* the handler wants to call 68k code. */
-		uae_sem_wait (&context->switch_to_emu_sem);
+		uae_sem_wait(&context->switch_to_emu_sem);
 	}
 }
 
@@ -583,6 +345,9 @@ static void trap_HandleExtendedTrap (TrapHandler handler_func, int has_retval)
 *
 * This function is to be called from the trap context.
 */
+
+static uae_u32 call_hardware_trap_back(TrapContext *ctx, uae_u16 cmd, uae_u32 p1, uae_u32 p2, uae_u32 p3, uae_u32 p4);
+
 static uae_u32 trap_Call68k(TrapContext *ctx, uaecptr func_addr)
 {
 	if (ctx->host_trap_data) {
@@ -592,7 +357,7 @@ static uae_u32 trap_Call68k(TrapContext *ctx, uaecptr func_addr)
 	} else {
 
 		/* Enter critical section - only one trap at a time, please! */
-		uae_sem_wait (&trap_mutex);
+		uae_sem_wait(&trap_mutex);
 		current_context = ctx;
 
 		/* Don't allow an interrupt and thus potentially another
@@ -605,17 +370,17 @@ static uae_u32 trap_Call68k(TrapContext *ctx, uaecptr func_addr)
 
 		/* Set PC to address of 68k call trap, so that it will be
 		* executed when emulator context resumes. */
-		m68k_setpc (m68k_call_trapaddr);
-		fill_prefetch ();
+		m68k_setpc(m68k_call_trapaddr);
+		fill_prefetch();
 
 		/* Switch to emulator context. */
-		uae_sem_post (&ctx->switch_to_emu_sem);
+		uae_sem_post(&ctx->switch_to_emu_sem);
 
 		/* Wait for 68k call return handler to switch back to us. */
-		uae_sem_wait (&ctx->switch_to_trap_sem);
+		uae_sem_wait(&ctx->switch_to_trap_sem);
 
 		/* End critical section. */
-		uae_sem_post (&trap_mutex);
+		uae_sem_post(&trap_mutex);
 
 		/* Get return value from 68k function called. */
 		return ctx->call68k_retval;
@@ -625,33 +390,33 @@ static uae_u32 trap_Call68k(TrapContext *ctx, uaecptr func_addr)
 /*
 * Handles the emulator's side of a 68k call (from an extended trap)
 */
-static uae_u32 REGPARAM2 m68k_call_handler (TrapContext *dummy_ctx)
+static uae_u32 REGPARAM2 m68k_call_handler(TrapContext *dummy_ctx)
 {
 	TrapContext *context = current_context;
 
 	uae_u32 sp;
 
-	sp = m68k_areg (regs, 7);
+	sp = m68k_areg(regs, 7);
 
 	/* Push address of trap context on 68k stack. This is
 	* so the return trap can find this context. */
-	sp -= sizeof (void *);
-	put_pointer (sp, context);
+	sp -= sizeof(void *);
+	put_pointer(sp, context);
 
 	/* Push addr to return handler trap on 68k stack.
 	* When the called m68k function does an RTS, the CPU will pull this
 	* address off the stack and so call the return handler. */
 	sp -= 4;
-	put_long (sp, m68k_return_trapaddr);
+	put_long(sp, m68k_return_trapaddr);
 
-	m68k_areg (regs, 7) = sp;
+	m68k_areg(regs, 7) = sp;
 
 	/* Set PC to address of 68k function to call. */
-	m68k_setpc (context->call68k_func_addr);
-	fill_prefetch ();
+	m68k_setpc(context->call68k_func_addr);
+	fill_prefetch();
 
 	/* End critical section: allow other traps run. */
-	uae_sem_post (&trap_mutex);
+	uae_sem_post(&trap_mutex);
 
 	/* Restore interrupts. */
 	regs.intmask = context->saved_regs.intmask;
@@ -663,31 +428,31 @@ static uae_u32 REGPARAM2 m68k_call_handler (TrapContext *dummy_ctx)
 /*
 * Handles the return from a 68k call at the emulator's side.
 */
-static uae_u32 REGPARAM2 m68k_return_handler (TrapContext *dummy_ctx)
+static uae_u32 REGPARAM2 m68k_return_handler(TrapContext *dummy_ctx)
 {
 	TrapContext *context;
 	uae_u32 sp;
 
 	/* One trap returning at a time, please! */
-	uae_sem_wait (&trap_mutex);
+	uae_sem_wait(&trap_mutex);
 
 	/* Get trap context from 68k stack. */
-	sp = m68k_areg (regs, 7);
-	context = (TrapContext *)get_pointer (sp);
-	sp += sizeof (void *);
-	m68k_areg (regs, 7) = sp;
+	sp = m68k_areg(regs, 7);
+	context = (TrapContext *)get_pointer(sp);
+	sp += sizeof(void *);
+	m68k_areg(regs, 7) = sp;
 
 	/* Get return value from the 68k call. */
-	context->call68k_retval = m68k_dreg (regs, 0);
+	context->call68k_retval = m68k_dreg(regs, 0);
 
 	/* Switch back to trap context. */
-	uae_sem_post (&context->switch_to_trap_sem);
+	uae_sem_post(&context->switch_to_trap_sem);
 
 	/* Wait for trap context to switch back to us.
 	*
 	* It'll do this when the trap handler is done - or when
 	* the handler wants to call another 68k function. */
-	uae_sem_wait (&context->switch_to_emu_sem);
+	uae_sem_wait(&context->switch_to_emu_sem);
 
 	/* Dummy return value. */
 	return 0;
@@ -697,29 +462,29 @@ static uae_u32 REGPARAM2 m68k_return_handler (TrapContext *dummy_ctx)
 * Handles completion of an extended trap and passes
 * return value from trap function to 68k space.
 */
-static uae_u32 REGPARAM2 exit_trap_handler (TrapContext *dummy_ctx)
+static uae_u32 REGPARAM2 exit_trap_handler(TrapContext *dummy_ctx)
 {
 	TrapContext *context = current_context;
 
 	/* Wait for trap context thread to exit. */
-	uae_wait_thread (context->thread);
+	uae_wait_thread(context->thread);
 
 	/* Restore 68k state saved at trap entry. */
 	//regs = context->saved_regs;
-	copyfromcpucontext (&context->saved_regs, context->saved_regs.pc);
+	copyfromcpucontext(&context->saved_regs, context->saved_regs.pc);
 
 	/* If trap is supposed to return a value, then store
 	* return value in D0. */
 	if (context->trap_has_retval)
-		m68k_dreg (regs, 0) = context->trap_retval;
+		m68k_dreg(regs, 0) = context->trap_retval;
 
-	uae_sem_destroy (&context->switch_to_trap_sem);
-	uae_sem_destroy (&context->switch_to_emu_sem);
+	uae_sem_destroy(&context->switch_to_trap_sem);
+	uae_sem_destroy(&context->switch_to_emu_sem);
 
-	xfree (context);
+	xfree(context);
 
 	/* End critical section */
-	uae_sem_post (&trap_mutex);
+	uae_sem_post(&trap_mutex);
 
 	/* Dummy return value. */
 	return 0;
@@ -750,6 +515,285 @@ uae_u32 CallFunc(TrapContext *ctx, uaecptr func)
 	return trap_Call68k(ctx, func);
 }
 
+
+/* UAE board traps */
+
+#define TRAP_THREADS (RTAREA_TRAP_DATA_NUM + RTAREA_TRAP_DATA_SEND_NUM)
+static smp_comm_pipe trap_thread_pipe[TRAP_THREADS];
+static uae_thread_id trap_thread_id[TRAP_THREADS];
+static volatile uae_atomic trap_thread_index;
+static volatile int hardware_trap_kill[TRAP_THREADS];
+static volatile bool trap_in_use[TRAP_THREADS];
+static volatile bool trap_in_use2[TRAP_THREADS];
+static volatile int trap_cnt;
+volatile int trap_mode;
+
+static void hardware_trap_ack(TrapContext *ctx)
+{
+	uae_u8 *data = ctx->host_trap_data;
+	uae_u8 *status = ctx->host_trap_status;
+	uaecptr addr = ctx->amiga_trap_status;
+
+	// ack call_hardware_trap
+	uaecptr task = get_long_host(data + RTAREA_TRAP_DATA_TASKWAIT);
+
+#if NEW_TRAP_DEBUG
+	write_log(_T("TRAP SLOT %d: ACK. TASK = %08x\n"), ctx->trap_slot, task);
+#endif
+
+	put_byte_host(status + 2, 0xff);
+	if (task && trap_mode == 1) {
+		atomic_or(&uae_int_requested, 0x4000);
+		set_special_exter(SPCFLAG_UAEINT);
+	}
+	if (!trap_in_use[ctx->trap_slot])
+		write_log(_T("TRAP SLOT %d ACK WIIHOUT ALLOCATION!\n"));
+	trap_in_use[ctx->trap_slot] = false;
+	xfree(ctx);
+}
+
+static void *hardware_trap_thread(void *arg)
+{
+	int tid = (size_t)arg;
+	for (;;) {
+		TrapContext *ctx = (TrapContext*)read_comm_pipe_pvoid_blocking(&trap_thread_pipe[tid]);
+		if (!ctx)
+			break;
+
+		if (trap_in_use[ctx->trap_slot]) {
+			write_log(_T("TRAP SLOT %d ALREADY IN USE!\n"));
+		}
+		trap_in_use[ctx->trap_slot] = true;
+
+		uae_u8 *data = ctx->host_trap_data;
+		uae_u8 *status = ctx->host_trap_status;
+		ctx->tindex = tid;
+		ctx->tcnt = ++trap_cnt;
+
+		for (int i = 0; i < 15; i++) {
+			uae_u32 v = get_long_host(data + 4 + i * 4);
+			ctx->saved_regs.regs[i] = v;
+		}
+		put_long_host(status + RTAREA_TRAP_STATUS_SECOND, 0);
+
+#if NEW_TRAP_DEBUG
+		//if (_tcscmp(trap->name, _T("exter_int_helper")))
+			write_log(_T("TRAP SLOT %d: NUM %d\n"), ctx->trap_slot, trap_num);
+#endif
+
+		uae_u32 ret;
+		struct Trap *trap = NULL;
+
+		if (ctx->trap_done)
+			write_log(_T("hardware_trap_thread #1: trap_done set!"));
+
+		if (ctx->callback) {
+			ret = ctx->callback(ctx, ctx->callback_ud);
+		} else {
+			int trap_num = get_word_host(status);
+			trap = &traps[trap_num];
+			ret = trap->handler(ctx);
+		}
+
+		if (ctx->trap_done)
+			write_log(_T("hardware_trap_thread #2: trap_done set!"));
+
+		if (!ctx->trap_background) {
+			for (int i = 0; i < 15; i++) {
+				uae_u32 v = ctx->saved_regs.regs[i];
+				put_long_host(data + 4 + i * 4, v);
+			}
+			if (trap && (trap->flags & TRAPFLAG_NO_RETVAL) == 0) {
+				put_long_host(data + 4, ret);
+			}
+			hardware_trap_ack(ctx);
+		} else {
+			ctx->trap_done = true;
+		}
+	}
+	hardware_trap_kill[tid] = -1;
+	return 0;
+}
+
+void trap_background_set_complete(TrapContext *ctx)
+{
+	if (!trap_is_indirect())
+		return;
+	if (!ctx || !ctx->trap_background)
+		return;
+	atomic_dec(&ctx->trap_background);
+	if (!ctx->trap_background) {
+		if (!ctx->trap_done) {
+			write_log(_T("trap_background_set_complete(%d) still waiting!?\n"), ctx->tindex);
+			while (!ctx->trap_done);
+		}
+		hardware_trap_ack(ctx);
+	}
+}
+
+void trap_dos_active(void)
+{
+	trap_mode = 0;
+}
+
+void call_hardware_trap(uae_u8 *host_base, uaecptr amiga_base, int slot)
+{
+	TrapContext *ctx = xcalloc(TrapContext, 1);
+	ctx->host_trap_data = host_base + RTAREA_TRAP_DATA + slot * RTAREA_TRAP_DATA_SLOT_SIZE;
+	ctx->amiga_trap_data = amiga_base + RTAREA_TRAP_DATA + slot * RTAREA_TRAP_DATA_SLOT_SIZE;
+	ctx->host_trap_status = host_base + RTAREA_TRAP_STATUS + slot * RTAREA_TRAP_STATUS_SIZE;
+	ctx->amiga_trap_status = amiga_base + RTAREA_TRAP_STATUS + slot * RTAREA_TRAP_STATUS_SIZE;
+	ctx->trap_mode = trap_mode;
+	ctx->trap_slot = slot;
+	uae_u32 idx = atomic_inc(&trap_thread_index) & (RTAREA_TRAP_DATA_NUM - 1);
+	write_comm_pipe_pvoid(&trap_thread_pipe[idx], ctx, 1);
+}
+
+extern uae_sem_t hardware_trap_event[];
+extern uae_sem_t hardware_trap_event2[];
+
+static struct TrapContext outtrap[RTAREA_TRAP_DATA_SEND_NUM];
+static volatile uae_atomic outtrap_alloc[RTAREA_TRAP_DATA_SEND_NUM];
+
+TrapContext *alloc_host_main_trap_context(void)
+{
+	if (trap_is_indirect()) {
+		int trap_slot = RTAREA_TRAP_DATA_NUM;
+		if (atomic_inc(&outtrap_alloc[trap_slot - RTAREA_TRAP_DATA_NUM])) {
+			while (outtrap_alloc[trap_slot - RTAREA_TRAP_DATA_NUM] > RTAREA_TRAP_DATA_SEND_NUM)
+				sleep_millis(1);
+		}
+		TrapContext *ctx = &outtrap[trap_slot - RTAREA_TRAP_DATA_NUM];
+		ctx->trap_slot = trap_slot;
+		return ctx;
+	} else {
+		return NULL;
+	}
+}
+
+void free_host_trap_context(TrapContext *ctx)
+{
+	if (trap_is_indirect()) {
+		int trap_slot = RTAREA_TRAP_DATA_NUM;
+		atomic_dec(&outtrap_alloc[trap_slot]);
+	}
+}
+
+static uae_u32 call_hardware_trap_back(TrapContext *ctx, uae_u16 cmd, uae_u32 p1, uae_u32 p2, uae_u32 p3, uae_u32 p4)
+{
+	int trap_slot = ((ctx->amiga_trap_data & 0xffff) - RTAREA_TRAP_DATA) / RTAREA_TRAP_DATA_SLOT_SIZE;
+	uae_u8 *data = ctx->host_trap_data + RTAREA_TRAP_DATA_SECOND;
+	uae_u8 *status = ctx->host_trap_status + RTAREA_TRAP_STATUS_SECOND;
+
+#if NEW_TRAP_DEBUG
+	write_log(_T("TRAP BACK SLOT %d: CMD=%d P=%08x %08x %08x %08x TASK=%08x\n"),
+		trap_slot, cmd, p1, p2, p3, p4, get_long_host(ctx->host_trap_data + RTAREA_TRAP_DATA_TASKWAIT));
+#endif
+
+	if (trap_slot != ctx->trap_slot)
+		write_log(_T("Trap trap slot mismatch %d <> %d!\n"), trap_slot, ctx->trap_slot);
+
+	if (trap_in_use2[trap_slot])
+		write_log(_T("Trap slot %d already in use2!\n"), trap_slot);
+	trap_in_use2[trap_slot] = true;
+
+	put_long_host(data + 4, p1);
+	put_long_host(data + 8, p2);
+	put_long_host(data + 12, p3);
+	put_long_host(data + 16, p4);
+	put_word_host(status, cmd);
+
+	volatile uae_u8 *d = status + 3;
+
+	if (ctx->trap_mode == 2) {
+		*d = 0xfe;
+		// signal rtarea_bget wait
+		uae_sem_post(&hardware_trap_event2[trap_slot]);
+	} else if (ctx->trap_mode == 0) {
+		*d = 0xfe;
+	} else {
+		atomic_inc(&hwtrap_waiting);
+		atomic_or(&uae_int_requested, 0x2000);
+		set_special_exter(SPCFLAG_UAEINT);
+		*d = 0xff;
+	}
+
+	for (;;) {
+		if (hardware_trap_kill[trap_slot] < 0)
+			return 0;
+		uae_u8 v = *d;
+		if (v == 0x01 || v == 0x02 || v == 0x03)
+			break;
+		if (hardware_trap_kill[trap_slot] == 0) {
+			hardware_trap_kill[trap_slot] = 2;
+			return  0;
+		}
+		if (uae_sem_trywait_delay(&hardware_trap_event[trap_slot], 100) == -2) {
+			hardware_trap_kill[trap_slot] = 3;
+			return 0;
+		}
+	}
+
+	// get result
+	uae_u32 v = get_long_host(data + 4);
+
+	if (!trap_in_use2[trap_slot])
+		write_log(_T("Trap slot %d in use2 unexpected release!\n"), trap_slot);
+	trap_in_use2[trap_slot] = false;
+
+	put_long_host(status, 0);
+
+#if NEW_TRAP_DEBUG
+	write_log(_T("TRAP BACK SLOT %d: RET = %08x TASK = %08x\n"), trap_slot, v, get_long_host(ctx->host_trap_data + RTAREA_TRAP_DATA_TASKWAIT));
+#endif
+
+	return v;
+}
+
+// Executes trap from C-code
+void trap_callback(TRAP_CALLBACK cb, void *ud)
+{
+	if (trap_is_indirect()) {
+		int trap_slot = RTAREA_TRAP_DATA_NUM;
+		TrapContext *ctx = xcalloc(TrapContext, 1);
+		ctx->host_trap_data = rtarea_bank.baseaddr + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
+		ctx->amiga_trap_data = rtarea_base + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
+		ctx->host_trap_status = rtarea_bank.baseaddr + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
+		ctx->amiga_trap_status = rtarea_base + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
+		ctx->trap_mode = 1;
+		ctx->trap_slot = trap_slot;
+
+		// Set status to allocated, we are skipping hwtrap_entry()
+		put_long_host(ctx->host_trap_status + 4, 0x00000000);
+		put_long_host(ctx->host_trap_status + 0, 0x00000080);
+
+		ctx->callback = cb;
+		ctx->callback_ud = ud;
+		write_comm_pipe_pvoid(&trap_thread_pipe[trap_slot], ctx, 1);
+	} else {
+		cb(NULL, ud);
+	}
+}
+
+TrapContext *alloc_host_thread_trap_context(void)
+{
+	if (trap_is_indirect()) {
+		int trap_slot = RTAREA_TRAP_DATA_NUM;
+		TrapContext *ctx = alloc_host_main_trap_context();
+		ctx->host_trap_data = rtarea_bank.baseaddr + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
+		ctx->amiga_trap_data = rtarea_base + RTAREA_TRAP_DATA + trap_slot * RTAREA_TRAP_DATA_SLOT_SIZE;
+		ctx->host_trap_status = rtarea_bank.baseaddr + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
+		ctx->amiga_trap_status = rtarea_base + RTAREA_TRAP_STATUS + trap_slot * RTAREA_TRAP_STATUS_SIZE;
+		ctx->trap_mode = 1;
+
+		// Set status to allocated, we are skipping hwtrap_entry()
+		put_long_host(ctx->host_trap_status + 4, 0x00000000);
+		put_long_host(ctx->host_trap_status, 0x00000080);
+		return ctx;
+	} else {
+		return NULL;
+	}
+}
 
 /*
 * Initialize trap mechanism.
@@ -1036,7 +1080,7 @@ uae_u8 trap_get_byte(TrapContext *ctx, uaecptr addr)
 
 void trap_put_bytes(TrapContext *ctx, const void *haddrp, uaecptr addr, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	uae_u8 *haddr = (uae_u8*)haddrp;
 	if (trap_is_indirect_null(ctx)) {
@@ -1061,7 +1105,7 @@ void trap_put_bytes(TrapContext *ctx, const void *haddrp, uaecptr addr, int cnt)
 }
 void trap_get_bytes(TrapContext *ctx, void *haddrp, uaecptr addr, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	uae_u8 *haddr = (uae_u8*)haddrp;
 	if (trap_is_indirect_null(ctx)) {
@@ -1086,7 +1130,7 @@ void trap_get_bytes(TrapContext *ctx, void *haddrp, uaecptr addr, int cnt)
 }
 void trap_put_longs(TrapContext *ctx, uae_u32 *haddr, uaecptr addr, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	if (trap_is_indirect_null(ctx)) {
 		while (cnt > 0) {
@@ -1108,7 +1152,7 @@ void trap_put_longs(TrapContext *ctx, uae_u32 *haddr, uaecptr addr, int cnt)
 }
 void trap_get_longs(TrapContext *ctx, uae_u32 *haddr, uaecptr addr, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	if (trap_is_indirect_null(ctx)) {
 		while (cnt > 0) {
@@ -1130,7 +1174,7 @@ void trap_get_longs(TrapContext *ctx, uae_u32 *haddr, uaecptr addr, int cnt)
 }
 void trap_put_words(TrapContext *ctx, uae_u16 *haddr, uaecptr addr, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	if (trap_is_indirect_null(ctx)) {
 		while (cnt > 0) {
@@ -1152,7 +1196,7 @@ void trap_put_words(TrapContext *ctx, uae_u16 *haddr, uaecptr addr, int cnt)
 }
 void trap_get_words(TrapContext *ctx, uae_u16 *haddr, uaecptr addr, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	if (trap_is_indirect_null(ctx)) {
 		while (cnt > 0) {
@@ -1258,7 +1302,7 @@ int trap_get_bstr(TrapContext *ctx, uae_u8 *haddr, uaecptr addr, int maxlen)
 
 void trap_set_longs(TrapContext *ctx, uaecptr addr, uae_u32 v, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	if (trap_is_indirect_null(ctx)) {
 		call_hardware_trap_back(ctx, TRAPCMD_SET_LONGS, addr, v, cnt, 0);
@@ -1271,7 +1315,7 @@ void trap_set_longs(TrapContext *ctx, uaecptr addr, uae_u32 v, int cnt)
 }
 void trap_set_words(TrapContext *ctx, uaecptr addr, uae_u16 v, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	if (trap_is_indirect_null(ctx)) {
 		call_hardware_trap_back(ctx, TRAPCMD_SET_WORDS, addr, v, cnt, 0);
@@ -1284,7 +1328,7 @@ void trap_set_words(TrapContext *ctx, uaecptr addr, uae_u16 v, int cnt)
 }
 void trap_set_bytes(TrapContext *ctx, uaecptr addr, uae_u8 v, int cnt)
 {
-	if (!cnt)
+	if (cnt <= 0)
 		return;
 	if (trap_is_indirect_null(ctx)) {
 		call_hardware_trap_back(ctx, TRAPCMD_SET_BYTES, addr, v, cnt, 0);
@@ -1387,6 +1431,8 @@ void trap_multi(TrapContext *ctx, struct trapmd *data, int items)
 
 void trap_memcpyha_safe(TrapContext *ctx, uaecptr dst, const uae_u8 *src, int size)
 {
+	if (size <= 0)
+		return;
 	if (trap_is_indirect()) {
 		trap_put_bytes(ctx, src, dst, size);
 	} else {
@@ -1395,6 +1441,8 @@ void trap_memcpyha_safe(TrapContext *ctx, uaecptr dst, const uae_u8 *src, int si
 }
 void trap_memcpyah_safe(TrapContext *ctx, uae_u8 *dst, uaecptr src, int size)
 {
+	if (size <= 0)
+		return;
 	if (trap_is_indirect()) {
 		trap_get_bytes(ctx, dst, src, size);
 	} else {

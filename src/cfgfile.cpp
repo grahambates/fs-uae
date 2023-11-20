@@ -210,7 +210,7 @@ static const TCHAR *joyportmodes[] = { _T(""), _T("mouse"), _T("mousenowheel"), 
 static const TCHAR *joyaf[] = { _T("none"), _T("normal"), _T("toggle"), _T("always"), 0 };
 static const TCHAR *epsonprinter[] = { _T("none"), _T("ascii"), _T("epson_matrix_9pin"), _T("epson_matrix_24pin"), _T("epson_matrix_48pin"), 0 };
 static const TCHAR *aspects[] = { _T("none"), _T("vga"), _T("tv"), 0 };
-static const TCHAR *vsyncmodes[] = { _T("false"), _T("true"), _T("autoswitch"), 0 };
+static const TCHAR *vsyncmodes[] = { _T("adaptive"), _T("false"), _T("true"), _T("autoswitch"), 0 };
 static const TCHAR *vsyncmodes2[] = { _T("normal"), _T("busywait"), 0 };
 static const TCHAR *filterapi[] = { _T("directdraw"), _T("direct3d"), 0 };
 static const TCHAR *dongles[] =
@@ -1597,9 +1597,9 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 	cfgfile_write (f, _T("gfx_backbuffers_rtg"), _T("%d"), p->gfx_apmode[1].gfx_backbuffers);
 	if (p->gfx_apmode[APMODE_NATIVE].gfx_interlaced)
 		cfgfile_write_bool (f, _T("gfx_interlace"), p->gfx_apmode[APMODE_NATIVE].gfx_interlaced);
-	cfgfile_write_str (f, _T("gfx_vsync"), vsyncmodes[p->gfx_apmode[0].gfx_vsync]);
+	cfgfile_write_str (f, _T("gfx_vsync"), vsyncmodes[p->gfx_apmode[0].gfx_vsync + 1]);
 	cfgfile_write_str (f, _T("gfx_vsyncmode"), vsyncmodes2[p->gfx_apmode[0].gfx_vsyncmode]);
-	cfgfile_write_str (f, _T("gfx_vsync_picasso"), vsyncmodes[p->gfx_apmode[1].gfx_vsync]);
+	cfgfile_write_str (f, _T("gfx_vsync_picasso"), vsyncmodes[p->gfx_apmode[1].gfx_vsync + 1]);
 	cfgfile_write_str (f, _T("gfx_vsyncmode_picasso"), vsyncmodes2[p->gfx_apmode[1].gfx_vsyncmode]);
 	cfgfile_write_bool (f, _T("gfx_lores"), p->gfx_resolution == 0);
 	cfgfile_write_str (f, _T("gfx_resolution"), lorestype1[p->gfx_resolution]);
@@ -1614,7 +1614,8 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 	cfgfile_write_bool(f, _T("gfx_blacker_than_black"), p->gfx_blackerthanblack);
 	cfgfile_dwrite_bool(f, _T("gfx_monochrome"), p->gfx_grayscale);
 	cfgfile_dwrite_str(f, _T("gfx_atari_palette_fix"), threebitcolors[p->gfx_threebitcolors]);
-	cfgfile_dwrite_bool (f, _T("gfx_black_frame_insertion"), p->lightboost_strobo);
+	cfgfile_dwrite_bool(f, _T("gfx_black_frame_insertion"), p->lightboost_strobo);
+	cfgfile_dwrite(f, _T("gfx_black_frame_insertion_ratio"), _T("%d"), p->lightboost_strobo_ratio);
 	cfgfile_write_str (f, _T("gfx_api"), filterapi[p->gfx_api]);
 	cfgfile_dwrite (f, _T("gfx_horizontal_tweak"), _T("%d"), p->gfx_extrawidth);
 
@@ -1796,6 +1797,8 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 			_tcscat (s, _T(",nvsync"));
 		if (cr->rtg)
 			_tcscat (s, _T(",rtg"));
+		if (cr->exit)
+			_tcscat(s, _T(",exit"));
 		if (cr->filterprofile[0]) {
 			TCHAR *se = cfgfile_escape(cr->filterprofile, _T(","), true);
 			s += _stprintf(s, _T(",filter=%s"), cr->filterprofile);
@@ -2594,7 +2597,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
 		|| cfgfile_intval (option, value, _T("gfx_backbuffers_rtg"), &p->gfx_apmode[APMODE_RTG].gfx_backbuffers, 1)
 		|| cfgfile_yesno (option, value, _T("gfx_interlace"), &p->gfx_apmode[APMODE_NATIVE].gfx_interlaced)
 		|| cfgfile_yesno (option, value, _T("gfx_interlace_rtg"), &p->gfx_apmode[APMODE_RTG].gfx_interlaced)
-		
+		|| cfgfile_intval(option, value, _T("gfx_black_frame_insertion_ratio"), &p->lightboost_strobo_ratio, 1)
+
 		|| cfgfile_intval (option, value, _T("gfx_center_horizontal_position"), &p->gfx_xcenter_pos, 1)
 		|| cfgfile_intval (option, value, _T("gfx_center_vertical_position"), &p->gfx_ycenter_pos, 1)
 		|| cfgfile_intval (option, value, _T("gfx_center_horizontal_size"), &p->gfx_xcenter_size, 1)
@@ -2837,13 +2841,17 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
 		return 1;
 	}
 	if (_tcscmp (option, _T("gfx_vsync")) == 0) {
-		if (cfgfile_strval (option, value, _T("gfx_vsync"), &p->gfx_apmode[APMODE_NATIVE].gfx_vsync, vsyncmodes, 0) >= 0)
+		if (cfgfile_strval (option, value, _T("gfx_vsync"), &p->gfx_apmode[APMODE_NATIVE].gfx_vsync, vsyncmodes, 0) >= 0) {
+			p->gfx_apmode[APMODE_NATIVE].gfx_vsync--;
 			return 1;
+		}
 		return cfgfile_yesno (option, value, _T("gfx_vsync"), &p->gfx_apmode[APMODE_NATIVE].gfx_vsync);
 	}
 	if (_tcscmp (option, _T("gfx_vsync_picasso")) == 0) {
-		if (cfgfile_strval (option, value, _T("gfx_vsync_picasso"), &p->gfx_apmode[APMODE_RTG].gfx_vsync, vsyncmodes, 0) >= 0)
+		if (cfgfile_strval (option, value, _T("gfx_vsync_picasso"), &p->gfx_apmode[APMODE_RTG].gfx_vsync, vsyncmodes, 0) >= 0) {
+			p->gfx_apmode[APMODE_RTG].gfx_vsync--;
 			return 1;
+		}
 		return cfgfile_yesno (option, value, _T("gfx_vsync_picasso"), &p->gfx_apmode[APMODE_RTG].gfx_vsync);
 	}
 	if (cfgfile_strval (option, value, _T("gfx_vsyncmode"), &p->gfx_apmode[APMODE_NATIVE].gfx_vsyncmode, vsyncmodes2, 0))
@@ -3289,8 +3297,7 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
 		tmpbuf[sizeof tmpbuf / sizeof (TCHAR) - 1] = '\0';
 
 		int vert = -1, horiz = -1, lace = -1, ntsc = -1, framelength = -1, vsync = -1, hres = 0;
-		bool locked = false;
-		bool rtg = false;
+		bool locked = false, rtg = false, exit = false;
 		bool cmdmode = false;
 		double rate = -1;
 		int rpct = 0;
@@ -3364,6 +3371,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
 					framelength = 0;
 				if (!_tcsnicmp(tmpp, _T("rtg"), 3))
 					rtg = true;
+				if (!_tcsnicmp(tmpp, _T("exit"), 4))
+					exit = true;
 			}
 			tmpp = next;
 			if (tmpp >= end)
@@ -3392,6 +3401,7 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
 				cr->vsync = vsync;
 				cr->locked = locked;
 				cr->rtg = rtg;
+				cr->exit = exit;
 				cr->framelength = framelength;
 				cr->rate = rate;
 				_tcscpy(cr->commands, cmd);
@@ -3854,6 +3864,28 @@ static bool parse_geo (const TCHAR *tname, struct uaedev_config_info *uci, struc
 			_tcscpy (uci->filesys, val);
 		if (!_tcsicmp (key, _T("device")))
 			_tcscpy (uci->devname, val);
+		if (!_tcsicmp(key, _T("badblocks"))) {
+			TCHAR *p = val;
+			while (p && *p && uci->badblock_num < MAX_UAEDEV_BADBLOCKS) {
+				struct uaedev_badblock *bb = &uci->badblocks[uci->badblock_num];
+				if (!_istdigit(*p))
+					break;
+				bb->first = _tstol(p);
+				bb->last = bb->first;
+				TCHAR *p1 = _tcschr(p, ',');
+				TCHAR *p2 = NULL;
+				if (p1) {
+					p2 = p1 + 1;
+					*p1 = 0;
+				}
+				p1 = _tcschr(p, '-');
+				if (p1) {
+					bb->last = _tstol(p1 + 1);
+				}
+				uci->badblock_num++;
+				p = p2;
+			}
+		}
 		xfree (val);
 		xfree (key);
 	}
@@ -6310,7 +6342,7 @@ void default_prefs (struct uae_prefs *p, bool reset, int type)
 	p->clipboard_sharing = false;
 	p->native_code = false;
 
-	p->cs_compatible = 1;
+	p->cs_compatible = CP_GENERIC;
 	p->cs_rtc = 2;
 	p->cs_df0idhw = 1;
 	p->cs_a1000ram = 0;
@@ -6489,6 +6521,9 @@ void default_prefs (struct uae_prefs *p, bool reset, int type)
 	cr->ntsc = 1;
 	cr->locked = false;
 	_tcscpy (cr->label, _T("NTSC"));
+
+	p->lightboost_strobo = false;
+	p->lightboost_strobo_ratio = 50;
 
 	savestate_state = 0;
 
@@ -7291,6 +7326,7 @@ int built_in_chipset_prefs (struct uae_prefs *p)
 	p->cs_ciatodbug = false;
 	p->cs_z3autoconfig = false;
 	p->cs_bytecustomwritebug = false;
+	p->cs_1mchipjumper = false;
 
 	switch (p->cs_compatible)
 	{
@@ -7300,7 +7336,7 @@ int built_in_chipset_prefs (struct uae_prefs *p)
 			p->cs_rtc = 2;
 			p->cs_fatgaryrev = 0;
 			p->cs_ide = -1;
-			p->cs_mbdmac = -1;
+			p->cs_mbdmac = 0;
 			p->cs_ramseyrev = 0x0f;
 		} else if (p->cpu_compatible) {
 			// very A500-like
