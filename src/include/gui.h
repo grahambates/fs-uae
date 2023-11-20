@@ -46,8 +46,7 @@ extern bool no_gui, quit_to_gui;
 #define LED_CPU 8
 #define LED_SND 9
 #define LED_MD 10
-#define LED_NET 11
-#define LED_MAX 12
+#define LED_MAX 11
 
 struct gui_info
 {
@@ -61,7 +60,6 @@ struct gui_info
     uae_s8 hd;					/* harddrive */
     uae_s8 cd;					/* CD */
 	uae_s8 md;					/* CD32 or CDTV internal storage */
-	uae_s8 net;					/* network */
     int cpu_halted;
 	int fps, idle;
 	int fps_color;

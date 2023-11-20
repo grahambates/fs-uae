@@ -1429,18 +1429,12 @@ static void build_cpufunctbl (void)
 		/* unimplemented opcode? */
 		if (table->unimpclev > 0 && lvl >= table->unimpclev) {
 			if (currprefs.cpu_model == 68060) {
-				// remove unimplemented integer instructions
-				// unimpclev == 5: not implemented in 68060,
-				// generates unimplemented instruction exception.
+				// unimpclev == 5: not implemented in 68060.
 				if (currprefs.int_no_unimplemented && table->unimpclev == 5) {
 					cpufunctbl[opcode] = op_unimpl_1;
 					continue;
 				}
-				// remove unimplemented instruction that were removed in previous models,
-				// generates normal illegal instruction exception.
-				// unimplclev < 5: instruction was removed in 68040 or previous model.
-				// clev=4: implemented in 68040 or later. unimpclev=5: not in 68060
-				if (table->unimpclev < 5 || (table->clev == 4 && table->unimpclev == 5)) {
+				if (!currprefs.int_no_unimplemented || table->unimpclev != 5) {
 					cpufunctbl[opcode] = op_illg_1;
 					continue;
 				}
@@ -7621,7 +7615,7 @@ static void write_dcache030x(uaecptr addr, uae_u32 val, int size)
 	c1 = getcache030(dcaches030, addr, &tag1, &lws1);
 
 	// easy one
-	if (size == 2 && aligned == 0 && wa) {
+	if (size == 2 && aligned == 0 && wa == 1) {
 		update_cache030(c1, val, tag1, lws1);
 		return;
 	}

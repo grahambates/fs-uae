@@ -13,6 +13,5 @@ void reset_all_systems(void);
 void do_leave_program(void);
 void virtualdevice_init(void);
 void devices_restore_start(void);
-void device_check_config(void);
 
 #endif /* UAE_DEVICES_H */
