@@ -2724,6 +2724,8 @@ static int mouseedge (void)
 		y = get_word(ib + 68);
 	}
 
+	//write_log("%dx%d\n", x, y);
+
 	if (x || y)
 		isnonzero = 1;
 	if (!isnonzero)
@@ -5105,7 +5107,6 @@ static void setqualifiers (int evt, int state)
 		qualifiers |= mask;
 	else
 		qualifiers &= ~mask;
-	//write_log (_T("%016llx\n"), qualifiers);
 }
 
 static uae_u64 getqualmask (uae_u64 *qualmask, struct uae_input_device *id, int num, bool *qualonly)
@@ -5994,13 +5995,14 @@ static void resetjport (struct uae_prefs *prefs, int index)
 static void remove_compa_config (struct uae_prefs *prefs, int index)
 {
 	int typelist;
-	const int *atp;
+	const int *atpp;
 	int inputlist[MAX_COMPA_INPUTLIST];
 
-	if (inputdevice_get_compatibility_input (prefs, index, &typelist, inputlist, &atp) <= 0)
+	if (inputdevice_get_compatibility_input (prefs, index, &typelist, inputlist, &atpp) <= 0)
 		return;
 	for (int i = 0; inputlist[i] >= 0; i++) {
 		int evtnum = inputlist[i];
+		const int *atp = atpp;
 
 		int atpidx = 0;
 		while (*atp >= 0) {
@@ -8539,11 +8541,17 @@ static bool fixjport (struct jport *port, int add, bool always)
 	return wasinvalid;
 }
 
-static void inputdevice_get_previous_joy(struct uae_prefs *p, int portnum)
+static void inputdevice_get_previous_joy(struct uae_prefs *p, int portnum, bool userconfig)
 {
+	struct jport *jpx = &p->jports[portnum];
+
+	if (!userconfig) {
+		// default.uae with unplugged device -> NONE
+		p->jports[portnum].id = JPORT_NONE;
+		return;
+	}
 	bool found = false;
 	int idx = 0;
-	struct jport *jpx = &p->jports[portnum];
 	for (;;) {
 		struct jport *jp = inputdevice_get_used_device(portnum, idx);
 		if (!jp)
@@ -8801,7 +8809,7 @@ int inputdevice_joyport_config (struct uae_prefs *p, const TCHAR *value1, const 
 				}
 				// joystick not found, select previously used or default
 				if (start == JSEM_JOYS && p->jports[portnum].id < JSEM_JOYS) {
-					inputdevice_get_previous_joy(p, portnum);
+					inputdevice_get_previous_joy(p, portnum, true);
 					set_config_changed ();
 					return 1;
 				}
@@ -8928,7 +8936,7 @@ void inputdevice_fix_prefs(struct uae_prefs *p, bool userconfig)
 					write_log(_T("Unplugged stored, port %d '%s' (%s)\n"), i, jp->idc.name, jp->idc.configname);
 					inputdevice_store_used_device(&jpt, i, defaultports);
 					freejport(p, i);
-					inputdevice_get_previous_joy(p, i);
+					inputdevice_get_previous_joy(p, i, userconfig);
 					matched[i] = true;
 				}
 			}
@@ -8939,7 +8947,7 @@ void inputdevice_fix_prefs(struct uae_prefs *p, bool userconfig)
 			struct jport *jp = &jport_config_store[i];
 			freejport(p, i);
 			if (jp->id != JPORT_NONE) {
-				inputdevice_get_previous_joy(p, i);
+				inputdevice_get_previous_joy(p, i, userconfig);
 				write_log(_T("Port%d: ID=%d getting previous: %d\n"), i, jp->id, p->jports[i].id);
 			} else {
 				write_log(_T("Port%d: NONE\n"), i);
