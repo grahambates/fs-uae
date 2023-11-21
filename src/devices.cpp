@@ -469,3 +469,33 @@ void devices_syncchange(void)
 {
 	x86_bridge_sync_change();
 }
+
+void devices_pause(void)
+{
+#ifdef WITH_PPC
+	uae_ppc_pause(1);
+#endif
+	blkdev_entergui();
+#ifdef RETROPLATFORM
+	rp_pause(pause_emulation);
+#endif
+#ifdef FSUAE
+#else
+	pausevideograb(true);
+#endif
+}
+
+void devices_unpause(void)
+{
+	blkdev_exitgui();
+#ifdef RETROPLATFORM
+	rp_pause(pause_emulation);
+#endif
+#ifdef WITH_PPC
+	uae_ppc_pause(0);
+#endif
+#ifdef FSUAE
+#else
+	pausevideograb(false);
+#endif
+}
