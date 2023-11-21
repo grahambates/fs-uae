@@ -12,7 +12,7 @@
 
 #include "options.h"
 #include "debug.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "picasso96.h"
 #include "gfxboard.h"

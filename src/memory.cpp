@@ -13,7 +13,7 @@
 
 #include "options.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "rommgr.h"
 #include "ersatz.h"
 #include "zfile.h"
@@ -1413,7 +1413,7 @@ static bool load_extendedkickstart (const TCHAR *romextfile, int type)
 			extendedkickmem_type = EXTENDED_ROM_CD32;
 		} else if (need_uae_boot_rom (&currprefs) != 0xf00000) {
 			extendedkickmem_type = EXTENDED_ROM_CDTV;
-		}	
+		}
 	} else {
 		extendedkickmem_type = type;
 	}

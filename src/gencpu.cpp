@@ -933,9 +933,9 @@ static void addopcycles_ce20 (int h, int t, int c, int subhead)
 
 	if (h < 0)
 		h = 0;
-	
+
 	//c = 0;
-	
+
 	// c = internal cycles needed after head cycles and before tail cycles. Not total cycles.
 	addcycles_ce020 ("op", h, t, c - h - t, -subhead);
 	//printf ("\tregs.irc = get_word_ce020_prefetch (%d);\n", m68k_pc_offset);
@@ -1415,7 +1415,7 @@ static void genamode2x (amodes mode, const char *reg, wordsizes size, const char
 		printf ("\tuaecptr %sa;\n", name);
 		add_mmu040_movem (movem);
 		printf ("\t%sa = m68k_areg (regs, %s) + (uae_s32)(uae_s16)%s;\n", name, reg, gen_nextiword (flags));
-		count_read_ea++; 
+		count_read_ea++;
 		break;
 	case PC16: // (d16,PC)
 		printf ("\tuaecptr %sa;\n", name);
@@ -1454,7 +1454,7 @@ static void genamode2x (amodes mode, const char *reg, wordsizes size, const char
 			} else {
 				printf ("\t%sa = %s (m68k_areg (regs, %s), %s);\n", name, disp000, reg, gen_nextiword (flags));
 			}
-			count_read_ea++; 
+			count_read_ea++;
 		}
 		break;
 	case PC8r: // (d8,PC,Xn)
@@ -2671,7 +2671,7 @@ static void shift_ce (amodes dmode, int size)
 	}
 }
 
-// BCHG/BSET/BCLR Dx,Dx or #xx,Dx adds 2 cycles if bit number > 15 
+// BCHG/BSET/BCLR Dx,Dx or #xx,Dx adds 2 cycles if bit number > 15
 static void bsetcycles (struct instr *curi)
 {
 	if (curi->size == sz_byte) {
@@ -2719,7 +2719,7 @@ static void resetvars (void)
 	head_ce020_cycs_done = false;
 	no_prefetch_ce020 = false;
 	got_ea_ce020 = false;
-	
+
 	prefetch_long = NULL;
 	srcli = NULL;
 	srcbi = NULL;
@@ -5411,7 +5411,7 @@ static void generate_includes (FILE * f, int id)
 	fprintf (f, "#include \"sysconfig.h\"\n");
 	fprintf (f, "#include \"sysdeps.h\"\n");
 	fprintf (f, "#include \"options.h\"\n");
-	fprintf (f, "#include \"uae/memory.h\"\n");
+	fprintf (f, "#include \"memory.h\"\n");
 	fprintf (f, "#include \"custom.h\"\n");
 	fprintf (f, "#include \"events.h\"\n");
 	fprintf (f, "#include \"newcpu.h\"\n");
@@ -5946,7 +5946,7 @@ static void generate_cpu (int id, int mode)
 				opcode_next_clev[rp] = cpu_level;
 		}
 	 }
- 
+
 	if (!using_indirect)
 		using_indirect = using_ce || using_ce020 || using_prefetch_020 || id >= 50;
 

@@ -6,7 +6,7 @@
  *
  *  Adaptation for ARAnyM/ARM, copyright 2001-2014
  *    Milan Jurik, Jens Heitmann
- * 
+ *
  *  Adaptation for Basilisk II and improvements, copyright 2000-2005
  *    Gwenole Beauchesne
  *
@@ -734,7 +734,7 @@ static void genmov16(uae_u32 opcode, struct instr *curi)
     comprintf("\t} else {\n");
     comprintf("\tint tmp=scratchie;\n");
     comprintf("\tscratchie+=4;\n");
-	
+
     comprintf("\tget_n_addr(src,src,scratchie);\n"
 	      "\tget_n_addr(dst,dst,scratchie);\n"
 	      "\tmov_l_rR(tmp+0,src,0);\n"
@@ -3093,7 +3093,7 @@ generate_includes (FILE * f)
 	fprintf (f, "#include \"sysdeps.h\"\n");
 #ifdef UAE
 	fprintf (f, "#include \"options.h\"\n");
-	fprintf (f, "#include \"uae/memory.h\"\n");
+	fprintf (f, "#include \"memory.h\"\n");
 #else
 	fprintf (f, "#include \"m68k.h\"\n");
 	fprintf (f, "#include \"memory-uae.h\"\n");

@@ -18,7 +18,7 @@
 
 #include <stdlib.h>
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "traps.h"
@@ -274,7 +274,7 @@ static uae_u32 open_library (const char *name, uae_u32 min_version)
 uae_u32 uaenative_open_library (TrapContext *ctx, int flags)
 {
     char namebuf[256];
-	
+
 	if (!currprefs.native_code) {
         write_log(_T("uni: tried to open native library, but native code ")
                   _T("is not enabled\n"));
@@ -339,7 +339,7 @@ static uae_u32 get_function_handle (uae_u32 handle, const char *name)
 uae_u32 uaenative_get_function (TrapContext *ctx, int flags)
 {
 	char namebuf[256];
-	
+
 	if (!currprefs.native_code) {
         return UNI_ERROR_NOT_ENABLED;
     }
@@ -359,7 +359,7 @@ uae_u32 uaenative_get_function (TrapContext *ctx, int flags)
     }
 
 	trap_get_string(ctx, namebuf, name, sizeof namebuf);
-	
+
 	uae_u32 result = get_function_handle (library, namebuf);
 
     if ((flags & UNI_FLAG_COMPAT) && !(result & 0x80000000)) {

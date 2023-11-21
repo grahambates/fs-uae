@@ -15,7 +15,7 @@
 #include <stddef.h>
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "autoconf.h"
@@ -541,7 +541,7 @@ static uae_u32 REGPARAM2 bsdsocklib_Open (TrapContext *ctx)
 	if ((sb = alloc_socketbase(ctx)) != NULL) {
 		trap_put_word(ctx, SockLibBase + 32, opencount = trap_get_word(ctx, SockLibBase + 32) + 1);
 
-		
+
 		trap_call_add_areg(ctx, 0, functable);
 		trap_call_add_areg(ctx, 1, datatable);
 		trap_call_add_areg(ctx, 2, 0);
@@ -1225,11 +1225,11 @@ static uae_u32 herrnotextptrs[sizeof (herrortexts) / sizeof (*herrortexts)];
 static const uae_u32 number_host_error = sizeof (herrortexts) / sizeof (*herrortexts);
 
 
-static const TCHAR *sana2io_errlist[] = 
+static const TCHAR *sana2io_errlist[] =
 {
   _T("No error"),				/* S2ERR_NO_ERROR */
   _T("Resource allocation failure"),	/* S2ERR_NO_RESOURCES */
-  _T("Unknown error code (2)"), 
+  _T("Unknown error code (2)"),
   _T("Invalid argument"),			/* S2ERR_BAD_ARGUMENT */
   _T("Inappropriate state"),		/* S2ERR_BAD_STATE */
   _T("Invalid address"),			/* S2ERR_BAD_ADDRESS */
@@ -1245,7 +1245,7 @@ static uae_u32 sana2iotextptrs[sizeof (sana2io_errlist) / sizeof (*sana2io_errli
 static const uae_u32 number_sana2io_error = sizeof (sana2io_errlist) / sizeof (*sana2io_errlist);
 
 
-static const TCHAR *sana2wire_errlist[] = 
+static const TCHAR *sana2wire_errlist[] =
 {
   _T("Generic error: 0"),                   /* S2WERR_GENERIC_ERROR */
   _T("Unit not configured"),		/* S2WERR_NOT_CONFIGURED */
@@ -1273,7 +1273,7 @@ static const uae_u32 number_sana2wire_error = sizeof (sana2wire_errlist) / sizeo
 
 
 static const TCHAR *io_errlist[] =
-{ 
+{
   _T("Unknown error"),			/* 0 */
   _T("Device or unit failed to open"),	/* IOERR_OPENFAIL */
   _T("Request aborted"),			/* IOERR_ABORTED */
@@ -1667,7 +1667,7 @@ static uae_u32 REGPARAM2 bsdsocklib_init(TrapContext *ctx)
 		write_log (_T("bsdoscket: FATAL: Cannot create bsdsocket.library!\n"));
 		return 0;
 	}
-	
+
 #if NEWTRAP
 	trap_call_add_areg(ctx, 1, tmp1);
 	trap_call_lib(ctx, trap_get_areg(ctx, 6), -0x18c); /* AddLibrary */
@@ -1694,7 +1694,7 @@ static uae_u32 REGPARAM2 bsdsocklib_init(TrapContext *ctx)
 	trap_call_add_dreg(ctx, 0, tmp1);
 	trap_call_add_dreg(ctx, 1, 0);
 	tmp1 = trap_call_lib(ctx, trap_get_areg(ctx, 6), -0xC6); /* AllocMem */
-#else		
+#else
 	trap_get_dreg(ctx, 0) = tmp1;
 	trap_get_dreg(ctx, 1) = 0;
 	tmp1 = CallLib (ctx, trap_get_areg(ctx, 6), -0xC6); /* AllocMem */

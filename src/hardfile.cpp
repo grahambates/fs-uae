@@ -12,7 +12,7 @@
 
 #include "threaddep/thread.h"
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "disk.h"
@@ -239,8 +239,8 @@ void getchsgeometry_hdf (struct hardfiledata *hfd, uae_u64 size, int *pcyl, int 
 				for (i = 0; i < 512; i += 4)
 					chk += (block[i] << 24) | (block[i + 1] << 16) | (block[i + 2] << 8) | (block[i + 3] << 0);
 				if (!chk && block[0] == 0 && block[1] == 0 && block[2] == 0 && block[3] == 2 &&
-					block[4] == 0 && block[5] == 0 && block[6] == 0 && block[7] == 0 && 
-					block[8] == 0 && block[9] == 0 && block[10] == 0 && block[11] == 0 && 
+					block[4] == 0 && block[5] == 0 && block[6] == 0 && block[7] == 0 &&
+					block[8] == 0 && block[9] == 0 && block[10] == 0 && block[11] == 0 &&
 					block[508] == 0 && block[509] == 0 && block[510] == 0 && block[511] == 1) {
 						return;
 				}
@@ -1255,7 +1255,7 @@ int scsi_hd_emulate (struct hardfiledata *hfd, struct hd_hardfiledata *hdhfd, ua
 
 	if (log_scsiemu) {
 		write_log (_T("SCSIEMU HD %d: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X CMDLEN=%d DATA=%p\n"), hfd->unitnum,
-			cmdbuf[0], cmdbuf[1], cmdbuf[2], cmdbuf[3], cmdbuf[4], cmdbuf[5], cmdbuf[6], 
+			cmdbuf[0], cmdbuf[1], cmdbuf[2], cmdbuf[3], cmdbuf[4], cmdbuf[5], cmdbuf[6],
 			cmdbuf[7], cmdbuf[8], cmdbuf[9], cmdbuf[10], cmdbuf[11],
 			scsi_cmd_len, scsi_data);
 	}
@@ -1854,7 +1854,7 @@ scsi_done:
 			write_log (_T("REPLY: "));
 			for (int i = 0; i < lr && i < 40; i++)
 				write_log (_T("%02X."), r[i]);
-			write_log (_T("\n"));	
+			write_log (_T("\n"));
 		}
 	}
 	if (ls > 0) {
@@ -1967,7 +1967,7 @@ static int handle_scsi (TrapContext *ctx, uae_u8 *iobuf, uaecptr request, struct
 	} else {
 		put_long_host(scsicmd + 8, sd->data_len); /* scsi_Actual */
 	}
-	
+
 	trap_put_bytes(ctx, scsicmd, scsicmdaddr, sizeof scsicmd);
 	return ret;
 }

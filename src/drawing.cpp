@@ -36,7 +36,7 @@ happening, all ports should restrict window widths to be multiples of 16 pixels.
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "xwin.h"
@@ -406,7 +406,7 @@ static int stored_left_start, stored_top_start, stored_width, stored_height;
 
 void get_custom_topedge (int *xp, int *yp, bool max)
 {
-	
+
 	if (isnativevidbuf () && !max) {
 		int x, y;
 		x = visible_left_border + (DISPLAY_LEFT_SHIFT << currprefs.gfx_resolution);
@@ -499,7 +499,7 @@ void check_custom_limits(void)
 		visible_top_start = top;
 	if (bottom > top && bottom < visible_bottom_stop)
 		visible_bottom_stop = bottom;
-	
+
 	set_blanking_limits ();
 }
 
@@ -1222,7 +1222,7 @@ static uae_u8 render_sprites (int pos, int dualpf, uae_u8 apixel, int aga)
 	int *shift_lookup = dualpf ? (bpldualpfpri ? dblpf_ms2 : dblpf_ms1) : dblpf_ms;
 	int maskshift, plfmask;
 
-	// shdelay hack, above &spritepixels[pos] is correct. 
+	// shdelay hack, above &spritepixels[pos] is correct.
 	pos += sprite_shdelay;
 	/* The value in the shift lookup table is _half_ the shift count we
 	need.  This is because we can't shift 32 bits at once (undefined
@@ -1239,7 +1239,7 @@ static uae_u8 render_sprites (int pos, int dualpf, uae_u8 apixel, int aga)
 		pairs 01 and 23 cleared, and pairs 45 and 67 set, so OFFS will
 		have a value of 4.
 		2 * OFFS is the bit number in V of the sprite pair, and it also
-		happens to be the color offset for that pair. 
+		happens to be the color offset for that pair.
 		*/
 		int offs;
 		if (v1 == 0)
@@ -1342,7 +1342,7 @@ STATIC_INLINE uae_u32 shsprite (int dpix, uae_u32 spix_val, uae_u32 v, int spr)
 	sprcol = render_sprites (dpix, 0, spix_val, 0);
 	if (!sprcol)
 		return v;
-	/* good enough for now.. */ 
+	/* good enough for now.. */
 	scol = colors_for_drawing.color_regs_ecs[sprcol] & 0xccc;
 	scol |= scol >> 2;
 	return xcolors[scol];
@@ -2650,7 +2650,7 @@ static void pfield_expand_dp_bplcon (void)
 		ecs_genlock_features_mask = 0;
 		if (dp_for_drawing->bplcon3 & 0x0800) {
 			ecs_genlock_features_mask = 1 << ((dp_for_drawing->bplcon2 >> 12) & 7);
-		} 
+		}
 		if (dp_for_drawing->bplcon3 & 0x0400) {
 			ecs_genlock_features_colorkey = true;
 		}
@@ -3146,7 +3146,7 @@ static void center_image (void)
 	if (max_drawn_amiga_line_tmp > gfxvidinfo.drawbuffer.inheight)
 		max_drawn_amiga_line_tmp = gfxvidinfo.drawbuffer.inheight;
 	max_drawn_amiga_line_tmp >>= linedbl;
-	
+
 	thisframe_y_adjust = minfirstline;
 	if (currprefs.gfx_ycenter && thisframe_first_drawn_line >= 0 && !currprefs.gf[0].gfx_filter_autoscale) {
 
@@ -3929,7 +3929,7 @@ void vsync_handle_redraw (int long_field, int lof_changed, uae_u16 bplcon0p, uae
 #ifdef SAVESTATE
 			if (!savestate_state) {
 				if (currprefs.quitstatefile[0]) {
-					savestate_initsave (currprefs.quitstatefile, 1, 1, true); 
+					savestate_initsave (currprefs.quitstatefile, 1, 1, true);
 					save_state (currprefs.quitstatefile, _T(""));
 				}
 			}

@@ -16,7 +16,7 @@
 #include "gensound.h"
 #include "audio.h"
 #include "events.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "serial.h"
 #include "newcpu.h"
@@ -404,7 +404,7 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 			err = 1;
 		}
 	}
-	
+
 	for (int i = 0; i < MAX_RAM_BOARDS; i++) {
 		if ((p->z3fastmem[i].size & (p->z3fastmem[i].size - 1)) != 0 || (p->z3fastmem[i].size != 0 && p->z3fastmem[i].size < 0x100000))
 		{

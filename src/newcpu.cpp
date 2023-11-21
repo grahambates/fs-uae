@@ -19,7 +19,7 @@
 #include "options.h"
 #include "events.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "cpummu.h"
@@ -1443,7 +1443,7 @@ static void build_cpufunctbl (void)
 		instr *table = &table68k[opcode];
 
 		if (table->mnemo == i_ILLG)
-			continue;		
+			continue;
 
 		/* unimplemented opcode? */
 		if (table->unimpclev > 0 && lvl >= table->unimpclev) {
@@ -2475,7 +2475,7 @@ static uae_u32 exception_pc (int nr)
 static void Exception_build_stack_frame (uae_u32 oldpc, uae_u32 currpc, uae_u32 ssw, int nr, int format)
 {
     int i;
-   
+
 #if 0
     if (nr < 24 || nr > 31) { // do not print debugging for interrupts
         write_log(_T("Building exception stack frame (format %X)\n"), format);
@@ -2511,7 +2511,7 @@ static void Exception_build_stack_frame (uae_u32 oldpc, uae_u32 currpc, uae_u32 
 
 			m68k_areg (regs, 7) -= 4;
             x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr); // FA
-            
+
 			m68k_areg (regs, 7) -= 2;
             x_put_word (m68k_areg (regs, 7), 0);
             m68k_areg (regs, 7) -= 2;
@@ -2640,14 +2640,14 @@ static void Exception_mmu030 (int nr, uaecptr oldpc)
 
     exception_debug (nr);
     MakeSR ();
-    
+
     if (!regs.s) {
         regs.usp = m68k_areg (regs, 7);
         m68k_areg(regs, 7) = regs.m ? regs.msp : regs.isp;
         regs.s = 1;
         mmu_set_super (1);
     }
- 
+
 #if 0
     if (nr < 24 || nr > 31) { // do not print debugging for interrupts
         write_log (_T("Exception_mmu030: Exception %i: %08x %08x %08x\n"),
@@ -2681,7 +2681,7 @@ static void Exception_mmu030 (int nr, uaecptr oldpc)
     } else {
         Exception_build_stack_frame (oldpc, currpc, regs.mmu_ssw, nr, 0x0);
     }
-    
+
 	if (newpc & 1) {
 		if (nr == 2 || nr == 3)
 			cpu_halt (CPU_HALT_DOUBLE_FAULT);
@@ -2745,7 +2745,7 @@ static void Exception_mmu (int nr, uaecptr oldpc)
 	} else {
         Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x0);
 	}
-    
+
 	if (newpc & 1) {
 		if (nr == 2 || nr == 3)
 			cpu_halt (CPU_HALT_DOUBLE_FAULT);
@@ -2766,9 +2766,9 @@ static void add_approximate_exception_cycles(int nr)
 		return;
 	if (nr >= 24 && nr <= 31) {
 		/* Interrupts */
-		cycles = 44 + 4; 
+		cycles = 44 + 4;
 	} else if (nr >= 32 && nr <= 47) {
-		/* Trap (total is 34, but cpuemux.c already adds 4) */ 
+		/* Trap (total is 34, but cpuemux.c already adds 4) */
 		cycles = 34 -4;
 	} else {
 		switch (nr)
@@ -2840,7 +2840,7 @@ static void Exception_normal (int nr)
 			return;
 		}
 	}
-	
+
 	if (currprefs.cpu_model > 68000) {
 		currpc = exception_pc (nr);
 		if (nr == 2 || nr == 3) {
@@ -3178,7 +3178,7 @@ static void m68k_reset2(bool hardreset)
 	regs.caar = regs.cacr = 0;
 	regs.itt0 = regs.itt1 = regs.dtt0 = regs.dtt1 = 0;
 	regs.tcr = regs.mmusr = regs.urp = regs.srp = regs.buscr = 0;
-	mmu_tt_modified (); 
+	mmu_tt_modified ();
 	if (currprefs.cpu_model == 68020) {
 		regs.cacr |= 8;
 		set_cpu_caches (false);
@@ -3915,7 +3915,7 @@ static int do_specialties (int cycles)
 {
 	if (regs.spcflags & SPCFLAG_MODE_CHANGE)
 		return 1;
-	
+
 	if (regs.spcflags & SPCFLAG_CHECK) {
 		if (regs.halted) {
 			if (regs.halted == CPU_HALT_ACCELERATOR_CPU_FALLBACK) {
@@ -4463,7 +4463,7 @@ static int do_specialties_thread(void)
 		m68k_reset_delay = 0;
 		unset_special(SPCFLAG_CHECK);
 	}
-	
+
 #ifdef JIT
 	unset_special(SPCFLAG_END_COMPILE);   /* has done its job */
 #endif
@@ -4950,7 +4950,7 @@ insretry:
 					uaecptr new_addr = mmu030_translate(regs.instruction_pc, regs.s != 0, false, false);
 					if (mmu030_fake_prefetch_addr != new_addr) {
 						regs.opcode = mmu030_fake_prefetch;
-						write_log(_T("MMU030 fake prefetch remap: %04x, %08x -> %08x\n"), mmu030_fake_prefetch, mmu030_fake_prefetch_addr, new_addr); 
+						write_log(_T("MMU030 fake prefetch remap: %04x, %08x -> %08x\n"), mmu030_fake_prefetch, mmu030_fake_prefetch_addr, new_addr);
 					} else {
 						if (mmu030_opcode_stageb < 0) {
 							regs.opcode = x_prefetch (0);
@@ -5211,7 +5211,7 @@ static void m68k_run_2ce (void)
 				}
 
 				(*cpufunctbl[r->opcode])(r->opcode);
-		
+
 				wait_memory_cycles();
 
 		cont:
@@ -5879,7 +5879,7 @@ static void movemout (TCHAR *out, uae_u16 mask, int mode, int fpmode)
 	if (mode == Apdi && !fpmode) {
 		uae_u8 dmask2;
 		uae_u8 amask2;
-		
+
 		amask2 = mask & 0xff;
 		dmask2 = (mask >> 8) & 0xff;
 		dmask = 0;
@@ -5996,7 +5996,7 @@ void m68k_disasm_2 (TCHAR *buf, int bufsize, uaecptr pc, uaecptr *nextpc, int cn
 		buf = buf_out (buf, &bufsize, _T("%08X "), pc);
 
 		pc += 2;
-		
+
 		if (lookup->friendlyname)
 			_tcscpy (instrname, lookup->friendlyname);
 		else
@@ -6133,7 +6133,7 @@ void m68k_disasm_2 (TCHAR *buf, int bufsize, uaecptr pc, uaecptr *nextpc, int cn
 				int mode;
 				int dreg = (extra >> 4) & 7;
 				int regmask, fpmode;
-				
+
 				if (extra & 0x4000) {
 					mode = (extra >> 11) & 3;
 					regmask = extra & 0xff;  // FMOVEM FPx

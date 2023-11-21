@@ -15,7 +15,7 @@
 
 #include "options.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "rommgr.h"
 #include "custom.h"
 #include "newcpu.h"
@@ -151,7 +151,7 @@ struct ncr9x_state
 	bsc->sc_dmabase[8] = (u_int8_t)(pa >> 8);
 	bsc->sc_dmabase[4] = (u_int8_t)(pa >> 16);
 	bsc->sc_dmabase[0] = (u_int8_t)(pa >> 24);
-	
+
 */
 
 #define MAX_NCR9X_UNITS 10
@@ -735,7 +735,7 @@ static void ncr9x_io_bput(struct ncr9x_state *ncr, uaecptr addr, uae_u32 val)
 			}
 			return;
 		}
-	
+
 		// DMA LEN (words)
 		if (addr >= 0xf04a && addr < 0xf04c) {
 			if (addr == 0xf04a) {

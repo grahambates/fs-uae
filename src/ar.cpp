@@ -93,7 +93,7 @@
 * 0x400001.B WRITE
 *
 * bit 1 set: enable freeze caused by BFE001.B READ
-* bit 0 set: enable freeze caused by BFD100.B WRITE 
+* bit 0 set: enable freeze caused by BFD100.B WRITE
 *
 * 0x400002/0x400003: mirrors 0x400000/0x400001
 * 0x400006/0x400007: when written to, turns chip-ram overlay off
@@ -206,7 +206,7 @@
 
 #include "options.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "rommgr.h"
 #include "custom.h"
 #include "newcpu.h"

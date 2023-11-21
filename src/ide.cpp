@@ -16,7 +16,7 @@
 #include "filesys.h"
 #include "gui.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "newcpu.h"
 #include "threaddep/thread.h"
 #include "debug.h"
@@ -1218,7 +1218,7 @@ void ide_write_reg (struct ide_hdf *ide, int ide_reg, uae_u32 val)
 {
 	if (!ide)
 		return;
-	
+
 	ide->regs1->ide_devcon &= ~0x80; /* clear HOB */
 	ide->regs0->ide_devcon &= ~0x80; /* clear HOB */
 	if (IDE_LOG > 2 && ide_reg > 0 && (1 || ide->num > 0))

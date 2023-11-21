@@ -15,7 +15,7 @@
 #include "scsi.h"
 #include "blkdev.h"
 #include "zfile.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "scsi.h"
 #include "threaddep/thread.h"
 #include "a2091.h"
@@ -91,7 +91,7 @@ static void tape_init (int unit, struct scsi_data_tape *tape, const TCHAR *tape_
 struct scsi_data_tape *tape_alloc (int unitnum, const TCHAR *tape_directory, bool readonly)
 {
 	struct scsi_data_tape *tape = xcalloc (struct scsi_data_tape, 1);
-	
+
 	tape_init (unitnum, tape, tape_directory, readonly);
 	return tape;
 }

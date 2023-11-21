@@ -10,7 +10,7 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 
 #include "traps.h"
 #include "blkdev.h"
@@ -410,7 +410,7 @@ static int get_standard_cd_unit2 (struct uae_prefs *p, cd_standard_unit csu)
 	if (isaudio) {
 		TCHAR vol[100];
 		_stprintf (vol, _T("%c:\\"), isaudio);
-		if (sys_command_open_internal (unitnum, vol, csu)) 
+		if (sys_command_open_internal (unitnum, vol, csu))
 			return unitnum;
 	}
 fallback:
@@ -653,7 +653,7 @@ static void check_changes (int unitnum)
 			statusline_add_message(STATUSTYPE_CD, _T("CD%d: -"), unitnum);
 
 #ifdef RETROPLATFORM
-		rp_cd_image_change (unitnum, NULL); 
+		rp_cd_image_change (unitnum, NULL);
 #endif
 		if (gotsem) {
 			freesem (unitnum);
@@ -1046,7 +1046,7 @@ struct device_info *sys_command_info (int unitnum, struct device_info *di, int q
 			}
 		}
 	}
-	return dix; 
+	return dix;
 }
 
 #define MODE_SELECT_6 0x15
@@ -1316,7 +1316,7 @@ int scsi_cd_emulate (int unitnum, uae_u8 *cmdbuf, int scsi_cmd_len,
 	struct device_info di;
 	uae_u8 cmd;
 	int dlen, lun;
-	
+
 	if (cmdbuf == NULL) {
 		if (st->mediawaschanged) {
 			st->mediawaschanged = false;
@@ -1330,13 +1330,13 @@ int scsi_cd_emulate (int unitnum, uae_u8 *cmdbuf, int scsi_cmd_len,
 	if (cmd == 0x03) {
 		return 0;
 	}
-	
+
 	dlen = *data_len;
 	*reply_len = *sense_len = 0;
 
 	if (log_scsiemu) {
 		write_log (_T("CD SCSIEMU %d: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X CMDLEN=%d DATA=%p LEN=%d\n"), unitnum,
-			cmdbuf[0], cmdbuf[1], cmdbuf[2], cmdbuf[3], cmdbuf[4], cmdbuf[5], cmdbuf[6], 
+			cmdbuf[0], cmdbuf[1], cmdbuf[2], cmdbuf[3], cmdbuf[4], cmdbuf[5], cmdbuf[6],
 			cmdbuf[7], cmdbuf[8], cmdbuf[9], cmdbuf[10], cmdbuf[11],
 			scsi_cmd_len, scsi_data, dlen);
 	}
@@ -1801,7 +1801,7 @@ int scsi_cd_emulate (int unitnum, uae_u8 *cmdbuf, int scsi_cmd_len,
 						break;
 					strack++;
 				}
-				addtocentry (&p2, &maxlen, 0xa2, 0xaa, msf, p, toc);				
+				addtocentry (&p2, &maxlen, 0xa2, 0xaa, msf, p, toc);
 				int tlen = p2 - (p + 2);
 				p[0] = tlen >> 8;
 				p[1] = tlen >> 0;

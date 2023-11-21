@@ -3,7 +3,7 @@
 
 #include "uae/types.h"
 #ifdef FSUAE
-#include "uae/memory.h"
+#include "memory.h"
 #endif
 
 extern addrbank *cd32_fmv_init (struct autoconfig_info *aci);

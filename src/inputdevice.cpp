@@ -31,7 +31,7 @@
 #include "custom.h"
 #include "xwin.h"
 #include "drawing.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "events.h"
 #include "newcpu.h"
 #include "uae.h"
@@ -573,7 +573,7 @@ static void inputdevice_store_used_device(struct jport *jps, int portnum, bool d
 			}
 		}
 	}
-	// add new	
+	// add new
 	for (int i = 0; i < MAX_STORED_JPORTS; i++) {
 		struct stored_jport *jp = &stored_jports[portnum][i];
 		if (!jp->inuse) {
@@ -823,7 +823,7 @@ static void write_kbr_config (struct zfile *f, int idnum, int devnum, struct uae
 			kbr->port[i][SPARE_SUB_EVENT] &&
 			keyboard_default[k].node[0].evt == kbr->eventid[i][SPARE_SUB_EVENT] && keyboard_default[k].node[0].flags == (kbr->flags[i][SPARE_SUB_EVENT] & ID_FLAG_SAVE_MASK_FULL);
 
-		if (kbr->port[i][0] > 0 && !(kbr->flags[i][0] & ID_FLAG_GAMEPORTSCUSTOM_MASK) && 
+		if (kbr->port[i][0] > 0 && !(kbr->flags[i][0] & ID_FLAG_GAMEPORTSCUSTOM_MASK) &&
 			(kbr->eventid[i][1] <= 0 && kbr->eventid[i][2] <= 0 && kbr->eventid[i][3] <= 0) &&
 			(kbr->port[i][SPARE_SUB_EVENT] == 0 || isdefaultspare))
 			skip = 1;
@@ -1181,7 +1181,7 @@ static const int af_port4[] = {
 	INPUTEVENT_PAR_JOY2_FIRE_BUTTON, INPUTEVENT_PAR_JOY2_2ND_BUTTON,
 	-1
 };
-static const int *af_ports[] = { af_port1, af_port2, af_port3, af_port4 }; 
+static const int *af_ports[] = { af_port1, af_port2, af_port3, af_port4 };
 
 static void setautofireevent(struct uae_input_device *uid, int num, int sub, int af, int index)
 {
@@ -1485,7 +1485,7 @@ void read_inputdevice_config (struct uae_prefs *pr, const TCHAR *option, TCHAR *
 		if (idnum < GAMEPORT_INPUT_SETTINGS)
 			_tcscpy (pr->input_config_name[idnum], value);
 		return;
-	} 
+	}
 
 	if (_tcsncmp (option, _T("mouse."), 6) == 0) {
 		p = option + 6;
@@ -2281,7 +2281,7 @@ void inputdevice_tablet (int x, int y, int z, int pressure, uae_u32 buttonbits, 
 	//write_log (_T("%d %d %d %d %08X %d %d %d %d\n"), x, y, z, pressure, buttonbits, inproximity, ax, ay, az);
 	p = mousehack_address;
 
-	memcpy (tmp, p + MH_START, MH_END - MH_START); 
+	memcpy (tmp, p + MH_START, MH_END - MH_START);
 #if 0
 	if (currprefs.input_magic_mouse_cursor) {
 		int maxx, maxy, diffx, diffy;
@@ -2443,7 +2443,7 @@ static void inputdevice_mh_abs (int x, int y, uae_u32 buttonbits)
 	12 W PC emulation window height (Host OS pixels)
 	14 W RTG hardware emulation width (Amiga pixels)
 	16 W RTG hardware emulation height (Amiga pixels)
-	
+
 	20 W Amiga Mouse X (write-only)
 	22 W Amiga Mouse Y (write-only)
 
@@ -2541,7 +2541,7 @@ static void inputdevice_mh_abs_v36 (int x, int y)
 	off = getmhoffset ();
 	p = rtarea + off;
 
-	memcpy (tmp, p + MH_START, MH_END - MH_START); 
+	memcpy (tmp, p + MH_START, MH_END - MH_START);
 
 	getgfxoffset (&fdx, &fdy, &fmx, &fmy);
 	x -= fdx;
@@ -3277,7 +3277,7 @@ static void cap_check (void)
 			// CD32 pad in 2-button mode: blue button is not floating
 			if (cd32_pad_enabled[joy] && i == 1 && charge == 0)
 				charge = 2;
-		
+
 			/* official Commodore mouse has pull-up resistors in button lines
 			* NOTE: 3rd party mice may not have pullups! */
 			if (dong < 0 && (is_mouse_pullup (joy) && mouse_port[joy] && digital_port[joy][i]) && charge == 0)
@@ -4580,7 +4580,7 @@ static int handle_input_event (int nr, int state, int max, int autofire, bool ca
 					// relative events
 					relativecount[joy][unit] += state;
 					cnt = relativecount[joy][unit];
-					neg = cnt < -mmax;	
+					neg = cnt < -mmax;
 					pos = cnt > mmax;
 					if (cnt < -(mmax + mextra))
 						cnt = -(mmax + mextra);
@@ -4634,7 +4634,7 @@ static int handle_input_event (int nr, int state, int max, int autofire, bool ca
 			if (bot)
 				joydir[joy] |= DIR_DOWN;
 			if (joy == 0 || joy == 1)
-				joymousecounter (joy); 
+				joymousecounter (joy);
 
 			gui_gameport_axis_change (joy, DIR_LEFT_BIT, left, 0);
 			gui_gameport_axis_change (joy, DIR_RIGHT_BIT, right, 0);
@@ -5157,7 +5157,7 @@ static bool process_custom_event (struct uae_input_device *id, int offset, int s
 
 	if (!id)
 		return false;
-	
+
 	slotoffset = sub & ~3;
 	sub &= 3;
 	flags = id->flags[offset][slotoffset];
@@ -5207,7 +5207,7 @@ static bool process_custom_event (struct uae_input_device *id, int offset, int s
 	flags = id->flags[offset][slotoffset];
 	custompos = (flags & ID_FLAG_CUSTOMEVENT_TOGGLED1) ? 1 : 0;
 	custompos |= (flags & ID_FLAG_CUSTOMEVENT_TOGGLED2) ? 2 : 0;
- 
+
 	if (state < 0) {
 		idx = 0;
 		custompos = 0;
@@ -5905,7 +5905,7 @@ int inputdevice_get_compatibility_input (struct uae_prefs *prefs, int index, int
 		*at = axistable;
 	if (inputlist == NULL)
 		return -1;
-	
+
 	//write_log (_T("%d %p %p\n"), *typelist, *inputlist, *at);
 	int cnt;
 	for (cnt = 0; joyinputs[index] && joyinputs[index][cnt] >= 0; cnt++) {
@@ -6865,7 +6865,7 @@ void inputdevice_updateconfig_internal (struct uae_prefs *srcprefs, struct uae_p
 void inputdevice_updateconfig (struct uae_prefs *srcprefs, struct uae_prefs *dstprefs)
 {
 	inputdevice_updateconfig_internal (srcprefs, dstprefs);
-	
+
 	set_config_changed ();
 
 	for (int i = 0; i < MAX_JPORTS; i++) {
@@ -7019,7 +7019,7 @@ void inputdevice_devicechange (struct uae_prefs *prefs)
 			TCHAR tmp[10];
 			_stprintf (tmp, _T("kbd%d"), jportskb[i] + 1);
 			found = inputdevice_joyport_config (prefs, tmp, NULL, i, jportsmode[i], 0, true) != 0;
-			
+
 		}
 		fixedports[i] = found;
 		prefs->jports[i].autofire = jportaf[i];
@@ -7087,7 +7087,7 @@ int inputdevice_synccapslock (int oldcaps, int *capstable)
 {
 	struct uae_input_device *na = &keyboards[0];
 	int j, i;
-	
+
 	if (!keyboards)
 		return -1;
 	for (j = 0; na->extra[j]; j++) {
@@ -7875,7 +7875,7 @@ static void swapjoydevice (struct uae_input_device *uid, const int **swaps)
 										int evtnum2 = swaps[1 - k][kk];
 										for (int m = 0; axistable[m] >= 0; m += 3) {
 											if (evtnum2 == axistable[m] || evtnum2 == axistable[m + 1] || evtnum2 == axistable[m + 2]) {
-												swapevent (uid, i, j, axistable[m + ii]);												
+												swapevent (uid, i, j, axistable[m + ii]);
 												found = true;
 											}
 										}

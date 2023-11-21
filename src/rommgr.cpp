@@ -3,7 +3,7 @@
   *
   * ROM file management
   *
-  */ 
+  */
 
 #include "sysconfig.h"
 #include "sysdeps.h"
@@ -11,7 +11,7 @@
 #include "options.h"
 #include "uae.h"
 #include "gui.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "rommgr.h"
 #include "zfile.h"
 #include "crc32.h"
@@ -1170,7 +1170,7 @@ struct romdata *getromdatabydata (uae_u8 *rom, int size)
 			ret = checkromdata (sha1, size, ROMTYPE_AR2);
 			memcpy (rom, tmp, 4);
 		}
-	}//9 
+	}//9
 	xfree (tmpbuf);
 	return ret;
 }
@@ -1434,7 +1434,7 @@ struct zfile *read_rom (struct romdata *prd)
 			break;
 		rd2--;
 	}
-	
+
 	size = rd2->size;
 	crc32 = rd2->crc32;
 	name = rd->name;
@@ -1571,7 +1571,7 @@ struct zfile *read_rom (struct romdata *prd)
 struct zfile *rom_fopen (const TCHAR *name, const TCHAR *mode, int mask)
 {
 	struct zfile *f;
-	//write_log (_T("attempting to load '%s'\n"), name); 
+	//write_log (_T("attempting to load '%s'\n"), name);
 	f = zfile_fopen (name, mode, mask);
 	//write_log (_T("=%p\n"), f);
 	return f;
@@ -1785,7 +1785,7 @@ static void device_rom_defaults(struct uae_prefs *p, struct boardromconfig *brc,
 	brc->device_type = romtype;
 	brc->device_num = devnum;
 	for (int i = 0; i < MAX_BOARD_ROMS; i++) {
-		brc->roms[i].device_id = 7;	
+		brc->roms[i].device_id = 7;
 		brc->roms[i].back = brc;
 	}
 	int order = 0;

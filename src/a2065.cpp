@@ -13,7 +13,7 @@
 #ifdef A2065
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "a2065.h"
@@ -241,7 +241,7 @@ static int mungepacket (uae_u8 *packet, int len)
 				if (sum == 0)
 					sum = 0xffff;
 				data[6] = sum >> 8;
-				data[7] = sum >> 0;	
+				data[7] = sum >> 0;
 				ret |= 1;
 			}
 			// this all just to translate single DHCP MAC..
@@ -590,7 +590,7 @@ static void chip_init (void)
 
 	prom = (am_mode & MODE_PROM) ? 1 : 0;
 	fakeprom = a2065_promiscuous ? 1 : 0;
-	
+
 	fakemac[0] = p[3];
 	fakemac[1] = p[2];
 	fakemac[2] = p[5];
@@ -684,7 +684,7 @@ static void chip_wput (uaecptr addr, uae_u16 v)
 				}
 				if (log_a2065)
 					write_log (_T("A2065: START. %04X -> %04X -> %04X\n"), oreg, v, csr[0]);
-			
+
 			} else if ((csr[0] & CSR0_INIT) && !(oreg & CSR0_INIT) && (oreg & CSR0_STOP)) {
 
 				chip_init ();
@@ -765,7 +765,7 @@ static uae_u32 REGPARAM2 a2065_wget (uaecptr addr)
 		v = a2065_bget2 (addr + 1) << 8;
 		v |= a2065_bget2 (addr + 0);
 #endif
-	} 
+	}
 	if (log_a2065 > 3 && addr < MEM_MIN)
 		write_log (_T("A2065_WGET: %08X -> %04X PC=%08X\n"), addr, v & 0xffff, M68K_GETPC);
 	return v;

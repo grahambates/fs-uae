@@ -25,7 +25,7 @@
 
 #include "options.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "rommgr.h"
 #include "custom.h"
 #include "newcpu.h"
@@ -431,7 +431,7 @@ static bool is_dma_enabled(struct wd_state *wds)
 		case COMMODORE_8727:
 		return wds->cdmac.dmac_dma > 0;
 	}
-	return false;	
+	return false;
 }
 
 void rethink_a2091 (void)
@@ -1070,7 +1070,7 @@ static void wd_cmd_sel_xfer (struct wd_chip_state *wd, struct wd_state *wds, boo
 	if (wd->wdregs[WD_COMMAND_PHASE] == 0x44) {
 		wd->wdregs[WD_COMMAND_PHASE] = 0x45;
 	}
-		
+
 	if (wd->wdregs[WD_COMMAND_PHASE] == 0x45) {
 		settc (wd, tmp_tc);
 		wd->wd_dataoffset = 0;
@@ -1291,7 +1291,7 @@ static void wd_cmd_sel (struct wd_chip_state *wd, struct wd_state *wds, bool atn
 	} else {
 		wd->wdregs[WD_COMMAND_PHASE] = 0x20;
 		set_status (wd, CSR_SRV_REQ | PHS_COMMAND, 4);
-	} 
+	}
 }
 
 static void wd_cmd_reset (struct wd_chip_state *wd, bool irq)
@@ -1860,7 +1860,7 @@ static void a2090_st506(struct wd_state *wd, uae_u8 b)
 	for (int i = 0; i < sizeof cb; i++) {
 		cb[i] = get_byte(cbp + i);
 	}
-	int unit = (cb[1] >> 5) & 1; 
+	int unit = (cb[1] >> 5) & 1;
 	// new command?
 	if (cb[12] != 0xff)
 		return;
@@ -2214,7 +2214,7 @@ static void dmac_a2091_write_byte (struct wd_state *wd, uaecptr addr, uae_u32 b)
 #if A2091_DEBUG_IO > 0
 		write_log (_T("dmac_bput %04X=%02X PC=%08X\n"), addr, b & 255, M68K_GETPC);
 #endif
-	
+
 	if (addr < 0x40)
 		return;
 
@@ -2667,7 +2667,7 @@ static void dmac_gvp_write_byte(struct wd_state *wd, uaecptr addr, uae_u32 b)
 			case 0x63: // SCMD
 			wdscsi_put(&wd->wc, wd, b);
 			break;
-		
+
 			case 0x74: // "secret1"
 			case 0x75:
 			case 0x7a: // "secret2"
@@ -2692,9 +2692,9 @@ static void dmac_gvp_write_byte(struct wd_state *wd, uaecptr addr, uae_u32 b)
 			case 0x62: // SCMD
 			wdscsi_put(&wd->wc, wd, b);
 			break;
-		
+
 			// 68:
-			// 00 CPU SRAM access 
+			// 00 CPU SRAM access
 			// ff WD SRAM access
 
 			// 6c:
@@ -2719,7 +2719,7 @@ static void dmac_gvp_write_byte(struct wd_state *wd, uaecptr addr, uae_u32 b)
 				wd_master_reset(wd, true);
 			wd->gdmac.cntr = b;
 			break;
-		
+
 			default:
 			write_log(_T("gvp_s1_bput_unk %04X=%02X PC=%08X\n"), addr, b & 255, M68K_GETPC);
 			break;

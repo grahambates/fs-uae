@@ -15,7 +15,7 @@
 
 #include "options.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "rommgr.h"
 #include "custom.h"
 #include "newcpu.h"
@@ -304,7 +304,7 @@ SCSIRequest *scsi710_req_new(SCSIDevice *d, uint32_t tag, uint32_t lun, uint8_t 
 	req->hba_private = hba_private;
 	req->bus = &ncr->scsibus;
 	req->bus->qbus.parent = &ncr->devobject;
-	
+
 	memcpy (sd->cmd, buf, len);
 	sd->cmd_len = len;
 	return req;
@@ -320,7 +320,7 @@ int32_t scsi710_req_enqueue(SCSIRequest *req)
 	scsi_start_transfer (sd);
 	scsi_emulate_analyze (sd);
 	//write_log (_T("%02x.%02x.%02x.%02x.%02x.%02x\n"), sd->cmd[0], sd->cmd[1], sd->cmd[2], sd->cmd[3], sd->cmd[4], sd->cmd[5]);
-	
+
 	if (sd->direction <= 0)
 		scsi_emulate_cmd(sd);
 	if (sd->direction == 0)

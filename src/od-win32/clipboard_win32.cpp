@@ -22,12 +22,12 @@ typedef unsigned int UINT;
 #endif
 #include "clipboard.h"
 #include "keybuf.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "autoconf.h"
 
 #include "options.h"
 #include "threaddep/thread.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "native2amiga_api.h"
 
 #ifdef FSUAE
@@ -902,11 +902,11 @@ static int clipboard_put_bmp_real (HBITMAP hbmp)
 {
 	int ret = FALSE;
 
-	if (!OpenClipboard (chwnd)) 
+	if (!OpenClipboard (chwnd))
 		return ret;
 	clipopen++;
 	EmptyClipboard ();
-	SetClipboardData (CF_BITMAP, hbmp); 
+	SetClipboardData (CF_BITMAP, hbmp);
 	ret = TRUE;
 	CloseClipboard ();
 	clipopen--;

@@ -50,7 +50,7 @@
 #include "sysdeps.h"
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "zfile.h"
 #include "ar.h"
 #include "autoconf.h"
@@ -1155,7 +1155,7 @@ int save_state (const TCHAR *filename, const TCHAR *description)
 	savestate_state = 0;
 #ifdef FSUAE
     uae_callback(uae_on_save_state_finished, filename);
-#endif	
+#endif
 	return v;
 }
 

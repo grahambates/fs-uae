@@ -6,7 +6,7 @@
 #include "options.h"
 #include "threaddep/thread.h"
 #include "traps.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "audio.h"
 #include "a2091.h"
 #include "a2065.h"

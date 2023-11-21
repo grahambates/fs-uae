@@ -21,7 +21,7 @@
 #include "audio.h"
 #include "sounddep/sound.h"
 #include "events.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "cia.h"
@@ -755,7 +755,7 @@ static void reset_dbplh_all (int hpos)
 			reset_dbplh(hpos, num);
 		}
 		dbplpth_on2 = 0;
-	}	
+	}
 }
 
 static void reset_dbpll (int hpos, int num)
@@ -774,7 +774,7 @@ static void reset_dbpll_all (int hpos)
 			reset_dbpll(hpos, num);
 		}
 		dbplptl_on2 = 0;
-	}	
+	}
 }
 #endif
 
@@ -982,7 +982,7 @@ static void estimate_last_fetch_cycle (int hpos)
 
 	if (plf_state < plf_passed_stop) {
 		int stop;
-		
+
 		if (currprefs.chipset_mask & CSMASK_ECS_AGNUS) {
 			// ECS: stop wins if start == stop
 			stop = plfstop + DDF_OFFSET < hpos || plfstop > HARD_DDF_STOP ? HARD_DDF_STOP : plfstop;
@@ -1493,7 +1493,7 @@ STATIC_INLINE void do_delays_3_ecs (int nbits)
 				dp -= (maxhpos * 2) << toscr_res;
 			dp &= fetchmode_mask;
 			do_tosrc (oddeven, 2, 1, 0);
-			
+
 
 			if (todisplay_fetched[oddeven] && dp == delay) {
 				for (int i = oddeven; i < toscr_nr_planes_shifter; i += 2) {
@@ -2325,7 +2325,7 @@ static void do_overrun_fetch(int until, int fm)
 			default:
 			break;
 			}
-			break;	
+			break;
 		}
 
 #if 0
@@ -2376,7 +2376,7 @@ static void finish_final_fetch (void)
 	// workaround for too long fetches that don't pass plf_passed_stop2 before end of scanline
 	if (aga_plf_passed_stop2 && plf_state >= plf_passed_stop)
 		plf_state = plf_end;
-	
+
 	// This is really the end of scanline, we can finally flush all remaining data.
 	thisline_decision.plfright += flush_plane_data (fetchmode);
 	thisline_decision.plflinelen = out_offs;
@@ -2813,7 +2813,7 @@ static void start_bpl_dma (int hstart)
 		bpldmawasactive = true;
 
 	} else {
-		
+
 		flush_display (fetchmode);
 		// Calculate difference between last end to new start
 		int diff = (hstart - thisline_decision.plfright) << (1 + toscr_res);
@@ -4150,13 +4150,13 @@ void compute_framesync (void)
 		int res = GET_RES_AGNUS (bplcon0);
 		int vres = islace ? 1 : 0;
 		int res2, vres2;
-			
+
 		res2 = currprefs.gfx_resolution;
 		if (doublescan > 0)
 			res2++;
 		if (res2 > RES_MAX)
 			res2 = RES_MAX;
-		
+
 		vres2 = currprefs.gfx_vresolution;
 		if (doublescan > 0 && !islace)
 			vres2--;
@@ -4171,7 +4171,7 @@ void compute_framesync (void)
 
 		gfxvidinfo.drawbuffer.inwidth = ((maxhpos - (maxhpos - start + DISPLAY_LEFT_SHIFT / 2) + 1) * 2) << res2;
 		gfxvidinfo.drawbuffer.inxoffset = stop * 2;
-		
+
 		gfxvidinfo.drawbuffer.extrawidth = 0;
 		gfxvidinfo.drawbuffer.inwidth2 = gfxvidinfo.drawbuffer.inwidth;
 
@@ -4345,20 +4345,20 @@ static void init_hz (bool checkvposw)
 
 		if ((beamcon0 & 0x1000) && (beamcon0 & 0x0200)) { // VARVBEN + VARVSYEN
 			minfirstline = vsstop > vbstop ? vsstop : vbstop;
-			if (minfirstline > maxvpos / 2) 
+			if (minfirstline > maxvpos / 2)
 				minfirstline = vsstop > vbstop ? vbstop : vsstop;
 			firstblankedline = vbstrt;
 		} else if (beamcon0 & 0x0200) {
 			minfirstline = vsstop;
-			if (minfirstline > maxvpos / 2) 
+			if (minfirstline > maxvpos / 2)
 				minfirstline = 0;
 		} else if (beamcon0 & 0x1000) {
 			minfirstline = vbstop;
-			if (minfirstline > maxvpos / 2) 
+			if (minfirstline > maxvpos / 2)
 				minfirstline = 0;
 			firstblankedline = vbstrt;
 		}
-		
+
 		if (minfirstline < 2)
 			minfirstline = 2;
 		if (minfirstline >= maxvpos)
@@ -4511,7 +4511,7 @@ static void calcdiw (void)
 
 	diwfirstword = coord_diw_to_window_x (hstrt);
 	diwlastword = coord_diw_to_window_x (hstop);
-	
+
 	if (diwfirstword >= diwlastword) {
 		diwfirstword = min_diwlastword;
 		diwlastword = max_diwlastword;
@@ -4816,7 +4816,7 @@ static void REFPTR(uae_u16 v)
 	 b14 4000: R 020
 	 b13 2000: R 010
 	 b12 1000: R 008
-	 b11 0800: R 004 
+	 b11 0800: R 004
 	 b10 0400: R 002
 	 b09 0200: R 001
 	 b08 0100: C 080
@@ -5455,7 +5455,7 @@ static void BPLCON0 (int hpos, uae_u16 v)
 
 	if (bplcon0 & 4)
 		bplcon0_interlace_seen = true;
-	
+
 	bplcon0 = v;
 
 	bpldmainitdelay (hpos);
@@ -6666,7 +6666,7 @@ static void update_copper (int until_hpos)
 				int ch_comp = c_hpos;
 				if (ch_comp & 1)
 					ch_comp = 0;
-		
+
 				/* First handle possible blitter wait
 				 * Must be before following free cycle check
 				 */
@@ -7093,7 +7093,7 @@ static void init_hardware_frame (void)
 	}
 	first_planes_vpos_old = first_planes_vpos;
 	last_planes_vpos_old = last_planes_vpos;
-	
+
 	if (diwfirstword_total != diwfirstword_total_old ||
 		diwlastword_total != diwlastword_total_old ||
 		ddffirstword_total != ddffirstword_total_old ||
@@ -7321,7 +7321,7 @@ static bool framewait (void)
 			int max, adjust, flipdelay, val;
 			frame_time_t now;
 			static struct mavg_data ma_skip, ma_adjust;
-			
+
 			val = 0;
 
 			if (!frame_rendered && !picasso_on) {
@@ -7343,9 +7343,9 @@ static bool framewait (void)
 				adjust = 0;
 			if (adjust > vsynctimebase * 2 / 3)
 				adjust = vsynctimebase * 2 / 3;
-			
+
 			int adjust_avg = mavg (&ma_adjust, adjust, MAVG_VSYNC_SIZE);
-			
+
 			val += adjust_avg;
 
 			int flipdelay_avg = mavg (&ma_skip, flipdelay, MAVG_VSYNC_SIZE);
@@ -7537,7 +7537,7 @@ static bool framewait (void)
 
 		if (0)
 			write_log (_T("%06d:%06d/%06d\n"), adjust, vsynctimeperline, vstb);
-	
+
 	} else {
 
 		int t = 0;
@@ -7580,7 +7580,7 @@ static bool framewait (void)
 			vsynctimeperline = 0;
 		else if (vsynctimeperline > vstb / 3)
 			vsynctimeperline = vstb / 3;
-		
+
 		frame_shown = true;
 
 	}
@@ -7789,7 +7789,7 @@ static void vsync_handler_pre (void)
 	}
 
 	bool frameok = framewait ();
-	
+
 	if (!picasso_on) {
 		if (!frame_rendered && vblank_hz_state) {
 #ifdef FSUAE
@@ -8338,7 +8338,7 @@ static void hsync_handler_post (bool onvsync)
 		if (tick - oldtick > 2000 || tick - oldtick < -2000) {
 			oldtick = tick - ms;
 			write_log (_T("RESET\n"));
-		} 
+		}
 		if (tick - oldtick >= ms) {
 			CIA_vsync_posthandler (1);
 			oldtick += ms;
@@ -9120,7 +9120,7 @@ writeonly:
 			decide_fetch_safe (hpos);
 			debug_wputpeek (0xdff000 + addr, l);
 			r = custom_wput_1 (hpos, addr, l, 1);
-			
+
 			// CPU gets back (OCS/ECS only):
 			// - if last cycle was DMA cycle: DMA cycle data
 			// - if last cycle was not DMA cycle: FFFF or some ANDed old data.
@@ -10055,7 +10055,7 @@ uae_u8 *save_custom_event_delay (int *len, uae_u8 *dstptr)
 			save_u8 (1);
 			save_u64 (e->evtime - get_cycles ());
 			save_u32 (e->data);
-		
+
 		}
 	}
 
@@ -10108,7 +10108,7 @@ void check_prefs_changed_custom (void)
 	}
 	if (currprefs.turbo_emulation != changed_prefs.turbo_emulation)
 		warpmode (changed_prefs.turbo_emulation);
-	if (inputdevice_config_change_test ()) 
+	if (inputdevice_config_change_test ())
 		inputdevice_copyconfig (&changed_prefs, &currprefs);
 	currprefs.immediate_blits = changed_prefs.immediate_blits;
 	currprefs.waiting_blits = changed_prefs.waiting_blits;

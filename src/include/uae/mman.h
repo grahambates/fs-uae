@@ -4,7 +4,7 @@
 #include "uae/types.h"
 #ifdef FSUAE
 #include "uae/limits.h"
-#include "uae/memory.h"
+#include "memory.h"
 #endif
 
 #define MAX_SHMID 256

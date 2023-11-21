@@ -2,7 +2,7 @@
  * cpummu.cpp -  MMU emulation
  *
  * Copyright (c) 2001-2004 Milan Jurik of ARAnyM dev team (see AUTHORS)
- * 
+ *
  * Inspired by UAE MMU patch
  *
  * This file is part of the ARAnyM project which builds a new and powerful
@@ -28,7 +28,7 @@
 #include "sysdeps.h"
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "newcpu.h"
 #include "cpummu.h"
 #include "debug.h"
@@ -169,7 +169,7 @@ static void mmu_dump_table(const char * label, uaecptr root_ptr)
 		}
 	}
 	console_out_f(_T("MMU dump end\n"));
-}			
+}
 
 #else
 /* {{{ mmu_dump_table */
@@ -600,7 +600,7 @@ static uaecptr REGPARAM2 mmu_lookup_pagetable(uaecptr addr, bool super, bool wri
 	desc = phys_get_long(desc_addr);
 	if ((desc & 2) == 0) {
 #if MMUDEBUG > 1
-		write_log(_T("MMU: invalid ptr descriptor %s for %x desc at %x desc=%x\n"), super ? _T("srp"):_T("urp"), 
+		write_log(_T("MMU: invalid ptr descriptor %s for %x desc at %x desc=%x\n"), super ? _T("srp"):_T("urp"),
 				addr, desc_addr, desc);
 #endif
 		*status |= MMU_FSLW_PTB;
@@ -633,7 +633,7 @@ static uaecptr REGPARAM2 mmu_lookup_pagetable(uaecptr addr, bool super, bool wri
 			*status |= MMU_FSLW_IL;
 #if MMUDEBUG > 1
 			write_log(_T("MMU: double indirect descriptor log=%0x desc=%08x @%08x\n"), addr, desc, desc_addr);
-#endif	
+#endif
 		} else {
 			*status |= MMU_FSLW_PF;
 		}
@@ -1001,7 +1001,7 @@ uae_u8 REGPARAM2 sfc_get_byte(uaecptr addr)
 	bool super = (regs.sfc & 4) != 0;
 	bool data = true;
 	uae_u8 res;
-	
+
 	ismoves = true;
 	res = mmu_get_user_byte(addr, super, data, false, sz_byte);
 	ismoves = false;
@@ -1218,12 +1218,12 @@ void REGPARAM2 mmu_flush_atc(uaecptr addr, bool super, bool global)
 		for (way=0;way<ATC_WAYS;way++) {
 			if (!global && mmu_atc_array[type][way][index].global)
 				continue;
-			// if we have this 
+			// if we have this
 			if ((tag == mmu_atc_array[type][way][index].tag) && (mmu_atc_array[type][way][index].valid)) {
 				mmu_atc_array[type][way][index].valid=false;
 			}
 		}
-	}	
+	}
 }
 
 void REGPARAM2 mmu_flush_atc_all(bool global)

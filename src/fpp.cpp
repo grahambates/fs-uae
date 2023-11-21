@@ -22,7 +22,7 @@
 #endif
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "uae/attributes.h"
 #include "uae/vm.h"
 #include "custom.h"
@@ -1159,7 +1159,7 @@ STATIC_INLINE void set_fpsr (uae_u32 x)
 static uae_u32 get_ftag (uae_u32 w1, uae_u32 w2, uae_u32 w3, int size)
 {
 	int exp = (w1 >> 16) & 0x7fff;
-	
+
 	if (exp == 0) {
 		if (!w2 && !w3)
 			return 1; // ZERO
@@ -1268,7 +1268,7 @@ static void from_pack (fpdata *src, uae_u32 *wrd, int kfactor)
 #else
 	sprintf (str, "%#.17e", fp);
 #endif
-	
+
 	// get exponent
 	cp = str;
 	while (*cp++ != 'e');
@@ -2060,7 +2060,7 @@ void fpuop_save (uae_u32 opcode)
 		/* 12 byte 68060 NULL/IDLE/EXCP frame.  */
 		int frame_size = 12;
 		uae_u32 frame_id, frame_v1, frame_v2;
-		
+
 		if (regs.fpu_exp_state > 1) {
 			uae_u32 src1[3];
 			from_exten (&regs.exp_src1, &src1[0], &src1[1], &src1[2]);
@@ -2216,7 +2216,7 @@ void fpuop_save (uae_u32 opcode)
 		int frame_size_real = currprefs.fpu_model == 68882 ? 0x3c : 0x1c;;
 		int frame_size = regs.fpu_state == 0 ? 0 : frame_size_real;
 		uae_u32 frame_id = regs.fpu_state == 0 ? ((frame_size_real - 4) << 16) : (fpu_version << 24) | ((frame_size_real - 4) << 16);
-		
+
 		if (currprefs.mmu_model) {
 			if (incr < 0) {
 				for (i = 0; i < (frame_size / 4) - 1; i++) {
@@ -2722,7 +2722,7 @@ static bool arithmetic_softfloat(floatx80 *srcd, int reg, int extra)
 		case 0x00: /* FMOVE */
 		case 0x40:
 		case 0x44:
-			regs.fp[reg].fpx = fx;	
+			regs.fp[reg].fpx = fx;
 			break;
 		case 0x01: /* FINT */
 			regs.fp[reg].fpx = floatx80_round_to_int(fx, fxstatus);

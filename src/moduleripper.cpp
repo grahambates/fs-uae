@@ -13,7 +13,7 @@
 
 #include "options.h"
 #include "uae/io.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "uae/seh.h"
 #include "moduleripper.h"
 #include "gui.h"

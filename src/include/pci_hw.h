@@ -3,7 +3,7 @@
 
 #include "uae/types.h"
 #ifdef FSUAE
-#include "uae/memory.h"
+#include "memory.h"
 #endif
 
 #define MAX_PCI_BOARDS 6

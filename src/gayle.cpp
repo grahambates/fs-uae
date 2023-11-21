@@ -15,7 +15,7 @@
 
 #include "options.h"
 
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "filesys.h"
@@ -101,8 +101,8 @@ DE0000 to DEFFFF	64 KB Motherboard resources
 #define GAYLE_CS_WR	0x08    /* write enable (1 == enabled) */
 #define GAYLE_CS_BSY	0x04    /* credit card busy */
 #define GAYLE_CS_IRQ	0x04    /* interrupt request */
-#define GAYLE_CS_DAEN   0x02    /* enable digital audio */ 
-#define GAYLE_CS_DIS    0x01    /* disable PCMCIA slot */ 
+#define GAYLE_CS_DAEN   0x02    /* enable digital audio */
+#define GAYLE_CS_DIS    0x01    /* disable PCMCIA slot */
 
 /* DA9000 */
 #define GAYLE_IRQ_IDE	    0x80
@@ -114,8 +114,8 @@ DE0000 to DEFFFF	64 KB Motherboard resources
 #define GAYLE_IRQ_WR	    0x08    /* write enable (1 == enabled) */
 #define GAYLE_IRQ_BSY	    0x04    /* credit card busy */
 #define GAYLE_IRQ_IRQ	    0x04    /* interrupt request */
-#define GAYLE_IRQ_RESET	    0x02    /* reset machine after CCDET change */ 
-#define GAYLE_IRQ_BERR      0x01    /* generate bus error after CCDET change */ 
+#define GAYLE_IRQ_RESET	    0x02    /* reset machine after CCDET change */
+#define GAYLE_IRQ_BERR      0x01    /* generate bus error after CCDET change */
 
 /* DAA000 */
 #define GAYLE_INT_IDE	    0x80    /* IDE interrupt enable */
@@ -127,8 +127,8 @@ DE0000 to DEFFFF	64 KB Motherboard resources
 #define GAYLE_INT_WR	    0x08    /* write enable change enabled */
 #define GAYLE_INT_BSY	    0x04    /* credit card busy */
 #define GAYLE_INT_IRQ	    0x04    /* credit card interrupt request */
-#define GAYLE_INT_BVD_LEV   0x02    /* BVD int level, 0=lev2,1=lev6 */ 
-#define GAYLE_INT_BSY_LEV   0x01    /* BSY int level, 0=lev2,1=lev6 */ 
+#define GAYLE_INT_BVD_LEV   0x02    /* BVD int level, 0=lev2,1=lev6 */
+#define GAYLE_INT_BSY_LEV   0x01    /* BSY int level, 0=lev2,1=lev6 */
 
 /* 0xDAB000 GAYLE_CONFIG */
 #define GAYLE_CFG_0V            0x00
@@ -1414,7 +1414,7 @@ static int freepcmcia (int reset)
 
 	if (pcmcia_card)
 		gayle_cs_change (GAYLE_CS_CCDET, 0);
-	
+
 	pcmcia_reset ();
 	pcmcia_card = 0;
 
@@ -1476,7 +1476,7 @@ static int initpcmcia (const TCHAR *path, int readonly, int type, int reset, str
 
 	} else if (type == PCMCIA_IDE) {
 
-		if (reset && path) {	
+		if (reset && path) {
 			add_ide_unit (idedrive, TOTAL_IDE * 2, PCMCIA_IDE_ID * 2, uci, NULL);
 		}
 		ide_initialize(idedrive, PCMCIA_IDE_ID);

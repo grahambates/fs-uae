@@ -23,7 +23,7 @@ int disk_debug_track = -1;
 
 #include "uae.h"
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "events.h"
 #include "custom.h"
 #include "ersatz.h"
@@ -1236,7 +1236,7 @@ static int drive_insert (drive * drv, struct uae_prefs *p, int dnum, const TCHAR
 	}
 
 	canauto = 0;
-	if (isrecognizedext (fname)) 
+	if (isrecognizedext (fname))
 		canauto = 1;
 	if (!canauto && drv->diskfile && isrecognizedext (zfile_getname (drv->diskfile)))
 		canauto = 1;

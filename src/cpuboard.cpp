@@ -15,7 +15,7 @@
 #include "sysdeps.h"
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "zfile.h"
 #include "rommgr.h"
 #include "autoconf.h"
@@ -110,7 +110,7 @@
 #define	P5_MAGIC3			0x30
 #define	P5_MAGIC4			0x70
 // when cleared, another CPU gets either stopped or can't access memory until set again.
-#define P5_LOCK_CPU			0x01 
+#define P5_LOCK_CPU			0x01
 
 /* REG_INT 0x28 */
 // 0x40 always set
@@ -2355,7 +2355,7 @@ bool cpuboard_autoconfig_init(struct autoconfig_info *aci)
 			break;
 		}
 		break;
-	
+
 		case BOARD_GVP:
 		switch(p->cpuboard_subtype)
 		{
@@ -2480,7 +2480,7 @@ bool cpuboard_autoconfig_init(struct autoconfig_info *aci)
 			return false;
 		}
 	}
-	
+
 	if (!autoconfig_rom && roms[0] != -1) {
 		if (aci->doinit)
 			romwarning(roms);

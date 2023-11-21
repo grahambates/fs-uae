@@ -6,7 +6,7 @@
 
 #include "sysconfig.h"
 #include "sysdeps.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "uae/mman.h"
 #include "uae/vm.h"
 #include "options.h"
@@ -575,7 +575,7 @@ static int doinit_shm (void)
 		write_log(_T("Z3 UAE mapping.\n"));
 	}
 #endif
- 
+
 #ifdef FSUAE
 	write_log("NATMEM: JIT direct compatible: %d\n", jit_direct_compatible_memory);
 #endif

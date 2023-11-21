@@ -3,7 +3,7 @@
 
 #include "uae/types.h"
 #ifdef FSUAE
-#include "uae/memory.h"
+#include "memory.h"
 #include "commpipe.h"
 #include "filesys.h"
 #endif
@@ -110,7 +110,7 @@ struct ide_thread_state
 	struct ide_hdf **idetable;
 	int idetotal;
 	volatile int state;
-	smp_comm_pipe requests;	
+	smp_comm_pipe requests;
 };
 
 uae_u32 ide_read_reg (struct ide_hdf *ide, int ide_reg);

@@ -3,7 +3,7 @@
 
 #include "uae/types.h"
 #ifdef FSUAE
-#include "uae/memory.h"
+#include "memory.h"
 #endif
 
 bool sndboard_init(struct autoconfig_info *aci);

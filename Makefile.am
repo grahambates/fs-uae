@@ -393,6 +393,7 @@ libuae_a_SOURCES = \
 	src/include/keybuf.h \
 	src/include/luascript.h \
 	src/include/mackbd.h \
+	src/include/memory.h \
 	src/include/mmu_common.h \
 	src/include/moduleripper.h \
 	src/include/native2amiga.h \
@@ -445,7 +446,6 @@ libuae_a_SOURCES = \
 	src/include/uae/likely.h \
 	src/include/uae/limits.h \
 	src/include/uae/log.h \
-	src/include/uae/memory.h \
 	src/include/uae/mman.h \
 	src/include/uae/parser.h \
 	src/include/uae/patch.h \

@@ -11,7 +11,7 @@
 
 #include "uae/types.h"
 #ifdef FSUAE
-#include "uae/memory.h"
+#include "memory.h"
 #include "uae/limits.h"
 #endif
 #include "traps.h"

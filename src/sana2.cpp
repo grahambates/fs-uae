@@ -14,7 +14,7 @@
 
 #include "threaddep/thread.h"
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "events.h"
 #include "newcpu.h"
@@ -125,7 +125,7 @@ static int uaenet_getdata (void *dev, uae_u8 *d, int *len);
 #define SANA2OPF_MINE   (1<<SANA2OPB_MINE)
 #define SANA2OPB_PROM   1
 #define SANA2OPF_PROM   (1<<SANA2OPB_PROM)
-#define SANA2IOB_RAW    7 
+#define SANA2IOB_RAW    7
 #define SANA2IOF_RAW    (1<<SANA2IOB_RAW)
 #define SANA2IOB_BCAST  6
 #define SANA2IOF_BCAST  (1<<SANA2IOB_BCAST)
@@ -256,7 +256,7 @@ static struct s2devstruct *gets2devstruct (int unit)
 static struct priv_s2devstruct *getps2devstruct(TrapContext *ctx, uae_u8 *iobuf, uaecptr request)
 {
 	int idx;
-	
+
 	if (iobuf) {
 		idx = get_long_host(iobuf + 24);
 	} else {

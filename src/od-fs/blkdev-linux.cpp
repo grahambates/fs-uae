@@ -16,7 +16,7 @@
 #include "options.h"
 #include "blkdev.h"
 #include "scsidev.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "gui.h"
 
 #include <linux/cdrom.h>
@@ -674,7 +674,7 @@ static int toc_ioctl (int unitnum, struct cd_toc_head *tocout)
             th->last_track = hdr.cdth_trk1;
             th->tracks = th->last_track - th->first_track + 1;
             th->points = 0;
-                
+
             struct cd_toc *t = &th->toc[0];
 
             t->adr = 1;

@@ -2,7 +2,7 @@
 #define UAE_PCI_H
 
 #ifdef FSUAE // NL
-#include "uae/memory.h"
+#include "memory.h"
 #endif
 
 extern void pci_free(void);

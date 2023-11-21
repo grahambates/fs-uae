@@ -2,7 +2,7 @@
  * compiler/compemu_support.cpp - Core dynamic translation engine
  *
  * Copyright (c) 2001-2009 Milan Jurik of ARAnyM dev team (see AUTHORS)
- * 
+ *
  * Inspired by Christian Bauer's Basilisk II
  *
  * This file is part of the ARAnyM project which builds a new and powerful
@@ -66,7 +66,7 @@
 #ifdef UAE
 #include "options.h"
 #include "events.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #else
 #include "sysdeps.h"
@@ -1367,7 +1367,7 @@ static uae_s8 nstate[N_REGS];
 static inline void big_to_small_state(bigstate * /* b */, smallstate * s)
 {
   int i;
-	
+
   for (i = 0; i < VREGS; i++)
 	s->virt[i] = vstate[i];
   for (i = 0; i < N_REGS; i++)
@@ -1467,7 +1467,7 @@ static inline void log_clobberreg(int r)
 static inline void log_flush(void)
 {
 	int i;
-  
+
 	for (i=0;i<VREGS;i++)
 		if (vstate[i]==L_UNKNOWN)
 			vstate[i]=L_NEEDED;
@@ -1605,7 +1605,7 @@ static  void evict(int r)
 	if (live.nat[rr].nholds!=live.state[r].realind) { /* Was not last */
 		int topreg=live.nat[rr].holds[live.nat[rr].nholds];
 		int thisind=live.state[r].realind;
-	
+
 		live.nat[rr].holds[thisind]=topreg;
 		live.state[topreg].realind=thisind;
 	}
@@ -1753,7 +1753,7 @@ static  int alloc_reg_hinted(int r, int size, int willclobber, int hint)
 			if (size == 4) {
 				log_clobberreg(r);
 				log_isused(bestreg);
-			}			
+			}
 			else {
 				log_visused(r);
 				log_isused(bestreg);
@@ -2728,13 +2728,13 @@ bool compiler_use_jit(void)
 	// Check for the "jit" prefs item
 	if (!bx_options.jit.jit)
 		return false;
-	
+
 	// Don't use JIT if translation cache size is less then MIN_CACHE_SIZE KB
 	if (bx_options.jit.jitcachesize < MIN_CACHE_SIZE) {
 		panicbug("<JIT compiler> : translation cache size is less than %d KB. Disabling JIT.\n", MIN_CACHE_SIZE);
 		return false;
 	}
-	
+
 	return true;
 }
 #endif
@@ -3301,7 +3301,7 @@ void get_n_addr_jmp(int address, int dest, int tmp)
 }
 
 
-/* base is a register, but dp is an actual value. 
+/* base is a register, but dp is an actual value.
    target is a register, as is tmp */
 void calc_disp_ea_020(int base, uae_u32 dp, int target, int tmp)
 {
@@ -3401,7 +3401,7 @@ static uint8 *do_alloc_code(uint32 size, int depth)
 	/*
 	  This is a really awful hack that is known to work on Linux at
 	  least.
-	  
+
 	  The trick here is to make sure the allocated cache is nearby
 	  code segment, and more precisely in the positive half of a
 	  32-bit address space. i.e. addr < 0x80000000. Actually, it
@@ -3473,7 +3473,7 @@ void alloc_cache(void)
 		}
 	}
 	vm_protect(compiled_code, cache_size * 1024, VM_PAGE_READ | VM_PAGE_WRITE | VM_PAGE_EXECUTE);
-	
+
 	if (compiled_code) {
 		jit_log("Actual translation cache size : %d KB at %p-%p", cache_size, compiled_code, compiled_code + cache_size*1024);
 #ifdef USE_DATA_BUFFER
@@ -3607,7 +3607,7 @@ static inline int block_check_checksum(blockinfo* bi)
 {
 	uae_u32     c1,c2;
 	bool        isgood;
-    
+
 	if (bi->status!=BI_NEED_CHECK)
 		return 1;  /* This block is in a checked state */
 
@@ -3989,7 +3989,7 @@ void build_comp(void)
 #endif
 
 	jit_log("Building compiler function tables");
-	
+
 	for (opcode = 0; opcode < 65536; opcode++) {
 		reset_compop(opcode);
 #ifdef NOFLAGS_SUPPORT
@@ -4174,7 +4174,7 @@ void flush_icache(uaecptr ptr, int n)
 	while (bi) {
 		uae_u32 cl=cacheline(bi->pc_p);
 		if (bi->status==BI_INVALID ||
-			bi->status==BI_NEED_RECOMP) { 
+			bi->status==BI_NEED_RECOMP) {
 			if (bi==cache_tags[cl+1].bi)
 				cache_tags[cl].handler=(cpuop_func*)popall_execute_normal;
 			bi->handler_to_use=(cpuop_func*)popall_execute_normal;
@@ -4308,7 +4308,7 @@ void compiler_dumpstate(void)
 {
 	if (!JITDebug)
 		return;
-	
+
 	bug("### Host addresses");
 	bug("MEM_BASE    : %x", MEMBaseDiff);
 	bug("PC_P        : %p", &regs.pc_p);
@@ -4316,11 +4316,11 @@ void compiler_dumpstate(void)
 	bug("D0-D7       : %p-%p", &regs.regs[0], &regs.regs[7]);
 	bug("A0-A7       : %p-%p", &regs.regs[8], &regs.regs[15]);
 	bug("");
-	
+
 	bug("### M68k processor state");
 	m68k_dumpstate(stderr, 0);
 	bug("");
-	
+
 	bug("### Block in Atari address space");
 	bug("M68K block   : %p",
 			  (void *)(uintptr)last_regs_pc_p);
@@ -4464,7 +4464,7 @@ static void compile_block(cpu_history* pc_hist, int blocklen)
 		set_dhtu(bi,bi->direct_handler);
 		bi->status=BI_COMPILING;
 		current_block_start_target=(uintptr)get_target();
-	
+
 		log_startblock();
 
 		if (bi->count>=0) { /* Need to generate countdown code */
@@ -4504,7 +4504,7 @@ static void compile_block(cpu_history* pc_hist, int blocklen)
 				compemu_raw_mov_l_mi((uintptr)&last_compiled_block_addr,current_block_start_target);
 			}
 #endif
-		
+
 			for (i=0;i<blocklen &&
 				get_target_noopt() < MAX_COMPILE_PTR;i++) {
 					cpuop_func **cputbl;
@@ -4664,7 +4664,7 @@ static void compile_block(cpu_history* pc_hist, int blocklen)
 				compemu_raw_jcc_l_oponly(cc);
 				branchadd=(uae_u32*)get_target();
 				skip_long();
-		
+
 				/* predicted outcome */
 				tbi=get_blockinfo_addr_new((void*)t1,1);
 				match_states(tbi);
@@ -4889,7 +4889,7 @@ void do_nothing(void)
 #else
 void exec_nostats(void)
 {
-	for (;;)  { 
+	for (;;)  {
 		uae_u32 opcode = GET_OPCODE;
 #ifdef FLIGHT_RECORDER
 		m68k_record_step(m68k_getpc(), opcode);
@@ -4915,8 +4915,8 @@ void execute_normal(void)
 		start_pc_p = regs.pc_p;
 		start_pc = get_virtual_address(regs.pc_p);
 #else
-		start_pc_p = regs.pc_oldp;  
-		start_pc = regs.pc; 
+		start_pc_p = regs.pc_oldp;
+		start_pc = regs.pc;
 #endif
 		for (;;)  { /* Take note: This is the do-it-normal loop */
 			pc_hist[blocklen++].location = (uae_u16 *)regs.pc_p;

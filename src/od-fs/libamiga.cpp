@@ -7,7 +7,7 @@
 #include <string.h>
 #include <string.h>
 
-#include "uae/memory.h"
+#include "memory.h"
 #include "autoconf.h"
 #include "options.h"
 #include "blkdev.h"

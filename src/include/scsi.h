@@ -2,7 +2,7 @@
 #define UAE_SCSI_H
 
 #include "uae/types.h"
-#include "uae/memory.h"
+#include "memory.h"
 #ifdef FSUAE
 #include "uae/limits.h"
 #endif

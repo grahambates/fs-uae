@@ -28,7 +28,7 @@
 #include "inputdevice.h"
 #include "gfxfilter.h"
 #include "savestate.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "autoconf.h"
 #include "rommgr.h"
 #include "gui.h"
@@ -295,7 +295,7 @@ static const TCHAR *uaescsidevmodes[] = {
 };
 static const TCHAR *uaebootrom[] = {
 	_T("automatic"),
-	_T("disabled"), 
+	_T("disabled"),
 	_T("min"),
 	_T("full"),
 	NULL
@@ -331,11 +331,11 @@ static const TCHAR *obsolete[] = {
 	_T("gfx_correct_aspect"), _T("gfx_autoscale"), _T("parallel_sampler"), _T("parallel_ascii_emulation"),
 	_T("avoid_vid"), _T("avoid_dga"), _T("z3chipmem_size"), _T("state_replay_buffer"), _T("state_replay"),
 	_T("z3realmapping"), _T("force_0x10000000_z3"),
-	
+
 	_T("gfx_filter_vert_zoom"),_T("gfx_filter_horiz_zoom"),
 	_T("gfx_filter_vert_zoom_mult"), _T("gfx_filter_horiz_zoom_mult"),
 	_T("gfx_filter_vert_offset"), _T("gfx_filter_horiz_offset"),
-	
+
 	// created by some buggy beta
 	_T("uaehf0%s,%s"),
 	_T("uaehf1%s,%s"),
@@ -1059,7 +1059,7 @@ static void write_filesys_config (struct uae_prefs *p, struct zfile *f)
 		xfree (str1b);
 		xfree (str2b);
 		xfree (str1);
-		
+
 	}
 }
 
@@ -1220,7 +1220,7 @@ static void cfgfile_write_board_rom(struct uae_prefs *prefs, struct zfile *f, st
 	TCHAR buf[256];
 	TCHAR name[256];
 	const struct expansionromtype *ert;
-	
+
 	if (br->device_type == 0)
 		return;
 	ert = get_device_expansion_rom(br->device_type);
@@ -1805,16 +1805,16 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 		cfgfile_dwrite_ext (f, _T("gfx_filter_horiz_zoom_multf"), ext, _T("%f"), gf->gfx_filter_horiz_zoom_mult);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_vert_offsetf"), ext, _T("%f"), gf->gfx_filter_vert_offset);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_horiz_offsetf"), ext, _T("%f"), gf->gfx_filter_horiz_offset);
-		
+
 		cfgfile_dwrite_ext (f, _T("gfx_filter_left_border"), ext, _T("%d"), gf->gfx_filter_left_border);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_right_border"), ext, _T("%d"), gf->gfx_filter_right_border);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_top_border"), ext, _T("%d"), gf->gfx_filter_top_border);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_bottom_border"), ext, _T("%d"), gf->gfx_filter_bottom_border);
-		
+
 		cfgfile_dwrite_ext (f, _T("gfx_filter_scanlines"), ext, _T("%d"), gf->gfx_filter_scanlines);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_scanlinelevel"), ext, _T("%d"), gf->gfx_filter_scanlinelevel);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_scanlineratio"), ext, _T("%d"), gf->gfx_filter_scanlineratio);
-		
+
 		cfgfile_dwrite_ext (f, _T("gfx_filter_luminance"), ext, _T("%d"), gf->gfx_filter_luminance);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_contrast"), ext, _T("%d"), gf->gfx_filter_contrast);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_saturation"), ext, _T("%d"), gf->gfx_filter_saturation);
@@ -1822,11 +1822,11 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 		cfgfile_dwrite_ext (f, _T("gfx_filter_gamma_r"), ext, _T("%d"), gf->gfx_filter_gamma_ch[0]);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_gamma_g"), ext, _T("%d"), gf->gfx_filter_gamma_ch[1]);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_gamma_b"), ext, _T("%d"), gf->gfx_filter_gamma_ch[2]);
-		
+
 		cfgfile_dwrite_ext (f, _T("gfx_filter_blur"), ext, _T("%d"), gf->gfx_filter_blur);
 		cfgfile_dwrite_ext (f, _T("gfx_filter_noise"), ext, _T("%d"), gf->gfx_filter_noise);
 		cfgfile_dwrite_bool (f, _T("gfx_filter_bilinear"), ext, gf->gfx_filter_bilinear != 0);
-		
+
 		cfgfile_dwrite_ext (f, _T("gfx_filter_keep_autoscale_aspect"), ext, _T("%d"), gf->gfx_filter_keep_autoscale_aspect);
 		cfgfile_dwrite_str (f, _T("gfx_filter_keep_aspect"), ext, aspects[gf->gfx_filter_keep_aspect]);
 		cfgfile_dwrite_str(f, _T("gfx_filter_autoscale"), ext, ext == NULL ? autoscale[gf->gfx_filter_autoscale] : autoscale_rtg[gf->gfx_filter_autoscale]);
@@ -2523,7 +2523,7 @@ static int getintval2 (TCHAR **p, int *result, int delim, bool last)
 	int base = 10;
 	TCHAR *endptr;
 	TCHAR *p2;
-	
+
 	p2 = _tcschr (*p, delim);
 	if (p2 == 0) {
 		if (last) {
@@ -2753,7 +2753,7 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
 		}
 		return 1;
 	}
-		
+
 	if (cfgfile_strval (option, value, _T("gfx_autoresolution_min_vertical"), &p->gfx_autoresolution_minv, vertmode, 0)) {
 		p->gfx_autoresolution_minv--;
 		return 1;
@@ -3986,7 +3986,7 @@ static bool parse_geo (const TCHAR *tname, struct uaedev_config_info *uci, struc
 	struct zfile *f;
 	int found;
 	TCHAR buf[200];
-	
+
 	f = zfile_fopen (tname, _T("r"));
 	if (!f)
 		return false;
@@ -3996,7 +3996,7 @@ static bool parse_geo (const TCHAR *tname, struct uaedev_config_info *uci, struc
 	while (zfile_fgets (buf, sizeof buf / sizeof (TCHAR), f)) {
 		int v;
 		TCHAR *sep;
-		
+
 		my_trim (buf);
 		if (_tcslen (buf) == 0)
 			continue;
@@ -4520,7 +4520,7 @@ static bool cfgfile_read_board_rom(struct uae_prefs *p, const TCHAR *option, con
 	const struct expansionromtype *ert;
 
 	for (int i = 0; expansionroms[i].name; i++) {
-		struct boardromconfig *brc; 
+		struct boardromconfig *brc;
 		int idx;
 		ert = &expansionroms[i];
 
@@ -7965,7 +7965,7 @@ int built_in_chipset_prefs (struct uae_prefs *p)
 int built_in_cpuboard_prefs(struct uae_prefs *p)
 {
 	int roms[2], roms2[2];
-	
+
 	roms[0] = -1;
 	roms[1] = -1;
 	roms2[0] = -1;

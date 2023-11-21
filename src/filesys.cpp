@@ -29,7 +29,7 @@
 #include "options.h"
 #include "traps.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "events.h"
 #include "newcpu.h"
@@ -1020,7 +1020,7 @@ static void initialize_mountinfo (void)
 		if (added)
 			allocuci (&currprefs, nr, -1);
 	}
-	
+
 
 }
 
@@ -1978,7 +1978,7 @@ static uae_u32 filesys_media_change_reply (int mode)
 				put_byte(u->volume + 64, 0);
 				put_byte(u->volume + 172 - 32, 1);
 			}
-		
+
 			xfree (u->mount_volume);
 			xfree (u->mount_rootdir);
 			u->mount_rootdir = NULL;
@@ -1986,7 +1986,7 @@ static uae_u32 filesys_media_change_reply (int mode)
 		} else {
 			u->mount_changed = 0;
 		}
-		
+
 		return 1;
 
 	}
@@ -2006,9 +2006,9 @@ int filesys_media_change (const TCHAR *rootdir, int inserted, struct uaedev_conf
 		return 0;
 	if (automountunit >= 0)
 		return -1;
-	
+
 	write_log (_T("filesys_media_change('%s',%d,%p)\n"), rootdir, inserted, uci);
-	
+
 	nr = -1;
 	for (u = units; u; u = u->next) {
 		if (is_virtual (u->unit)) {
@@ -2016,7 +2016,7 @@ int filesys_media_change (const TCHAR *rootdir, int inserted, struct uaedev_conf
 			// inserted == 2: drag&drop insert, do not replace existing normal drives
 			if (inserted < 2 && ui->rootdir && !memcmp (ui->rootdir, rootdir, _tcslen (rootdir)) && _tcslen (rootdir) + 3 >= _tcslen (ui->rootdir)) {
 				if (filesys_isvolume(u) && inserted) {
-					if (uci)ctx, 
+					if (uci)ctx,
 						filesys_delayed_change (u, 50, rootdir, uci->ci.volname, uci->ci.readonly, 0);
 					return 0;
 				}
@@ -2068,7 +2068,7 @@ int filesys_media_change (const TCHAR *rootdir, int inserted, struct uaedev_conf
 		}
 		if (inserted < 0) /* -1 = only mount if already exists */
 			return 0;
-		/* new volume inserted and it was not previously mounted? 
+		/* new volume inserted and it was not previously mounted?
 		 * perhaps we have some empty device slots? */
 		nr = filesys_insert (-1, volptr, rootdir, 0, 0);
 		if (nr >= 100) {
@@ -3467,7 +3467,7 @@ static uaecptr make_lock(TrapContext *ctx, Unit *unit, uae_u32 uniq, long mode)
 
 #if TRAPMD
 
-	struct trapmd md1[] = 
+	struct trapmd md1[] =
 	{
 		{ TRAPCMD_GET_LONG, { unit->locklist }, 1, 0 },
 		{ TRAPCMD_GET_LONG, { 0 }, 2, 1 },
@@ -3876,7 +3876,7 @@ static void action_read_link(TrapContext *ctx, Unit *unit, dpacket *packet)
 		_tcscat (tmp, extrapath);
 	}
 	xfree (extrapath);
-	write_log (_T("got target '%s'\n"), tmp); 
+	write_log (_T("got target '%s'\n"), tmp);
 	char *s = ua_fs (tmp, -1);
 	for (i = 0; s[i]; i++) {
 		if (i >= size - 1)
@@ -5293,7 +5293,7 @@ static void	action_read(TrapContext *ctx, Unit *unit, dpacket *packet)
 		} else if (!trap_valid_address(ctx, addr, size)) {
 			/* it really crosses memory boundary */
 			uae_u8 *buf;
-			
+
 			/* ugh this is inefficient but easy */
 
 			if (key_seek(k, k->file_pos, SEEK_SET) < 0) {
@@ -6316,7 +6316,7 @@ static void action_filesystem_attr(TrapContext *ctx, Unit *unit, dpacket *packet
 		}
 		if (doret)
 			trap_put_long(ctx, trap_get_long(ctx, tagp), retval);
-		
+
 	}
 	if (verbuffer && versize) {
 		trap_put_string(ctx, UAEFS_VERSION, verbuffer, versize);
@@ -7673,7 +7673,7 @@ static uae_u32 REGPARAM2 filesys_diagentry (TrapContext *ctx)
 	}
 
 	trap_set_areg(ctx, 0, last_resident);
-	
+
 	if (currprefs.uae_hide_autoconfig && expansion) {
 		bool found = true;
 		while (found) {
@@ -7725,7 +7725,7 @@ static uae_u32 REGPARAM2 filesys_dev_bootfilesys (TrapContext *ctx)
 	UnitInfo *uip = &mountinfo.ui[unit_no];
 	int iscd = (trap_get_dreg(ctx, 6) & 0x80000000) != 0 || uip->unit_type == UNIT_CDFS;
 	int type;
-	
+
 	if (iscd) {
 		if (!trap_get_long(ctx, devicenode + 16))
 			trap_put_long(ctx, devicenode + 16, cdfs_handlername);
@@ -8587,7 +8587,7 @@ static void get_new_device (TrapContext *ctx, int type, uaecptr parmpacket, TCHA
 		(uae_u32)(mountinfo.ui[unit_no].hf.virtsize),
 		mountinfo.ui[unit_no].rootdir);
 }
-	
+
 /* Fill in per-unit fields of a parampacket */
 static uae_u32 REGPARAM2 filesys_dev_storeinfo (TrapContext *ctx)
 {

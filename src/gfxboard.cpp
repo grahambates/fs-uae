@@ -31,7 +31,7 @@ static bool memlogw = true;
 
 #include "options.h"
 #include "uae.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "debug.h"
 #include "custom.h"
 #include "newcpu.h"
@@ -121,22 +121,22 @@ static const struct gfxboard boards[] =
 		0x00100000, 0x00100000, 0x00200000, 0x00200000, CIRRUS_ID_CLGD5428, 2, 2, false
 	},
 	{
-		_T("Piccolo Zorro II"), _T("Ingenieurbüro Helfrich"), _T("Piccolo_Z2"),
+		_T("Piccolo Zorro II"), _T("Ingenieurbï¿½ro Helfrich"), _T("Piccolo_Z2"),
 		BOARD_MANUFACTURER_PICCOLO, BOARD_MODEL_MEMORY_PICCOLO, BOARD_MODEL_REGISTERS_PICCOLO,
 		0x00000000, 0x00100000, 0x00200000, 0x00200000, CIRRUS_ID_CLGD5426, 2, 6, true
 	},
 	{
-		_T("Piccolo Zorro III"), _T("Ingenieurbüro Helfrich"), _T("Piccolo_Z3"),
+		_T("Piccolo Zorro III"), _T("Ingenieurbï¿½ro Helfrich"), _T("Piccolo_Z3"),
 		BOARD_MANUFACTURER_PICCOLO, BOARD_MODEL_MEMORY_PICCOLO, BOARD_MODEL_REGISTERS_PICCOLO,
 		0x00000000, 0x00100000, 0x00200000, 0x00200000, CIRRUS_ID_CLGD5426, 3, 6, true
 	},
 	{
-		_T("Piccolo SD64 Zorro II"), _T("Ingenieurbüro Helfrich"), _T("PiccoloSD64_Z2"),
+		_T("Piccolo SD64 Zorro II"), _T("Ingenieurbï¿½ro Helfrich"), _T("PiccoloSD64_Z2"),
 		BOARD_MANUFACTURER_PICCOLO, BOARD_MODEL_MEMORY_PICCOLO64, BOARD_MODEL_REGISTERS_PICCOLO64,
 		0x00000000, 0x00200000, 0x00400000, 0x00400000, CIRRUS_ID_CLGD5434, 2, 6, true
 	},
 	{
-		_T("Piccolo SD64 Zorro III"), _T("Ingenieurbüro Helfrich"), _T("PiccoloSD64_Z3"),
+		_T("Piccolo SD64 Zorro III"), _T("Ingenieurbï¿½ro Helfrich"), _T("PiccoloSD64_Z3"),
 		BOARD_MANUFACTURER_PICCOLO, BOARD_MODEL_MEMORY_PICCOLO64, BOARD_MODEL_REGISTERS_PICCOLO64,
 		0x00000000, 0x00200000, 0x00400000, 0x04000000, CIRRUS_ID_CLGD5434, 3, 6, true
 	},
@@ -249,7 +249,7 @@ struct rtggfxboard
 
 	addrbank *gfxmem_bank;
 	uae_u8 *vram_back;
-	
+
 	struct autoconfig_info *aci;
 
 	struct gfxboard_func *func;
@@ -675,7 +675,7 @@ int gfxboard_toggle (int index, int log)
 	rtg_visible = -1;
 
 	struct rtggfxboard *gb = &rtggfxboards[index];
-	if (!gb->active) 
+	if (!gb->active)
 		goto end;
 
 	if (index < 0)
@@ -2246,7 +2246,7 @@ void gfxboard_reset (void)
 			if (gb->board) {
 				if (gb->board->configtype == 3)
 					gb->gfxboard_bank_memory.wput = gfxboard_wput_mem_autoconfig;
-				if (reset_func) 
+				if (reset_func)
 					reset_func (reset_parm);
 			}
 		}
@@ -2783,7 +2783,7 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 		only_gfx_board = gb;
 
 	memset (gb->automemory, 0xff, GFXBOARD_AUTOCONFIG_SIZE);
-	
+
 	z2_flags = 0x05; // 1M
 	z3_flags = 0x06; // 1M
 	bank = gb->board->banksize;
@@ -2863,7 +2863,7 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 	memcpy(&gb->gfxboard_bank_registers, &tmpl_gfxboard_bank_registers, sizeof(addrbank));
 	memcpy(&gb->gfxboard_bank_special, &tmpl_gfxboard_bank_special, sizeof(addrbank));
 	memcpy(&gb->gfxboard_bank_memory_nojit, &tmpl_gfxboard_bank_memory_nojit, sizeof(addrbank));
-	
+
 	gb->gfxboard_bank_memory.name = gb->memorybankname;
 	gb->gfxboard_bank_memory_nojit.name = gb->memorybanknamenojit;
 	gb->gfxboard_bank_wbsmemory.name = gb->wbsmemorybankname;

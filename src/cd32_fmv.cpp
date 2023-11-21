@@ -11,7 +11,7 @@
 #include "sysdeps.h"
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "rommgr.h"
 #include "custom.h"
 #include "newcpu.h"
@@ -1493,7 +1493,7 @@ void cd32_fmv_hsync_handler(void)
 	if (cl450_video_hsync_wait == 0) {
 		cl450_set_status(CL_INT_PIC_D);
 		if (cl450_videoram_cnt > 0) {
-			cd32_fmv_new_image(videoram[cl450_videoram_read].width, videoram[cl450_videoram_read].height, 
+			cd32_fmv_new_image(videoram[cl450_videoram_read].width, videoram[cl450_videoram_read].height,
 				videoram[cl450_videoram_read].depth, cl450_blank ? NULL : videoram[cl450_videoram_read].data);
 			cl450_videoram_read++;
 			cl450_videoram_read &= CL450_VIDEO_BUFFERS - 1;

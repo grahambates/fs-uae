@@ -47,7 +47,7 @@
 
 #include "options.h"
 #include "threaddep/thread.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "events.h"
 #include "newcpu.h"
@@ -355,7 +355,7 @@ static void DumpTemplate (struct Template *tmp, unsigned long w, unsigned long h
 {
 	uae_u8 *mem = tmp->Memory;
 	unsigned int row, col, width;
-	
+
 	if (!mem)
 		return;
 	width = (w + 7) >> 3;
@@ -1053,7 +1053,7 @@ void picasso_refresh (void)
 	}
 
 	/* Make sure that the first time we show a Picasso video mode, we don't blit any crap.
-	* We can do this by checking if we have an Address yet. 
+	* We can do this by checking if we have an Address yet.
 	*/
 	if (picasso96_state.Address) {
 		unsigned int width, height;
@@ -2574,7 +2574,7 @@ Fields & DM_BITSPERPEL)) {
 			if (missmodes[misscnt * 2] >= 0) {
 				int w = DisplayModes[i].res.width;
 				int h = DisplayModes[i].res.height;
-				if (w > missmodes[misscnt * 2 + 0] || (w == missmodes[misscnt * 2 + 0] && h > missmodes[misscnt * 2 + 1])) {	
+				if (w > missmodes[misscnt * 2 + 0] || (w == missmodes[misscnt * 2 + 0] && h > missmodes[misscnt * 2 + 1])) {
 					struct PicassoResolution *pr = &newmodes[cnt];
 					memcpy (pr, &DisplayModes[i], sizeof (struct PicassoResolution));
 					pr->res.width = missmodes[misscnt * 2 + 0];
@@ -3784,7 +3784,7 @@ static uae_u32 REGPARAM2 picasso_BlitTemplate(TrapContext *ctx)
 				uae_u8 *uae_mem2 = uae_mem;
 				uae_u8 *tmpl_mem = tmpl_base;
 				unsigned int data;
-				
+
 				data = *tmpl_mem;
 
 				for (cols = 0; cols < W; cols += 8, uae_mem2 += Bpp * 8) {
@@ -4842,7 +4842,7 @@ bool picasso_flushpixels (int index, uae_u8 *src, int off)
 	if (dst && gwwcnt) {
 		full_refresh = 0;
 	}
-	return lock != 0; 
+	return lock != 0;
 }
 
 extern addrbank gfxmem_bank;

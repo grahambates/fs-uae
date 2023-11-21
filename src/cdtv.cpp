@@ -20,7 +20,7 @@
 #ifdef CDTV
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "debug.h"
@@ -582,7 +582,7 @@ static void cdrom_command_thread (uae_u8 b)
 		break;
 	case 0x83:
 		if (cdrom_command_cnt_in == 7) {
-			memcpy (cdrom_command_output, MODEL_NAME, strlen (MODEL_NAME)); 
+			memcpy (cdrom_command_output, MODEL_NAME, strlen (MODEL_NAME));
 			cdrom_command_accepted (strlen (MODEL_NAME), s, &cdrom_command_cnt_in);
 			cd_finished = 1;
 		}
@@ -1706,7 +1706,7 @@ bool cdtvscsi_init(struct autoconfig_info *aci)
 uae_u8 *save_cdtv_dmac (int *len, uae_u8 *dstptr)
 {
 	uae_u8 *dstbak, *dst;
-	
+
 	if (!currprefs.cs_cdtvcd || currprefs.cs_cdtvcr)
 		return NULL;
 	if (dstptr)
@@ -1750,7 +1750,7 @@ uae_u8 *save_cdtv (int *len, uae_u8 *dstptr)
 	if (!currprefs.cs_cdtvcd || currprefs.cs_cdtvcr)
 		return NULL;
 
-	if (dstptr) 
+	if (dstptr)
 		dstbak = dst = dstptr;
 	else
 		dstbak = dst = xmalloc (uae_u8, 1000);
@@ -1800,7 +1800,7 @@ uae_u8 *restore_cdtv (uae_u8 *src)
 		cdtv_init(NULL);
 	}
 	restore_u32 ();
-	
+
 	// tri-port
 	tp_a = restore_u8 ();
 	tp_b = restore_u8 ();

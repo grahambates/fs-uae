@@ -16,7 +16,7 @@
 #define NEW_TRAP_DEBUG 0
 
 #include "options.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "threaddep/thread.h"

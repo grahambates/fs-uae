@@ -2,7 +2,7 @@
 #define UAE_GFXBOARD_H
 
 #ifdef FSUAE // NL
-#include "uae/memory.h"
+#include "memory.h"
 #endif
 
 #include "picasso96.h"

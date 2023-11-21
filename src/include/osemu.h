@@ -12,7 +12,7 @@
 #include "uae/types.h"
 #ifdef FSUAE
 #include "uae/inline.h"
-#include "uae/memory.h"
+#include "memory.h"
 #include <stddef.h>
 #endif
 

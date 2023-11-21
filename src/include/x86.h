@@ -2,7 +2,7 @@
 #define UAE_X86_H
 
 #ifdef FSUAE // NL
-#include "uae/memory.h"
+#include "memory.h"
 #endif
 
 bool a1060_init(struct autoconfig_info *aci);
