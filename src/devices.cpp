@@ -117,6 +117,7 @@ void devices_reset(int hardreset)
 #ifdef DRIVESOUND
 	driveclick_reset();
 #endif
+	ethernet_reset();
 	uae_int_requested = 0;
 }
 
@@ -485,7 +486,8 @@ void devices_pause(void)
 #endif
 #ifdef FSUAE
 #else
-	pausevideograb(true);
+	pausevideograb(1);
+	ethernet_pause(1);
 #endif
 }
 
@@ -500,6 +502,7 @@ void devices_unpause(void)
 #endif
 #ifdef FSUAE
 #else
-	pausevideograb(false);
+	pausevideograb(0);
+	ethernet_pause(0);
 #endif
 }
