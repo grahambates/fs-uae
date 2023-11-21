@@ -1052,6 +1052,12 @@ void gfx_set_picasso_modeinfo (uae_u32 w, uae_u32 h, uae_u32 depth,
     picasso_vidinfo.height = g_picasso_height;
 }
 
+void gfx_set_picasso_modeinfo (RGBFTYPE rgbfmt) {
+    write_log("gfx_set_picasso_modeinfo %d\n", rgbfmt);
+    g_picasso_format = rgbfmt;
+    gfx_set_picasso_colors (rgbfmt);
+}
+
 #else
 
 void gfx_set_picasso_modeinfo (uae_u32 w, uae_u32 h, uae_u32 depth, RGBFTYPE rgbfmt)

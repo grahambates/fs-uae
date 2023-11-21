@@ -90,7 +90,7 @@ int amiga_send_input_event(int input_event, int state)
     }
 
     int max = 1;  /* FIXME: is max = 1 always appropriate? */
-    bool magic_mouse = currprefs.input_magic_mouse;
+    bool magic_mouse = currprefs.input_magic_mouse_cursor;
     if (uae_deterministic_mode()) {
         magic_mouse = false;
     }
@@ -98,7 +98,7 @@ int amiga_send_input_event(int input_event, int state)
     switch (input_event) {
     case INPUTEVENT_MOUSE1_HORIZ:
     case INPUTEVENT_MOUSE1_VERT:
-        //printf("magic mouse %d\n", currprefs.input_magic_mouse);
+        //printf("magic mouse %d\n", currprefs.input_magic_mouse_cursor);
         if (magic_mouse) {
             //printf("magic mouse %d %d\n",
             //       fs_emu_mouse_absolute_x, fs_emu_mouse_absolute_y);
