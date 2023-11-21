@@ -59,6 +59,10 @@
 #include "tabletlibrary.h"
 #include "statusline.h"
 #include "native2amiga_api.h"
+#ifdef FSUAE
+#else
+#include "videograb.h"
+#endif
 
 #ifdef FSUAE // NL
 
@@ -4219,6 +4223,35 @@ static bool inputdevice_handle_inputcode2 (int code, int state)
 	case AKS_RTG_3:
 		toggle_rtg(code - AKS_RTG_C);
 		break;
+#ifdef FSUAE
+#else
+
+	case AKS_VIDEOGRAB_RESTART:
+		getsetpositionvideograb(0);
+		pausevideograb(0);
+		break;
+	case AKS_VIDEOGRAB_PAUSE:
+		pausevideograb(-1);
+		break;
+	case AKS_VIDEOGRAB_PREV:
+	{
+		pausevideograb(1);
+		uae_s64 pos = getsetpositionvideograb(-1);
+		pos--;
+		if (pos >= 0)
+			getsetpositionvideograb(pos);
+		break;
+	}
+	case AKS_VIDEOGRAB_NEXT:
+	{
+		pausevideograb(1);
+		uae_s64 pos = getsetpositionvideograb(-1);
+		pos++;
+		getsetpositionvideograb(pos);
+		break;
+	}
+#endif
+
 #ifdef CDTV
 	case AKS_CDTV_FRONT_PANEL_STOP:
 	case AKS_CDTV_FRONT_PANEL_PLAYPAUSE:
