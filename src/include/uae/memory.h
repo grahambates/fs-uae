@@ -16,8 +16,9 @@
 #include <stddef.h>
 #endif
 
-extern void memory_reset (void);
-extern void a1000_reset (void);
+extern void memory_reset(void);
+extern void memory_restore(void);
+extern void a1000_reset(void);
 
 #ifdef JIT
 extern int special_mem;
@@ -462,7 +463,8 @@ extern addrbank *get_mem_bank_real(uaecptr);
 #endif
 
 extern void memory_init (void);
-extern void memory_cleanup (void);
+extern void memory_cleanup(void);
+extern void restore_banks(void);
 extern void map_banks (addrbank *bank, int first, int count, int realsize);
 extern void map_banks_z2(addrbank *bank, int first, int count);
 extern void map_banks_z3(addrbank *bank, int first, int count);
