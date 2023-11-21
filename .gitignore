@@ -169,3 +169,5 @@ winuae-merge.txt
 winuae/od-win32/lib
 xxx*
 *.zip
+.cache
+data
