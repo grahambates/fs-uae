@@ -808,7 +808,7 @@ static bool rtg_render (void)
 #endif
 #endif
 	bool flushed = false;
-	bool uaegfx = currprefs.rtgboards[rtg_index].rtgmem_type < GFXBOARD_HARDWARE;
+	bool uaegfx = currprefs.rtgboards[0].rtgmem_type < GFXBOARD_HARDWARE && currprefs.rtgboards[0].rtgmem_size;
 
 	if (doskip () && p96skipmode == 0) {
 		;
@@ -1093,7 +1093,7 @@ static void picasso_handle_vsync2(void)
 	int vsync = isvsync_rtg();
 	int mult;
 	bool rendered = false;
-	bool uaegfx = currprefs.rtgboards[rtg_index].rtgmem_type < GFXBOARD_HARDWARE;
+	bool uaegfx = currprefs.rtgboards[0].rtgmem_type < GFXBOARD_HARDWARE;
 
 	int state = picasso_state_change;
 	if (state & PICASSO_STATE_SETDAC) {
@@ -1155,7 +1155,7 @@ static void picasso_handle_vsync2(void)
 	if (!picasso_on)
 		return;
 
-	if (uaegfx)
+	if (uaegfx && rtg_index == 0)
 		mouseupdate();
 
 	if (thisisvsync) {
@@ -1164,7 +1164,7 @@ static void picasso_handle_vsync2(void)
 	}
 
 	if (uaegfx) {
-		if (setupcursor_needed)
+		if (setupcursor_needed && rtg_index == 0)
 			setupcursor();
 		if (thisisvsync)
 			picasso_trigger_vblank();
@@ -1182,16 +1182,15 @@ static int p96hsync;
 
 void picasso_handle_vsync(void)
 {
-	if (rtg_index < 0)
-		return;
+	bool uaegfx = currprefs.rtgboards[0].rtgmem_type < GFXBOARD_HARDWARE;
 
-	bool uaegfx = currprefs.rtgboards[rtg_index].rtgmem_type < GFXBOARD_HARDWARE;
-
-	if (currprefs.rtgboards[rtg_index].rtgmem_size == 0)
+	if (currprefs.rtgboards[0].rtgmem_size == 0)
 		return;
 
 	if (!picasso_on && uaegfx) {
-		createwindowscursor(0, 0, 0, 0, 0, 1);
+		if (rtg_index == 0) {
+			createwindowscursor(0, 0, 0, 0, 0, 1);
+		}
 		picasso_trigger_vblank();
 		return;
 	}
@@ -1207,12 +1206,9 @@ void picasso_handle_vsync(void)
 
 void picasso_handle_hsync(void)
 {
-	if (rtg_index < 0)
-		return;
+	bool uaegfx = currprefs.rtgboards[0].rtgmem_type < GFXBOARD_HARDWARE;
 
-	bool uaegfx = currprefs.rtgboards[rtg_index].rtgmem_type < GFXBOARD_HARDWARE;
-
-	if (currprefs.rtgboards[rtg_index].rtgmem_size == 0)
+	if (currprefs.rtgboards[0].rtgmem_size == 0)
 		return;
 
 	int vsync = isvsync_rtg();
@@ -1233,7 +1229,9 @@ void picasso_handle_hsync(void)
 	if (p96hsync >= p96syncrate) {
 		if (!picasso_on) {
 			if (uaegfx) {
-				createwindowscursor(0, 0, 0, 0, 0, 1);
+				if (rtg_index == 0) {
+					createwindowscursor(0, 0, 0, 0, 0, 1);
+				}
 				picasso_trigger_vblank();
 			}
 		} else {
@@ -2941,7 +2939,7 @@ static uae_u32 REGPARAM2 picasso_SetColorArray (TrapContext *ctx)
 	uae_u16 count = trap_get_dreg (ctx, 1);
 	uaecptr boardinfo = trap_get_areg (ctx, 0);
 	uaecptr clut = boardinfo + PSSO_BoardInfo_CLUT;
-	if (start > 256 || start + count > 256)
+	if (start > 256 || count > 256 || start + count > 256)
 		return 0;
 	if (updateclut(ctx, clut, start, count))
 		full_refresh = 1;
