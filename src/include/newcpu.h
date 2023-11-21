@@ -23,9 +23,7 @@
 #include "readcpu.h"
 #include "machdep/m68k.h"
 #include "events.h"
-#ifdef WITH_SOFTFLOAT
-#include <softfloat.h>
-#endif
+#include <softfloat/softfloat.h>
 
 #ifndef SET_CFLG
 
@@ -156,10 +154,8 @@ extern struct mmufixup mmufixup[2];
 
 typedef struct
 {
-	fptype fp;
-#ifdef WITH_SOFTFLOAT
 	floatx80 fpx;
-#endif
+	fptype fp;
 } fpdata;
 
 struct regstruct
@@ -515,6 +511,7 @@ STATIC_INLINE void m68k_setpc_normal(uaecptr pc)
 	}
 }
 
+extern void check_t0_trace(void);
 extern void write_dcache030(uaecptr, uae_u32, int);
 extern uae_u32 read_dcache030(uaecptr, int);
 extern uae_u32 get_word_icache030(uaecptr addr);
@@ -562,8 +559,10 @@ extern void set_cpu_caches (bool flush);
 extern void flush_cpu_caches(bool flush);
 extern void flush_cpu_caches_040(uae_u16 opcode);
 extern void REGPARAM3 MakeSR (void) REGPARAM;
-extern void REGPARAM3 MakeFromSR (void) REGPARAM;
+extern void REGPARAM3 MakeFromSR(void) REGPARAM;
+extern void REGPARAM3 MakeFromSR_T0(void) REGPARAM;
 extern void REGPARAM3 Exception (int) REGPARAM;
+extern void REGPARAM3 Exception_cpu(int) REGPARAM;
 extern void REGPARAM3 ExceptionL (int, uaecptr) REGPARAM;
 extern void NMI (void);
 extern void NMI_delayed (void);
@@ -575,7 +574,6 @@ extern int m68k_movec2 (int, uae_u32 *);
 extern bool m68k_divl (uae_u32, uae_u32, uae_u16);
 extern bool m68k_mull (uae_u32, uae_u32, uae_u16);
 extern void init_m68k (void);
-extern void init_m68k_full (void);
 extern void m68k_go (int);
 extern void m68k_dumpstate (uaecptr *);
 extern void m68k_dumpstate (uaecptr, uaecptr *);
@@ -583,7 +581,6 @@ extern void m68k_dumpcache (void);
 extern int getDivu68kCycles (uae_u32 dividend, uae_u16 divisor);
 extern int getDivs68kCycles (uae_s32 dividend, uae_s16 divisor);
 extern void divbyzero_special (bool issigned, uae_s32 dst);
-extern void m68k_do_rte (void);
 extern void protect_roms (bool);
 extern void unprotect_maprom (void);
 extern bool is_hardreset(void);
@@ -620,8 +617,10 @@ extern void cpu_change(int newmodel);
 extern void cpu_fallback(int mode);
 
 extern void fill_prefetch (void);
-extern void fill_prefetch_020 (void);
-extern void fill_prefetch_030 (void);
+extern void fill_prefetch_020_ntx(void);
+extern void fill_prefetch_030_ntx(void);
+extern void fill_prefetch_020(void);
+extern void fill_prefetch_030(void);
 
 #define CPU_OP_NAME(a) op ## a
 
