@@ -171,3 +171,4 @@ xxx*
 *.zip
 .cache
 data
+.vscode
