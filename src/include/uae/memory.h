@@ -35,6 +35,10 @@ extern bool jit_direct_compatible_memory;
 #define Z3BASE_UAE 0x10000000
 #define Z3BASE_REAL 0x40000000
 
+#define AUTOCONFIG_Z2 0x00e80000
+#define AUTOCONFIG_Z2_MEM 0x00200000
+#define AUTOCONFIG_Z3 0xff000000
+
 #ifdef ADDRESS_SPACE_24BIT
 #define MEMORY_BANKS 256
 #define MEMORY_RANGE_MASK ((1<<24)-1)
@@ -131,16 +135,21 @@ struct autoconfig_info
 {
 	struct uae_prefs *prefs;
 	bool doinit;
+	bool postinit;
 	int devnum;
 	uae_u8 autoconfig_raw[128];
 	uae_u8 autoconfig_bytes[16];
 	TCHAR name[128];
 	const uae_u8 *autoconfigp;
+	bool autoconfig_automatic;
 	uae_u32 start;
 	uae_u32 size;
 	int zorro;
+	// never direct maps RAM
+	bool indirect;
 	const TCHAR *label;
 	addrbank *addrbank;
+	uaecptr write_bank_address;
 	struct romconfig *rc;
 	uae_u32 last_high_ram;
 	const struct cpuboardsubtype *cst;
@@ -149,10 +158,13 @@ struct autoconfig_info
 	const int *parent_romtype;
 	bool parent_of_previous;
 	bool parent_address_space;
+	bool direct_vram;
 	const TCHAR *parent_name;
 	bool can_sort;
+	bool hardwired;
 	bool (*get_params)(struct uae_prefs*, struct expansion_params*);
 	bool (*set_params)(struct uae_prefs*, struct expansion_params*);
+	void *userdata;
 };
 
 #define CE_MEMBANK_FAST32 0
@@ -387,14 +399,15 @@ extern void rtarea_init(void);
 extern void rtarea_free(void);
 extern void rtarea_init_mem(void);
 extern void rtarea_setup(void);
-extern void expamem_init (void);
-extern void expamem_reset (void);
-extern void expamem_next (addrbank *mapped, addrbank *next);
-extern void expamem_shutup (addrbank *mapped);
+extern void expamem_reset(void);
+extern void expamem_next(addrbank *mapped, addrbank *next);
+extern void expamem_shutup(addrbank *mapped);
 extern bool expamem_z3hack(struct uae_prefs*);
+extern void expansion_cpu_fallback(void);
 extern void set_expamem_z3_hack_mode(int);
 extern uaecptr expamem_board_pointer, expamem_highmem_pointer;
 extern uaecptr expamem_z3_pointer_real, expamem_z3_pointer_uae;
+extern uae_u32 expamem_z3_highram_real, expamem_z3_highram_uae;
 extern uae_u32 expamem_board_size;
 
 extern uae_u32 last_custom_value1;
