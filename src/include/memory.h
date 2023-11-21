@@ -82,7 +82,6 @@ extern uaecptr uaeboard_base;
 
 extern uae_u8* baseaddr[];
 
-
 enum
 {
 	ABFLAG_UNK = 0, ABFLAG_RAM = 1, ABFLAG_ROM = 2, ABFLAG_ROMIN = 4, ABFLAG_IO = 8,
@@ -139,21 +138,16 @@ struct autoconfig_info
 {
 	struct uae_prefs *prefs;
 	bool doinit;
-	bool postinit;
 	int devnum;
 	uae_u8 autoconfig_raw[128];
 	uae_u8 autoconfig_bytes[16];
 	TCHAR name[128];
 	const uae_u8 *autoconfigp;
-	bool autoconfig_automatic;
 	uae_u32 start;
 	uae_u32 size;
 	int zorro;
-	// never direct maps RAM
-	bool indirect;
 	const TCHAR *label;
 	addrbank *addrbank;
-	uaecptr write_bank_address;
 	struct romconfig *rc;
 	uae_u32 last_high_ram;
 	const struct cpuboardsubtype *cst;
@@ -285,6 +279,7 @@ MEMORY_BPUT(name); \
 MEMORY_CHECK(name); \
 MEMORY_XLATE(name);
 
+
 #define MEMORY_ARRAY_LGET(name, index) \
 static uae_u32 REGPARAM3 name ## index ## _lget (uaecptr) REGPARAM; \
 static uae_u32 REGPARAM2 name ## index ## _lget (uaecptr addr) \
@@ -379,7 +374,7 @@ extern addrbank rtarea_bank;
 extern addrbank filesys_bank;
 extern addrbank uaeboard_bank;
 extern addrbank expamem_bank;
-extern addrbank expamem_null, expamem_none, expamem_nonautoconfig;
+extern addrbank expamem_null, expamem_none;
 extern addrbank fastmem_bank[MAX_RAM_BOARDS];
 extern addrbank fastmem_nojit_bank[MAX_RAM_BOARDS];
 extern addrbank *gfxmem_banks[MAX_RTG_BOARDS];
@@ -403,9 +398,9 @@ extern void rtarea_init(void);
 extern void rtarea_free(void);
 extern void rtarea_init_mem(void);
 extern void rtarea_setup(void);
-extern void expamem_reset(void);
-extern void expamem_next(addrbank *mapped, addrbank *next);
-extern void expamem_shutup(addrbank *mapped);
+extern void expamem_reset (void);
+extern void expamem_next (addrbank *mapped, addrbank *next);
+extern void expamem_shutup (addrbank *mapped);
 extern bool expamem_z3hack(struct uae_prefs*);
 extern void expansion_cpu_fallback(void);
 extern void set_expamem_z3_hack_mode(int);
@@ -752,8 +747,6 @@ extern uae_u32 natmem_reserved_size;
 
 extern bool mapped_malloc (addrbank*);
 extern void mapped_free (addrbank*);
-extern void clearexec (void);
-extern void mapkick (void);
 extern void a3000_fakekick (int);
 
 extern uaecptr strcpyha_safe (uaecptr dst, const uae_char *src);
@@ -762,9 +755,6 @@ extern void memcpyha_safe (uaecptr dst, const uae_u8 *src, int size);
 extern void memcpyha (uaecptr dst, const uae_u8 *src, int size);
 extern void memcpyah_safe (uae_u8 *dst, uaecptr src, int size);
 extern void memcpyah (uae_u8 *dst, uaecptr src, int size);
-
-extern uae_s32 getz2size (struct uae_prefs *p);
-uae_u32 getz2endaddr (void);
 
 #define UAE_MEMORY_REGIONS_MAX 64
 #define UAE_MEMORY_REGION_NAME_LENGTH 64
