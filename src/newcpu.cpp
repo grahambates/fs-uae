@@ -47,6 +47,9 @@
 #ifdef JIT
 #include "jit/compemu.h"
 #include <signal.h>
+#else
+/* Need to have these somewhere */
+bool check_prefs_changed_comp (bool checkonly) { return false; }
 #endif
 /* For faster JIT cycles handling */
 uae_s32 pissoff = 0;
@@ -890,9 +893,7 @@ static void set_x_funcs (void)
 		// 68020+ no ce
 		if (currprefs.cpu_memory_cycle_exact) {
 			// cpu_memory_cycle_exact + cpu_compatible
-			if (false) {
-#ifdef CPUEMU_20
-			} else if (currprefs.cpu_model == 68020 && !currprefs.cachesize) {
+			if (currprefs.cpu_model == 68020 && !currprefs.cachesize) {
 				x_prefetch = get_word_020_prefetch;
 				x_get_ilong = get_long_020_prefetch;
 				x_get_iword = get_word_020_prefetch;
@@ -908,8 +909,6 @@ static void set_x_funcs (void)
 				x_do_cycles = do_cycles;
 				x_do_cycles_pre = do_cycles;
 				x_do_cycles_post = do_cycles_post;
-#endif
-#ifdef CPUEMU_22
 			} else if (currprefs.cpu_model == 68030 && !currprefs.cachesize) {
 				x_prefetch = get_word_030_prefetch;
 				x_get_ilong = get_long_030_prefetch;
@@ -926,7 +925,6 @@ static void set_x_funcs (void)
 				x_do_cycles = do_cycles;
 				x_do_cycles_pre = do_cycles;
 				x_do_cycles_post = do_cycles_post;
-#endif
 			} else if (currprefs.cpu_model < 68040) {
 				// JIT or 68030+ does not have real prefetch only emulation
 				x_prefetch = NULL;
@@ -960,9 +958,7 @@ static void set_x_funcs (void)
 			}
 		} else if (currprefs.cpu_compatible) {
 			// cpu_compatible only
-			if (false) {
-#ifdef CPUEMU_20
-			} else if (currprefs.cpu_model == 68020 && !currprefs.cachesize) {
+			if (currprefs.cpu_model == 68020 && !currprefs.cachesize) {
 				x_prefetch = get_word_020_prefetch;
 				x_get_ilong = get_long_020_prefetch;
 				x_get_iword = get_word_020_prefetch;
@@ -978,8 +974,6 @@ static void set_x_funcs (void)
 				x_do_cycles = do_cycles;
 				x_do_cycles_pre = do_cycles;
 				x_do_cycles_post = do_cycles_post;
-#endif
-#ifdef CPUEMU_22
 			} else if (currprefs.cpu_model == 68030 && !currprefs.cachesize) {
 				x_prefetch = get_word_020_prefetch;
 				x_get_ilong = get_long_030_prefetch;
@@ -996,7 +990,6 @@ static void set_x_funcs (void)
 				x_do_cycles = do_cycles;
 				x_do_cycles_pre = do_cycles;
 				x_do_cycles_post = do_cycles_post;
-#endif
 			} else if (currprefs.cpu_model < 68040) {
 				// JIT or 68030+ does not have real prefetch only emulation
 				x_prefetch = NULL;
@@ -1050,7 +1043,6 @@ static void set_x_funcs (void)
 			x_do_cycles_post = do_cycles_post;
 		}
 		// 68020+ cycle exact
-#ifdef CPUEMU_21
 	} else if (currprefs.cpu_model == 68020) {
 		x_prefetch = get_word_ce020_prefetch;
 		x_get_ilong = get_long_ce020_prefetch;
@@ -1067,8 +1059,6 @@ static void set_x_funcs (void)
 		x_do_cycles = do_cycles_ce020;
 		x_do_cycles_pre = do_cycles_ce020;
 		x_do_cycles_post = do_cycles_ce020_post;
-#endif
-#ifdef CPUEMU_23
 	} else if (currprefs.cpu_model == 68030) {
 		x_prefetch = get_word_ce030_prefetch;
 		x_get_ilong = get_long_ce030_prefetch;
@@ -1085,7 +1075,6 @@ static void set_x_funcs (void)
 		x_do_cycles = do_cycles_ce020;
 		x_do_cycles_pre = do_cycles_ce020;
 		x_do_cycles_post = do_cycles_ce020_post;
-#endif
 	} else if (currprefs.cpu_model >= 68040) {
 		x_prefetch = NULL;
 		x_get_ilong = get_ilong_cache_040;
@@ -1172,14 +1161,6 @@ bool is_cpu_tracer (void)
 }
 bool set_cpu_tracer (bool state)
 {
-#ifdef FSUAE
-#if 0
-	if (state) {
-		printf("WARNING: ignoring call to set_cpu_tracer(%d)\n", state);
-	}
-	return false;
-#endif
-#endif
 	if (cpu_tracer < 0)
 		return false;
 	int old = cpu_tracer;
@@ -1304,62 +1285,6 @@ static uae_u32 REGPARAM2 op_unimpl_1 (uae_u32 opcode)
 	return 4;
 }
 
-#ifndef CPUEMU_0
-#define op_smalltbl_0_ff NULL
-#define op_smalltbl_1_ff NULL
-#define op_smalltbl_2_ff NULL
-#define op_smalltbl_3_ff NULL
-#define op_smalltbl_4_ff NULL
-#define op_smalltbl_5_ff NULL
-#endif
-#ifndef CPUEMU_11
-#define op_smalltbl_11_ff op_smalltbl_0_ff
-#define op_smalltbl_12_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_20
-#define op_smalltbl_20_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_21
-#define op_smalltbl_21_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_22
-#define op_smalltbl_22_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_23
-#define op_smalltbl_23_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_24
-#define op_smalltbl_24_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_25
-#define op_smalltbl_25_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_31
-#define op_smalltbl_31_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_32
-#define op_smalltbl_32_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_33
-#define op_smalltbl_33_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_40
-#define op_smalltbl_40_ff op_smalltbl_0_ff
-#define op_smalltbl_41_ff op_smalltbl_0_ff
-#define op_smalltbl_42_ff op_smalltbl_0_ff
-#define op_smalltbl_43_ff op_smalltbl_0_ff
-#define op_smalltbl_44_ff op_smalltbl_0_ff
-#define op_smalltbl_45_ff op_smalltbl_0_ff
-#endif
-#ifndef CPUEMU_50
-#define op_smalltbl_50_ff op_smalltbl_0_ff
-#define op_smalltbl_51_ff op_smalltbl_0_ff
-#define op_smalltbl_52_ff op_smalltbl_0_ff
-#define op_smalltbl_53_ff op_smalltbl_0_ff
-#define op_smalltbl_54_ff op_smalltbl_0_ff
-#define op_smalltbl_55_ff op_smalltbl_0_ff
-#endif
-
 // generic+direct, generic+direct+jit, generic+indirect, more compatible, cycle-exact, mmu
 static const struct cputbl *cputbls[6][6] =
 {
@@ -1443,7 +1368,7 @@ static void build_cpufunctbl (void)
 		instr *table = &table68k[opcode];
 
 		if (table->mnemo == i_ILLG)
-			continue;
+			continue;		
 
 		/* unimplemented opcode? */
 		if (table->unimpclev > 0 && lvl >= table->unimpclev) {
@@ -1607,9 +1532,7 @@ static void update_68k_cycles (void)
 static void prefs_changed_cpu (void)
 {
 	fixup_cpu (&changed_prefs);
-#ifdef JIT
 	check_prefs_changed_comp(false);
-#endif
 	currprefs.cpu_model = changed_prefs.cpu_model;
 	currprefs.fpu_model = changed_prefs.fpu_model;
 	currprefs.mmu_model = changed_prefs.mmu_model;
@@ -2487,7 +2410,7 @@ static uae_u32 exception_pc (int nr)
 static void Exception_build_stack_frame (uae_u32 oldpc, uae_u32 currpc, uae_u32 ssw, int nr, int format)
 {
     int i;
-
+   
 #if 0
     if (nr < 24 || nr > 31) { // do not print debugging for interrupts
         write_log(_T("Building exception stack frame (format %X)\n"), format);
@@ -2523,7 +2446,7 @@ static void Exception_build_stack_frame (uae_u32 oldpc, uae_u32 currpc, uae_u32 
 
 			m68k_areg (regs, 7) -= 4;
             x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr); // FA
-
+            
 			m68k_areg (regs, 7) -= 2;
             x_put_word (m68k_areg (regs, 7), 0);
             m68k_areg (regs, 7) -= 2;
@@ -2652,14 +2575,14 @@ static void Exception_mmu030 (int nr, uaecptr oldpc)
 
     exception_debug (nr);
     MakeSR ();
-
+    
     if (!regs.s) {
         regs.usp = m68k_areg (regs, 7);
         m68k_areg(regs, 7) = regs.m ? regs.msp : regs.isp;
         regs.s = 1;
         mmu_set_super (1);
     }
-
+ 
 #if 0
     if (nr < 24 || nr > 31) { // do not print debugging for interrupts
         write_log (_T("Exception_mmu030: Exception %i: %08x %08x %08x\n"),
@@ -2693,7 +2616,7 @@ static void Exception_mmu030 (int nr, uaecptr oldpc)
     } else {
         Exception_build_stack_frame (oldpc, currpc, regs.mmu_ssw, nr, 0x0);
     }
-
+    
 	if (newpc & 1) {
 		if (nr == 2 || nr == 3)
 			cpu_halt (CPU_HALT_DOUBLE_FAULT);
@@ -2757,7 +2680,7 @@ static void Exception_mmu (int nr, uaecptr oldpc)
 	} else {
         Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x0);
 	}
-
+    
 	if (newpc & 1) {
 		if (nr == 2 || nr == 3)
 			cpu_halt (CPU_HALT_DOUBLE_FAULT);
@@ -2778,9 +2701,9 @@ static void add_approximate_exception_cycles(int nr)
 		return;
 	if (nr >= 24 && nr <= 31) {
 		/* Interrupts */
-		cycles = 44 + 4;
+		cycles = 44 + 4; 
 	} else if (nr >= 32 && nr <= 47) {
-		/* Trap (total is 34, but cpuemux.c already adds 4) */
+		/* Trap (total is 34, but cpuemux.c already adds 4) */ 
 		cycles = 34 -4;
 	} else {
 		switch (nr)
@@ -2852,7 +2775,7 @@ static void Exception_normal (int nr)
 			return;
 		}
 	}
-
+	
 	if (currprefs.cpu_model > 68000) {
 		currpc = exception_pc (nr);
 		if (nr == 2 || nr == 3) {
@@ -3037,11 +2960,6 @@ static void ExceptionX (int nr, uaecptr address)
 {
 	regs.exception = nr;
 	if (cpu_tracer) {
-#ifdef FSUAE
-#if 0
-			printf("set cputrace.state = nr %d\n", nr);
-#endif
-#endif
 		cputrace.state = nr;
 	}
 
@@ -3208,7 +3126,7 @@ static void m68k_reset2(bool hardreset)
 	regs.caar = regs.cacr = 0;
 	regs.itt0 = regs.itt1 = regs.dtt0 = regs.dtt1 = 0;
 	regs.tcr = regs.mmusr = regs.urp = regs.srp = regs.buscr = 0;
-	mmu_tt_modified ();
+	mmu_tt_modified (); 
 	if (currprefs.cpu_model == 68020) {
 		regs.cacr |= 8;
 		set_cpu_caches (false);
@@ -3736,8 +3654,6 @@ int cpu_sleep_millis(int ms)
 	} else {
 		ret = sleep_millis_main(ms);
 	}
-#else
-	sleep_millis_main(ms);
 #endif
 #ifdef WITH_PPC
 	if (state)
@@ -3926,7 +3842,7 @@ static int do_specialties (int cycles)
 {
 	if (regs.spcflags & SPCFLAG_MODE_CHANGE)
 		return 1;
-
+	
 	if (regs.spcflags & SPCFLAG_CHECK) {
 		if (regs.halted) {
 			if (regs.halted == CPU_HALT_ACCELERATOR_CPU_FALLBACK) {
@@ -4036,11 +3952,6 @@ static int do_specialties (int cycles)
 			cputrace.stopped = regs.stopped;
 			cputrace.intmask = regs.intmask;
 			cputrace.sr = regs.sr;
-#ifdef FSUAE
-#if 0
-			printf("set cputrace.state (3) = 1\n");
-#endif
-#endif
 			cputrace.state = 1;
 			cputrace.pc = m68k_getpc ();
 			cputrace.memoryoffset = 0;
@@ -4465,7 +4376,7 @@ static int do_specialties_thread(void)
 		m68k_reset_delay = 0;
 		unset_special(SPCFLAG_CHECK);
 	}
-
+	
 #ifdef JIT
 	unset_special(SPCFLAG_END_COMPILE);   /* has done its job */
 #endif
@@ -4757,8 +4668,7 @@ static void m68k_run_jit(void)
 }
 #endif /* JIT */
 
-//#ifndef CPUEMU_0
-#if 0
+#ifndef CPUEMU_0
 
 static void m68k_run_2 (void)
 {
@@ -4952,7 +4862,7 @@ insretry:
 					uaecptr new_addr = mmu030_translate(regs.instruction_pc, regs.s != 0, false, false);
 					if (mmu030_fake_prefetch_addr != new_addr) {
 						regs.opcode = mmu030_fake_prefetch;
-						write_log(_T("MMU030 fake prefetch remap: %04x, %08x -> %08x\n"), mmu030_fake_prefetch, mmu030_fake_prefetch_addr, new_addr);
+						write_log(_T("MMU030 fake prefetch remap: %04x, %08x -> %08x\n"), mmu030_fake_prefetch, mmu030_fake_prefetch_addr, new_addr); 
 					} else {
 						if (mmu030_opcode_stageb < 0) {
 							regs.opcode = x_prefetch (0);
@@ -5213,7 +5123,7 @@ static void m68k_run_2ce (void)
 				}
 
 				(*cpufunctbl[r->opcode])(r->opcode);
-
+		
 				wait_memory_cycles();
 
 		cont:
@@ -5236,7 +5146,7 @@ static void m68k_run_2ce (void)
 	}
 }
 
-#if defined CPUEMU_20 || defined CPUEMU_22
+#ifdef CPUEMU_20
 
 // full prefetch 020 (more compatible)
 static void m68k_run_2p (void)
@@ -5363,7 +5273,7 @@ cont:
 	}
 }
 
-#endif /* defined CPUEMU_20 || defined CPUEMU_22 */
+#endif
 
 #ifdef WITH_THREADED_CPU
 static void *cpu_thread_run_2(void *v)
@@ -5583,15 +5493,13 @@ void m68k_go (int may_quit)
 				eventtab[ev_audio].active = 0;
 			m68k_setpc_normal (regs.pc);
 			check_prefs_changed_audio ();
-#ifdef SAVESTATE
+
 			if (!restored || hsync_counter == 0)
 				savestate_check ();
 			if (input_record == INPREC_RECORD_START)
 				input_record = INPREC_RECORD_NORMAL;
-#endif
 			statusline_clear();
 		} else {
-#ifdef SAVESTATE
 			if (input_record == INPREC_RECORD_START) {
 				input_record = INPREC_RECORD_NORMAL;
 				savestate_init ();
@@ -5599,13 +5507,10 @@ void m68k_go (int may_quit)
 				vsync_counter = 0;
 				savestate_check ();
 			}
-#endif
 		}
 
-#ifdef SAVESTATE
 		if (changed_prefs.inprecfile[0] && input_record)
 			inprec_prepare_record (savestate_fname[0] ? savestate_fname : NULL);
-#endif
 
 		set_cpu_tracer (false);
 
@@ -5658,30 +5563,17 @@ void m68k_go (int may_quit)
 #ifdef JIT
 				currprefs.cpu_model >= 68020 && currprefs.cachesize ? m68k_run_jit :
 #endif
-#ifdef CPUEMU_32
 				currprefs.cpu_model == 68030 && currprefs.mmu_model ? m68k_run_mmu030 :
-#endif
-#ifdef CPUEMU_31
 				currprefs.cpu_model == 68040 && currprefs.mmu_model ? m68k_run_mmu040 :
-#endif
-#ifdef CPUEMU_33
 				currprefs.cpu_model == 68060 && currprefs.mmu_model ? m68k_run_mmu060 :
-#endif
-#if defined CPUEMU_24 || defined CPUEMU_25
+
 				currprefs.cpu_model >= 68040 && currprefs.cpu_cycle_exact ? m68k_run_3ce :
-#endif
-#if defined CPUEMU_21 || defined CPUEMU_23
 				currprefs.cpu_model >= 68020 && currprefs.cpu_cycle_exact ? m68k_run_2ce :
-#endif
-#ifdef CPUEMU_20
+
 				currprefs.cpu_model <= 68020 && currprefs.cpu_compatible ? m68k_run_2p :
-#endif
-#ifdef CPUEMU_22
 				currprefs.cpu_model == 68030 && currprefs.cpu_compatible ? m68k_run_2p :
-#endif
-#ifdef CPUEMU_0
 				currprefs.cpu_model >= 68040 && currprefs.cpu_compatible ? m68k_run_3p :
-#endif
+
 				m68k_run_2;
 #if 0
 		}
@@ -5893,7 +5785,7 @@ static void movemout (TCHAR *out, uae_u16 mask, int mode, int fpmode)
 	if (mode == Apdi && !fpmode) {
 		uae_u8 dmask2;
 		uae_u8 amask2;
-
+		
 		amask2 = mask & 0xff;
 		dmask2 = (mask >> 8) & 0xff;
 		dmask = 0;
@@ -6010,7 +5902,7 @@ void m68k_disasm_2 (TCHAR *buf, int bufsize, uaecptr pc, uaecptr *nextpc, int cn
 		buf = buf_out (buf, &bufsize, _T("%08X "), pc);
 
 		pc += 2;
-
+		
 		if (lookup->friendlyname)
 			_tcscpy (instrname, lookup->friendlyname);
 		else
@@ -6147,7 +6039,7 @@ void m68k_disasm_2 (TCHAR *buf, int bufsize, uaecptr pc, uaecptr *nextpc, int cn
 				int mode;
 				int dreg = (extra >> 4) & 7;
 				int regmask, fpmode;
-
+				
 				if (extra & 0x4000) {
 					mode = (extra >> 11) & 3;
 					regmask = extra & 0xff;  // FMOVEM FPx
@@ -7321,7 +7213,7 @@ static void fill_icache020 (uae_u32 addr, uae_u32 (*fetch)(uaecptr), bool opcode
 #if PIPELINE_DEBUG
 static uae_u16 pipeline_opcode;
 #endif
-static uae_u32 get_word_ce020_prefetch_2 (int o, bool opcode)
+static void pipeline_020(uae_u16 w, uaecptr pc)
 {
 	if (regs.pipeline_pos < 0)
 		return;
@@ -7401,23 +7293,9 @@ static uae_u32 get_word_ce020_prefetch_2 (int o, bool opcode)
 	}
 }
 
-// Not exactly right, requires logic analyzer checks.
-
-#if defined CPUEMU_21 || defined CPUEMU_23
-void continue_ce020_prefetch(void)
-{
-	fill_prefetch_020();
-}
 #endif
 
-void continue_020_prefetch(void)
-{
-	fill_prefetch_020();
-}
-#endif
-
-#if defined CPUEMU_21 || defined CPUEMU_22 || defined CPUEMU_23 || defined CPUEMU_32
-uae_u32 get_word_ce020_prefetch (int o)
+static uae_u32 get_word_ce020_prefetch_2 (int o, bool opcode)
 {
 	uae_u32 pc = m68k_getpc () + o;
 	uae_u32 v;
@@ -7444,7 +7322,6 @@ uae_u32 get_word_ce020_prefetch (int o)
 	do_cycles_ce020_internal (2);
 	return v;
 }
-#endif
 
 uae_u32 get_word_ce020_prefetch (int o)
 {
@@ -7481,8 +7358,6 @@ uae_u32 get_word_020_prefetch (int o)
 	}
 	return v;
 }
-
-#if defined CPUEMU_21 || defined CPUEMU_22 || defined CPUEMU_23 || defined CPUEMU_32
 
 // these are also used by 68030.
 
@@ -7707,7 +7582,6 @@ void mem_access_delay_long_write_ce020 (uaecptr addr, uae_u32 v)
 	end_020_cycle();
 }
 
-#endif /* defined CPUEMU_21 || defined CPUEMU_22 || defined CPUEMU_23 || defined CPUEMU_32 */
 
 // 68030 caches aren't so simple as 68020 cache..
 STATIC_INLINE struct cache030 *getcache030 (struct cache030 *cp, uaecptr addr, uae_u32 *tagp, int *lwsp)
@@ -7874,7 +7748,7 @@ void write_dcache030(uaecptr addr, uae_u32 v, int size)
 	}
 }
 
-static uae_u32 get_word_ce030_prefetch_2 (int o)
+uae_u32 read_dcache030 (uaecptr addr, int size)
 {
 	struct cache030 *c1, *c2;
 	int lws1, lws2;
@@ -7966,8 +7840,7 @@ static uae_u32 get_word_ce030_prefetch_2 (int o)
 	return 0;
 }
 
-#ifdef CPUEMU_23
-uae_u32 get_word_ce030_prefetch (int o)
+static uae_u32 get_word_ce030_prefetch_2 (int o)
 {
 	uae_u32 pc = m68k_getpc () + o;
 	uae_u32 v;
@@ -8001,9 +7874,7 @@ uae_u32 get_word_ce030_prefetch_opcode (int o)
 {
 	return get_word_ce030_prefetch_2(o);
 }
-#endif
 
-#ifdef CPUEMU_22
 uae_u32 get_word_030_prefetch(int o)
 {
 	uae_u32 pc = m68k_getpc() + o;
@@ -8028,7 +7899,6 @@ uae_u32 get_word_030_prefetch(int o)
 	}
 	return v;
 }
-#endif
 
 uae_u32 get_word_icache030(uaecptr addr)
 {
@@ -8459,14 +8329,10 @@ void fill_prefetch_030_ntx (void)
 	}
 #endif
 
-#ifdef CPUEMU_23
 	if (currprefs.cpu_cycle_exact)
 		regs.irc = get_word_ce030_prefetch_opcode (0);
 	else
-#endif
-#ifdef CPUEMU_22
 		regs.irc = get_word_030_prefetch(0);
-#endif
 }
 
 void fill_prefetch_020_ntx(void)
@@ -8503,6 +8369,16 @@ void fill_prefetch_020_ntx(void)
 		regs.irc = get_word_ce020_prefetch_opcode (0);
 	else
 		regs.irc = get_word_020_prefetch (0);
+}
+
+// Not exactly right, requires logic analyzer checks.
+void continue_ce020_prefetch(void)
+{
+	fill_prefetch_020_ntx();
+}
+void continue_020_prefetch(void)
+{
+	fill_prefetch_020_ntx();
 }
 
 void continue_ce030_prefetch(void)
