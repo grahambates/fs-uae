@@ -81,6 +81,23 @@ this code that are retained.
 
 /*----------------------------------------------------------------------------
 | Returns 1 if the extended double-precision floating-point value `a' is a
+| signaling NaN; otherwise returns 0.
+*----------------------------------------------------------------------------*/
+
+static flag floatx80_is_signaling_nan( floatx80 a )
+{
+    uint64_t aLow;
+
+    aLow = a.low & ~ LIT64( 0x4000000000000000 );
+    return
+           ( ( a.high & 0x7FFF ) == 0x7FFF )
+        && (uint64_t) ( aLow<<1 )
+        && ( a.low == aLow );
+
+}
+
+/*----------------------------------------------------------------------------
+| Returns 1 if the extended double-precision floating-point value `a' is a
 | NaN; otherwise returns 0.
 *----------------------------------------------------------------------------*/
 
@@ -353,7 +370,6 @@ static floatx80 propagateFloatx80NaN( floatx80 a, floatx80 b, float_status *stat
 
 }
 
-#ifdef SOFTFLOAT_68K
 /*----------------------------------------------------------------------------
  | Takes extended double-precision floating-point  NaN  `a' and returns the
  | appropriate NaN result. If `a' is a signaling NaN, the invalid exception
@@ -367,24 +383,6 @@ static inline floatx80 propagateFloatx80NaNOneArg(floatx80 a, float_status *stat
     a.low |= LIT64( 0x4000000000000000 );
     
     return a;
-}
-#endif
-
-/*----------------------------------------------------------------------------
-| Returns 1 if the extended double-precision floating-point value `a' is a
-| signaling NaN; otherwise returns 0.
-*----------------------------------------------------------------------------*/
-
-static flag floatx80_is_signaling_nan( floatx80 a )
-{
-    uint64_t aLow;
-
-    aLow = a.low & ~ LIT64( 0x4000000000000000 );
-    return
-           ( ( a.high & 0x7FFF ) == 0x7FFF )
-        && (uint64_t) ( aLow<<1 )
-        && ( a.low == aLow );
-
 }
 
 // 28-12-2016: Added for Previous:
