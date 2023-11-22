@@ -43,9 +43,22 @@ static struct float_status fs;
 /* Functions for setting host/library modes and getting status */
 static void fp_set_mode(uae_u32 mode_control)
 {
-	set_floatx80_rounding_precision(80, &fs);
 	set_float_detect_tininess(float_tininess_before_rounding, &fs);
-    switch(mode_control & FPCR_ROUNDING_MODE) {
+
+	switch(mode_control & FPCR_ROUNDING_PRECISION) {
+		case FPCR_PRECISION_SINGLE: // single
+			set_floatx80_rounding_precision(32, &fs);
+			break;
+		default: // double
+		case FPCR_PRECISION_DOUBLE: // double
+			set_floatx80_rounding_precision(64, &fs);
+			break;
+		case FPCR_PRECISION_EXTENDED: // extended
+			set_floatx80_rounding_precision(80, &fs);
+			break;
+	}
+
+	switch(mode_control & FPCR_ROUNDING_MODE) {
         case FPCR_ROUND_NEAR: // to neareset
             set_float_rounding_mode(float_round_nearest_even, &fs);
             break;
@@ -59,7 +72,6 @@ static void fp_set_mode(uae_u32 mode_control)
             set_float_rounding_mode(float_round_up, &fs);
             break;
     }
-    return;
 }
 
 static void fp_get_status(uae_u32 *status)
@@ -76,6 +88,8 @@ static void fp_get_status(uae_u32 *status)
 		*status |= FPSR_UNFL;
 	if (fs.float_exception_flags & float_flag_inexact)
 		*status |= FPSR_INEX2;
+	if (fs.float_exception_flags & float_flag_decimal)
+		*status |= FPSR_INEX1;
 }
 STATIC_INLINE void fp_clear_status(void)
 {
@@ -83,13 +97,17 @@ STATIC_INLINE void fp_clear_status(void)
 }
 
 
-static const TCHAR *fp_print(fpdata *fpd)
+static const TCHAR *fp_printx80(floatx80 *fx, int mode)
 {
 	static TCHAR fsout[32];
 	flag n, u, d;
 	fptype result = 0.0;
 	int i;
-	floatx80 *fx = &fpd->fpx;
+
+	if (mode < 0) {
+		_stprintf(fsout, _T("%04X-%08X-%08X"), fx->high, (uae_u32)(fx->low >> 32), (uae_u32)fx->low);
+		return fsout;
+	}
 
 	n = floatx80_is_negative(*fx);
 	u = floatx80_is_unnormal(*fx);
@@ -121,7 +139,15 @@ static const TCHAR *fp_print(fpdata *fpd)
 		_stprintf(fsout, _T("%c%#.17e%s%s"), n?'-':'+', result, u ? _T("U") : _T(""), d ? _T("D") : _T(""));
 #endif
 	}
+	if (mode == 0 || mode > _tcslen(fsout))
+		return fsout;
+	fsout[mode] = 0;
 	return fsout;
+}
+
+static const TCHAR *fp_print(fpdata *fpd, int mode)
+{
+	return fp_printx80(&fpd->fpx, mode);
 }
 
 /* Functions for detecting float type */
@@ -255,7 +281,6 @@ static void from_native(fptype fp, fpdata *fpd)
     
     while (!(fpd->fpx.low & LIT64( 0x8000000000000000))) {
         if (fpd->fpx.high == 0) {
-            float_raise(float_flag_denormal, &fs);
             break;
         }
         fpd->fpx.low <<= 1;
@@ -322,15 +347,37 @@ static uae_s64 to_int(fpdata *src, int size)
 }
 static void from_int(fpdata *fpd, uae_s32 src)
 {
-    fpd->fpx = int32_to_floatx80(src, &fs);
+    fpd->fpx = int32_to_floatx80(src);
 }
 
 /* Functions for returning exception state data */
-static void fp_get_exceptional_operand(uae_u32 *wrd1, uae_u32 *wrd2, uae_u32 *wrd3)
+static void fp_get_internal_overflow(fpdata *fpd)
 {
+	fpd->fpx = getFloatInternalOverflow();
 }
-static void fp_get_exceptional_operand_grs(uae_u32 *wrd1, uae_u32 *wrd2, uae_u32 *wrd3, uae_u32 *grs)
+static void fp_get_internal_underflow(fpdata *fpd)
+ {
+	fpd->fpx = getFloatInternalUnderflow();
+}
+static void fp_get_internal_round_all(fpdata *fpd)
 {
+	fpd->fpx = getFloatInternalRoundedAll();
+}
+static void fp_get_internal_round(fpdata *fpd)
+{
+    fpd->fpx = getFloatInternalRoundedSome();
+}
+static void fp_get_internal_round_exten(fpdata *fpd)
+{
+	fpd->fpx = getFloatInternalFloatx80();
+}
+static void fp_get_internal(fpdata *fpd)
+{
+    fpd->fpx = getFloatInternalUnrounded();
+}
+static uae_u32 fp_get_internal_grs(void)
+{
+    return (uae_u32)getFloatInternalGRS();
 }
 
 /* Functions for rounding */
@@ -367,135 +414,121 @@ static void fp_round_double(fpdata *fpd)
 	fpd->fpx = floatx80_round_to_float64(fpd->fpx, &fs);
 }
 
+// round to selected precision
+static void fp_round(fpdata *a)
+{
+	switch(fs.floatx80_rounding_precision) {
+		case 32:
+			a->fpx = floatx80_round_to_float32(a->fpx, &fs);
+		break;
+		case 64:
+			a->fpx = floatx80_round_to_float64(a->fpx, &fs);
+		break;
+		default:
+		break;
+	}
+}
+
 /* Arithmetic functions */
 
-static void fp_move(fpdata *src, fpdata *dst)
+static void fp_int(fpdata *a, fpdata *b)
 {
-    dst->fpx = floatx80_move(src->fpx, &fs);
+    a->fpx = floatx80_round_to_int(b->fpx, &fs);
 }
 
-static void fp_int(fpdata *a, fpdata *dst)
+static void fp_intrz(fpdata *a, fpdata *b)
 {
-    dst->fpx = floatx80_round_to_int(a->fpx, &fs);
+    a->fpx = floatx80_round_to_int_toward_zero(b->fpx, &fs);
+}
+static void fp_lognp1(fpdata *a, fpdata *b)
+{
+    fptype fpa;
+	flag e = 0;
+	a->fpx = floatx80_lognp1_check(b->fpx, &e, &fs);
+	if (e)
+		return;
+    to_native(&fpa, b);
+    fpa = logl(a->fp + 1.0);
+    from_native(fpa, a);
+}
+static void fp_sin(fpdata *a, fpdata *b)
+{
+    fptype fpa;
+	flag e = 0;
+	a->fpx = floatx80_sin_check(b->fpx, &e, &fs);
+	if (e)
+		return;
+    to_native(&fpa, b);
+    fpa = sinl(fpa);
+    from_native(fpa, a);
+}
+static void fp_tan(fpdata *a, fpdata *b)
+{
+    fptype fpa;
+	flag e = 0;
+	a->fpx = floatx80_tan_check(b->fpx, &e, &fs);
+	if (e)
+		return;
+    to_native(&fpa, b);
+    fpa = tanl(fpa);
+    from_native(fpa, a);
+}
+static void fp_logn(fpdata *a, fpdata *b)
+{
+    fptype fpa;
+	flag e = 0;
+	a->fpx = floatx80_logn_check(b->fpx, &e, &fs);
+	if (e)
+		return;
+    to_native(&fpa, b);
+    fpa = logl(fpa);
+    from_native(fpa, a);
+}
+static void fp_log10(fpdata *a, fpdata *b)
+{
+    fptype fpa;
+	flag e = 0;
+	a->fpx = floatx80_log10_check(b->fpx, &e, &fs);
+	if (e)
+		return;
+    to_native(&fpa, b);
+    fpa = log10l(fpa);
+    from_native(fpa, a);
+}
+static void fp_log2(fpdata *a, fpdata *b)
+{
+    fptype fpa;
+	flag e = 0;
+	a->fpx = floatx80_log2_check(b->fpx, &e, &fs);
+	if (e)
+		return;
+    to_native(&fpa, b);
+    fpa = log2l(fpa);
+    from_native(fpa, a);
 }
 
-static void fp_intrz(fpdata *a, fpdata *dst)
-{
-    dst->fpx = floatx80_round_to_int_toward_zero(a->fpx, &fs);
-}
-static void fp_sqrt(fpdata *a, fpdata *dst)
-{
-    dst->fpx = floatx80_sqrt(a->fpx, &fs);
-}
-static void fp_lognp1(fpdata *a, fpdata *dst)
+static void fp_cos(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_lognp1_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_sin_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
-    fpa = log(a->fp + 1.0);
-    from_native(fpa, dst);
+    to_native(&fpa, b);
+    fpa = cosl(fpa);
+    from_native(fpa, a);
 }
-static void fp_sin(fpdata *a, fpdata *dst)
+static void fp_getexp(fpdata *a, fpdata *b)
 {
-    fptype fpa;
-	flag e = 0;
-	dst->fpx = floatx80_sin_check(a->fpx, &e, &fs);
-	if (e)
-		return;
-    to_native(&fpa, a);
-    fpa = sin(fpa);
-    from_native(fpa, dst);
+    a->fpx = floatx80_getexp(b->fpx, &fs);
 }
-static void fp_tan(fpdata *a, fpdata *dst)
+static void fp_getman(fpdata *a, fpdata *b)
 {
-    fptype fpa;
-	flag e = 0;
-	dst->fpx = floatx80_tan_check(a->fpx, &e, &fs);
-	if (e)
-		return;
-    to_native(&fpa, a);
-    fpa = tan(fpa);
-    from_native(fpa, dst);
-}
-static void fp_logn(fpdata *a, fpdata *dst)
-{
-    fptype fpa;
-	flag e = 0;
-	dst->fpx = floatx80_logn_check(a->fpx, &e, &fs);
-	if (e)
-		return;
-    to_native(&fpa, a);
-    fpa = log(fpa);
-    from_native(fpa, dst);
-}
-static void fp_log10(fpdata *a, fpdata *dst)
-{
-    fptype fpa;
-	flag e = 0;
-	dst->fpx = floatx80_log10_check(a->fpx, &e, &fs);
-	if (e)
-		return;
-    to_native(&fpa, a);
-    fpa = log10(fpa);
-    from_native(fpa, dst);
-}
-static void fp_log2(fpdata *a, fpdata *dst)
-{
-    fptype fpa;
-	flag e = 0;
-	dst->fpx = floatx80_log2_check(a->fpx, &e, &fs);
-	if (e)
-		return;
-    to_native(&fpa, a);
-    fpa = log2(fpa);
-    from_native(fpa, dst);
-}
-
-static void fp_abs(fpdata *a, fpdata *dst)
-{
-	dst->fpx = floatx80_abs(a->fpx, &fs);
-}
-static void fp_neg(fpdata *a, fpdata *dst)
-{
-	dst->fpx = floatx80_neg(a->fpx, &fs);
-}
-static void fp_cos(fpdata *a, fpdata *dst)
-{
-    fptype fpa;
-	flag e = 0;
-	dst->fpx = floatx80_sin_check(a->fpx, &e, &fs);
-	if (e)
-		return;
-    to_native(&fpa, a);
-    fpa = cos(fpa);
-    from_native(fpa, dst);
-}
-static void fp_getexp(fpdata *a, fpdata *dst)
-{
-    dst->fpx = floatx80_getexp(a->fpx, &fs);
-}
-static void fp_getman(fpdata *a, fpdata *dst)
-{
-    dst->fpx = floatx80_getman(a->fpx, &fs);
-}
-static void fp_div(fpdata *a, fpdata *b)
-{
-    a->fpx = floatx80_div(a->fpx, b->fpx, &fs);
+    a->fpx = floatx80_getman(b->fpx, &fs);
 }
 static void fp_mod(fpdata *a, fpdata *b, uae_u64 *q, uae_u8 *s)
 {
     a->fpx = floatx80_mod(a->fpx, b->fpx, q, s, &fs);
-}
-static void fp_add(fpdata *a, fpdata *b)
-{
-    a->fpx = floatx80_add(a->fpx, b->fpx, &fs);
-}
-static void fp_mul(fpdata *a, fpdata *b)
-{
-    a->fpx = floatx80_mul(a->fpx, b->fpx, &fs);
 }
 static void fp_sgldiv(fpdata *a, fpdata *b)
 {
@@ -513,10 +546,6 @@ static void fp_scale(fpdata *a, fpdata *b)
 {
     a->fpx = floatx80_scale(a->fpx, b->fpx, &fs);
 }
-static void fp_sub(fpdata *a, fpdata *b)
-{
-    a->fpx = floatx80_sub(a->fpx, b->fpx, &fs);
-}
 static void fp_cmp(fpdata *a, fpdata *b)
 {
     a->fpx = floatx80_cmp(a->fpx, b->fpx, &fs);
@@ -526,133 +555,436 @@ static void fp_tst(fpdata *a, fpdata *b)
 	a->fpx = floatx80_tst(b->fpx, &fs);
 }
 
+#define SETPREC \
+    uint8_t oldprec = fs.floatx80_rounding_precision; \
+	if (prec > 0) \
+	    set_floatx80_rounding_precision(prec, &fs);
+
+#define RESETPREC \
+	if (prec > 0) \
+		set_floatx80_rounding_precision(oldprec, &fs);
+
+
+/* Functions with fixed precision */
+static void fp_move(fpdata *a, fpdata *b, int prec)
+{
+	SETPREC
+    a->fpx = floatx80_move(b->fpx, &fs);
+	RESETPREC
+}
+static void fp_abs(fpdata *a, fpdata *b, int prec)
+{
+	SETPREC
+    a->fpx = floatx80_abs(b->fpx, &fs);
+	RESETPREC
+}
+static void fp_neg(fpdata *a, fpdata *b, int prec)
+{
+	SETPREC
+    a->fpx = floatx80_neg(b->fpx, &fs);
+	RESETPREC
+}
+static void fp_add(fpdata *a, fpdata *b, int prec)
+{
+	SETPREC
+    a->fpx = floatx80_add(a->fpx, b->fpx, &fs);
+	RESETPREC
+}
+static void fp_sub(fpdata *a, fpdata *b, int prec)
+{
+	SETPREC
+    a->fpx = floatx80_sub(a->fpx, b->fpx, &fs);
+	RESETPREC
+}
+static void fp_mul(fpdata *a, fpdata *b, int prec)
+{
+	SETPREC
+    a->fpx = floatx80_mul(a->fpx, b->fpx, &fs);
+	RESETPREC
+}
+static void fp_div(fpdata *a, fpdata *b, int prec)
+{
+	SETPREC
+    a->fpx = floatx80_div(a->fpx, b->fpx, &fs);
+	RESETPREC
+}
+static void fp_sqrt(fpdata *a, fpdata *b, int prec)
+{
+	SETPREC
+    a->fpx = floatx80_sqrt(b->fpx, &fs);
+	RESETPREC
+}
+
+
 /* FIXME: create softfloat functions for following arithmetics */
 
-static void fp_sinh(fpdata *a, fpdata *dst)
+static void fp_sinh(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_sinh_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_sinh_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = sinhl(fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_etoxm1(fpdata *a, fpdata *dst)
+static void fp_etoxm1(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_etoxm1_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_etoxm1_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = expl(fpa) - 1.0;
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_tanh(fpdata *a, fpdata *dst)
+static void fp_tanh(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_tanh_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_tanh_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = tanhl(fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_atan(fpdata *a, fpdata *dst)
+static void fp_atan(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_atan_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_atan_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = atanl(fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_asin(fpdata *a, fpdata *dst)
+static void fp_asin(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_asin_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_asin_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = asinl(fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_atanh(fpdata *a, fpdata *dst)
+static void fp_atanh(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_atanh_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_atanh_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = atanhl(fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_etox(fpdata *a, fpdata *dst)
+static void fp_etox(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_etox_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_etox_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = expl(fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_twotox(fpdata *a, fpdata *dst)
+static void fp_twotox(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_twotox_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_twotox_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = powl(2.0, fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_tentox(fpdata *a, fpdata *dst)
+static void fp_tentox(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_tentox_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_tentox_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = powl(10.0, fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_cosh(fpdata *a, fpdata *dst)
+static void fp_cosh(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_cosh_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_cosh_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = coshl(fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
-static void fp_acos(fpdata *a, fpdata *dst)
+static void fp_acos(fpdata *a, fpdata *b)
 {
     fptype fpa;
 	flag e = 0;
-	dst->fpx = floatx80_acos_check(a->fpx, &e, &fs);
+	a->fpx = floatx80_acos_check(b->fpx, &e, &fs);
 	if (e)
 		return;
-    to_native(&fpa, a);
+    to_native(&fpa, b);
     fpa = acosl(fpa);
-    from_native(fpa, dst);
+    from_native(fpa, a);
+	fp_round(a);
 }
 
 static void fp_normalize(fpdata *a)
 {
 	a->fpx = floatx80_normalize(a->fpx);
+}
+
+void to_pack_softfloat (fpdata *fp, uae_u32 *wrd)
+{
+	uae_s32 exp = 0;
+	uae_s64 mant = 0;
+
+	if (((wrd[0] >> 16) & 0x7fff) == 0x7fff) {
+		// infinity has extended exponent and all 0 packed fraction
+		// nans are copies bit by bit
+		fpp_to_exten(fp, wrd[0], wrd[1], wrd[2]);
+		return;
+	}
+	if (!(wrd[0] & 0xf) && !wrd[1] && !wrd[2]) {
+		// exponent is not cared about, if mantissa is zero
+		wrd[0] &= 0x80000000;
+		fpp_to_exten(fp, wrd[0], wrd[1], wrd[2]);
+		return;
+	}
+
+
+	int i;
+	int zerocount;
+	uae_s64 multiplier;
+
+	uae_u32 pack_exp = (wrd[0] >> 16) & 0xFFF;              // packed exponent
+	uae_u32 pack_int = wrd[0] & 0xF;                        // packed integer part
+	uae_u64 pack_frac = ((uae_u64)wrd[1] << 32) | wrd[2];   // packed fraction
+	uae_u32 pack_se = (wrd[0] >> 30) & 1;                   // sign of packed exponent
+	uae_u32 pack_sm = (wrd[0] >> 31) & 1;                   // sign of packed significand
+
+
+	for (i = 0; i < 3; i++) {
+		exp *= 10;
+		exp += (pack_exp >> (8 - i * 4)) & 0xF;
+	}
+
+
+	if (pack_se) {
+		exp = -exp;
+	}
+
+
+	exp -= 16;
+
+
+	if (exp < 0) {
+		exp = -exp;
+		pack_se = 1;
+	}
+
+
+	mant = pack_int;
+
+
+	for (i = 0; i < 16; i++) {
+		mant *= 10;
+		mant += (pack_frac >> (60 - i * 4)) & 0xF;
+	}
+
+#if 1
+
+	if (pack_sm) {
+		mant = -mant;
+	}
+
+
+	zerocount = 0;
+	multiplier = 10;
+	if (exp >= 27) {
+		if (pack_se) {
+			for (i = 0; i < 16; i++) {
+				if ((pack_frac >> (i * 4)) & 0xF) {
+					break;
+				}
+				zerocount++;
+			}
+
+
+			exp -= zerocount;
+
+			while (zerocount) {
+				if (zerocount & 1) {
+					mant /= multiplier;
+				}
+				multiplier *= multiplier;
+				zerocount >>= 1;
+			}
+		} else {
+			if (pack_int == 0) {
+				zerocount++;
+				for (i = 0; i < 16; i++) {
+					if ((pack_frac >> (60 - i * 4)) & 0xF) {
+						break;
+					}
+					zerocount++;
+				}
+			}
+
+
+			exp -= zerocount;
+
+			while (zerocount) {
+				if (zerocount & 1) {
+					mant *= multiplier;
+				}
+				multiplier *= multiplier;
+				zerocount >>= 1;
+			}
+		}
+	}
+
+
+	/* TODO: calculate rounding mode */
+	floatx80 z = int64_to_floatx80(mant);
+	floatx80 m = int32_to_floatx80(10);
+	floatx80 a = int32_to_floatx80(1);
+
+
+	while (exp) {
+		if (exp & 1) {
+			a = floatx80_mul(a, m, &fs);
+		}
+		m = floatx80_mul(m, m, &fs);
+		exp >>= 1;
+	}
+
+
+	if (pack_se) {
+		z = floatx80_div(z, a, &fs);
+	} else {
+		z = floatx80_mul(z, a, &fs);
+	}
+
+#if 0
+	write_log(_T("z = %s\n"), fp_printx80(&z, 0));
+	write_log(_T("m = %s\n"), fp_printx80(&m, 0));
+	write_log(_T("a = %s\n"), fp_printx80(&a, 0));
+
+
+	write_log(_T("zerocount = %i\n"), zerocount);
+	write_log(_T("multiplier = %llu\n"), multiplier);
+#endif
+
+	fp->fpx = z;
+
+	/* TODO: set inex1 and restore rounding mode */
+	// if mul/div caused inex2 --> set inex1
+
+#else
+
+	floatx80 f;
+	f.high = exp & 0x3FFF;
+	f.high |= pack_se ? 0x4000 : 0;
+	f.high |= pack_sm ? 0x8000 : 0;
+	f.low = mant;
+
+	fp->fpx = floatdecimal_to_floatx80(f, &fsp);
+
+#endif
+
+	if (!currprefs.fpu_softfloat) {
+		to_native(&fp->fp, fp);
+	}
+
+}
+
+
+void from_pack_softfloat (fpdata *src, uae_u32 *wrd, int kfactor)
+{
+    floatx80 a;
+	fpdata fpd;
+
+	if (!currprefs.fpu_softfloat) {
+		from_native(src->fp, &fpd);
+	} else {
+		fpd.fpx = src->fpx;
+	}
+	a = fpd.fpx;
+
+    floatx80 f = floatx80_to_floatdecimal(a, &kfactor, &fs);
+
+    uae_u32 pack_exp = 0;   // packed exponent
+    uae_u32 pack_exp4 = 0;
+    uae_u32 pack_int = 0;   // packed integer part
+    uae_u64 pack_frac = 0;  // packed fraction
+    uae_u32 pack_se = 0;    // sign of packed exponent
+    uae_u32 pack_sm = 0;    // sign of packed significand
+
+    uae_u32 exponent = f.high & 0x3FFF;
+    uae_u64 significand = f.low;
+
+    uae_s32 len = kfactor; // SoftFloat saved len to kfactor variable
+
+    uae_u64 digit;
+    pack_frac = 0;
+    while (len > 0) {
+        len--;
+        digit = significand % 10;
+        significand /= 10;
+        if (len == 0) {
+            pack_int = digit;
+        } else {
+            pack_frac |= digit << (64 - len * 4);
+        }
+    }
+
+    digit = exponent / 1000;
+    exponent -= digit * 1000;
+    pack_exp4 = digit;
+    digit = exponent / 100;
+    exponent -= digit * 100;
+    pack_exp = digit << 8;
+    digit = exponent / 10;
+    exponent -= digit * 10;
+    pack_exp |= digit << 4;
+    pack_exp |= exponent;
+
+    pack_se = f.high & 0x4000;
+    pack_sm = f.high & 0x8000;
+
+    wrd[0] = pack_exp << 16;
+    wrd[0] |= pack_exp4 << 12;
+    wrd[0] |= pack_int;
+    wrd[0] |= pack_se ? 0x40000000 : 0;
+    wrd[0] |= pack_sm ? 0x80000000 : 0;
+
+    wrd[1] = pack_frac >> 32;
+    wrd[2] = pack_frac & 0xffffffff;
+
+    //printf("PACKED = %08x %08x %08x\n",wrd[0],wrd[1],wrd[2]);
 }
 
 void fp_init_softfloat(void)
@@ -696,8 +1028,13 @@ void fp_init_softfloat(void)
 	fpp_round64 = fp_round64;
 
 	fpp_normalize = fp_normalize;
-	fpp_get_exceptional_operand = fp_get_exceptional_operand;
-	fpp_get_exceptional_operand_grs = fp_get_exceptional_operand_grs;
+	fpp_get_internal_overflow = fp_get_internal_overflow;
+	fpp_get_internal_underflow = fp_get_internal_underflow;
+	fpp_get_internal_round_all = fp_get_internal_round_all;
+	fpp_get_internal_round = fp_get_internal_round;
+	fpp_get_internal_round_exten = fp_get_internal_round_exten;
+	fpp_get_internal = fp_get_internal;
+	fpp_get_internal_grs = fp_get_internal_grs;
 
 	fpp_int = fp_int;
 	fpp_sinh = fp_sinh;

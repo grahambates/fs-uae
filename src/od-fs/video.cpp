@@ -556,6 +556,21 @@ static void vsync_notvblank (void) {
 #endif
 }
 
+void desktop_coords (int *dw, int *dh, int *ax, int *ay, int *aw, int *ah)
+{
+	STUB("");
+#if 0
+		struct MultiDisplay *md = getdisplay (&currprefs);
+
+		*dw = md->rect.right - md->rect.left;
+		*dh = md->rect.bottom - md->rect.top;
+		*ax = amigawin_rect.left;
+		*ay = amigawin_rect.top;
+		*aw = amigawin_rect.right - *ax;
+		*ah = amigawin_rect.bottom - *ay;
+#endif
+}
+
 int target_get_display (const TCHAR *name) {
     return 0;
 }

@@ -7,10 +7,7 @@
 */
 
 #include "sysconfig.h"
-
-#ifdef WITH_SLIRP
-#include "../slirp/slirp.h"
-#endif
+#include "sysdeps.h"
 
 #ifdef FSUAE // NL
 
@@ -19,18 +16,19 @@ static int ethernet_paused;
 
 #else
 
+#include <winsock2.h>
+#include <Ws2tcpip.h>
+#include <Iphlpapi.h>
+
 #include <stdio.h>
 
 #define HAVE_REMOTE
 #define WPCAP
 #include "pcap.h"
 
-#include <windows.h>
-
 #include "packet32.h"
 #include "ntddndis.h"
 
-#include "sysdeps.h"
 #include "options.h"
 #include "sana2.h"
 
