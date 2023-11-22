@@ -35,3 +35,8 @@ void write_log_standard (const char *fmt, ...)
 #endif
     va_end (ap);
 }
+
+void write_logx(const char *format, ...)
+{
+    // FIXME
+}
