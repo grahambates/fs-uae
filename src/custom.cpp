@@ -729,7 +729,7 @@ static void decide_diw (int hpos)
 	last_hdiw = hdiw;
 }
 
-static int fetchmode, fetchmode_size, fetchmode_mask, fetchmode_bytes;
+static int fetchmode, fetchmode_size, fetchmode_mask, fetchmode_bytes, fetchmode_fmode;
 static int real_bitplane_number[3][3][9];
 
 /* Disable bitplane DMA if planes > available DMA slots. This is needed
@@ -1210,6 +1210,7 @@ static void setup_fmodes (int hpos)
 	fetchmode_size = 16 << fetchmode;
 	fetchmode_bytes = 2 << fetchmode;
 	fetchmode_mask = fetchmode_size - 1;
+	fetchmode_fmode = fmode;
 	set_delay_lastcycle ();
 	compute_toscr_delay (bplcon1);
 
@@ -1363,7 +1364,6 @@ static int fetch_warn (int nr, int hpos)
 static void fetch (int nr, int fm, bool modulo, int hpos)
 {
 	if (nr < bplcon0_planes_limit) {
-		uaecptr p;
 		int add = fetchmode_bytes;
 
 		// refresh conflict?
@@ -1371,7 +1371,8 @@ static void fetch (int nr, int fm, bool modulo, int hpos)
 			add = fetch_warn (nr, hpos);
 		}
 
-		p = bplpt[nr];
+		uaecptr p = bplpt[nr];
+
 		bplpt[nr] += add;
 		bplptx[nr] += add;
 
@@ -1387,7 +1388,7 @@ static void fetch (int nr, int fm, bool modulo, int hpos)
 
 #ifdef DEBUGGER
 		if (debug_dma)
-			record_dma (0x110 + nr * 2, chipmem_wget_indirect (p), p, hpos, vpos, DMARECORD_BITPLANE);
+			record_dma (0x110 + nr * 2, chipmem_wget_indirect (p), p, hpos, vpos, DMARECORD_BITPLANE, nr);
 		if (memwatch_enabled)
 			debug_wgetpeekdma_chipram(p, chipmem_wget_indirect (p), MW_MASK_BPL_0 << nr, 0x110 + nr * 2);
 #endif
@@ -1399,16 +1400,46 @@ static void fetch (int nr, int fm, bool modulo, int hpos)
 			break;
 #ifdef AGA
 		case 1:
-			fetched_aga[nr] = chipmem_lget_indirect (p);
+		{
+			uaecptr pm = p & ~3;
+			if (p & 2) {
+				fetched_aga[nr] = chipmem_lget_indirect(pm) & 0x0000ffff;
+				fetched_aga[nr] |= fetched_aga[nr] << 16;
+			} else if (fetchmode_fmode & 2) { // optimized (fetchmode_fmode & 3) == 2
+				fetched_aga[nr] = chipmem_lget_indirect(pm) & 0xffff0000;
+				fetched_aga[nr] |= fetched_aga[nr] >> 16;
+			} else {
+				fetched_aga[nr] = chipmem_lget_indirect(pm);
+			}
 			last_custom_value1 = (uae_u32)fetched_aga[nr];
 			fetched[nr] = (uae_u16)fetched_aga[nr];
 			break;
+		}
 		case 2:
-			fetched_aga[nr] = ((uae_u64)chipmem_lget_indirect (p)) << 32;
-			fetched_aga[nr] |= chipmem_lget_indirect (p + 4);
+		{
+			uaecptr pm = p & ~7;
+			uaecptr pm1, pm2;
+			if (p & 4) {
+				pm1 = pm + 4;
+				pm2 = pm + 4;
+			} else {
+				pm1 = pm;
+				pm2 = pm + 4;
+			}
+			if (p & 2) {
+				uae_u32 v1 = chipmem_lget_indirect(pm1) & 0x0000ffff;
+				uae_u32 v2 = chipmem_lget_indirect(pm2) & 0x0000ffff;
+				v1 |= v1 << 16;
+				v2 |= v2 << 16;
+				fetched_aga[nr] = (((uae_u64)v1) << 32) | v2;
+			} else {
+				fetched_aga[nr] = ((uae_u64)chipmem_lget_indirect(pm1)) << 32;
+				fetched_aga[nr] |= chipmem_lget_indirect(pm2);
+			}
 			last_custom_value1 = (uae_u32)fetched_aga[nr];
 			fetched[nr] = (uae_u16)fetched_aga[nr];
 			break;
+		}
 #endif
 		}
 		if (modulo)
@@ -1944,10 +1975,6 @@ STATIC_INLINE void long_fetch_16 (int plane, int nwords, int weird_number_of_bit
 		nwords--;
 		if (dma) {
 			fetchval = do_get_mem_word (real_pt);
-#if 0
-			if (plane == 0)
-				fetchval ^= 0x55555555;
-#endif
 			real_pt++;
 		}
 	}
@@ -1959,13 +1986,14 @@ STATIC_INLINE void long_fetch_16 (int plane, int nwords, int weird_number_of_bit
 #ifdef AGA
 STATIC_INLINE void long_fetch_32 (int plane, int nwords, int weird_number_of_bits, int dma)
 {
-	uae_u32 *real_pt = (uae_u32 *)pfield_xlateptr (bplpt[plane], nwords * 2);
+	uae_u32 *real_pt = (uae_u32 *)pfield_xlateptr (bplpt[plane] & ~3, nwords * 2);
 	int delay = toscr_delay_adjusted[plane & 1];
 	int tmp_nbits = out_nbits;
 	uae_u64 shiftbuffer;
 	uae_u32 outval = outword[plane];
 	uae_u32 fetchval = (uae_u32)fetched_aga[plane];
 	uae_u32 *dataptr = (uae_u32 *)(line_data[next_lineno] + 2 * plane * MAX_WORDS_PER_LINE + 4 * out_offs);
+	bool unaligned = (bplpt[plane] & 2) != 0;
 
 	if (dma) {
 		bplpt[plane] += nwords * 2;
@@ -2011,11 +2039,14 @@ STATIC_INLINE void long_fetch_32 (int plane, int nwords, int weird_number_of_bit
 		nwords -= 2;
 		if (dma) {
 			fetchval = do_get_mem_long (real_pt);
+			if (unaligned) {
+				fetchval &= 0x0000ffff;
+				fetchval |= fetchval << 16;
+			} else if (fetchmode_fmode & 2) {
+				fetchval &= 0xffff0000;
+				fetchval |= fetchval >> 16;
+			}
 			real_pt++;
-#if 0
-			if (plane == 0)
-				fetchval ^= 0x5555555555555555;
-#endif
 		}
 
 	}
@@ -2062,7 +2093,7 @@ STATIC_INLINE void aga_shift_n (uae_u64 *p, int n)
 
 STATIC_INLINE void long_fetch_64 (int plane, int nwords, int weird_number_of_bits, int dma)
 {
-	uae_u32 *real_pt = (uae_u32 *)pfield_xlateptr (bplpt[plane], nwords * 2);
+	uae_u32 *real_pt = (uae_u32 *)pfield_xlateptr (bplpt[plane] & ~7, nwords * 2);
 	int delay = toscr_delay_adjusted[plane & 1];
 	int tmp_nbits = out_nbits;
 #ifdef HAVE_UAE_U128
@@ -2074,6 +2105,8 @@ STATIC_INLINE void long_fetch_64 (int plane, int nwords, int weird_number_of_bit
 	uae_u64 fetchval = fetched_aga[plane];
 	uae_u32 *dataptr = (uae_u32 *)(line_data[next_lineno] + 2 * plane * MAX_WORDS_PER_LINE + 4 * out_offs);
 	int shift = (64 - 16) + delay;
+	bool unaligned2 = (bplpt[plane] & 2) != 0;
+	bool unaligned4 = (bplpt[plane] & 4) != 0;
 
 	if (dma) {
 		bplpt[plane] += nwords * 2;
@@ -2145,12 +2178,26 @@ STATIC_INLINE void long_fetch_64 (int plane, int nwords, int weird_number_of_bit
 		nwords -= 4;
 
 		if (dma) {
-			fetchval = ((uae_u64)do_get_mem_long (real_pt)) << 32;
-			fetchval |= do_get_mem_long (real_pt + 1);
-#if 0
-			if (plane == 0)
-				fetchval ^= 0x5555555555555555;
-#endif
+			uae_u32 *real_pt1, *real_pt2;
+			if (unaligned4) {
+				real_pt1 = real_pt + 1;
+				real_pt2 = real_pt + 1;
+			} else {
+				real_pt1 = real_pt;
+				real_pt2 = real_pt + 1;
+			}
+			if (unaligned2) {
+				uae_u32 v1 = do_get_mem_long (real_pt1);
+				uae_u32 v2 = do_get_mem_long (real_pt2);
+				v1 &= 0x0000ffff;
+				v1 |= v1 << 16;
+				v2 &= 0x0000ffff;
+				v2 |= v2 << 16;
+				fetchval = (((uae_u64)v1) << 32) | v2;
+			} else {
+				fetchval = ((uae_u64)do_get_mem_long (real_pt1)) << 32;
+				fetchval |= do_get_mem_long (real_pt2);
+			}
 			real_pt += 2;
 		}
 	}
@@ -6352,6 +6399,12 @@ STATIC_INLINE int copper_cant_read2 (int hpos, int alloc)
 	if ((hpos == maxhpos - 3) && (maxhpos & 1) && alloc >= 0) {
 		if (alloc) {
 			alloc_cycle (hpos, CYCLE_COPPER);
+#ifdef DEBUGGER
+			if (debug_dma) {
+				record_dma_event(DMA_EVENT_NOONEGETS, hpos, vpos);
+				record_dma (0x1fe, chipmem_wget_indirect (cop_state.ip), cop_state.ip, hpos, vpos, DMARECORD_COPPER, 2);
+			}
+#endif
 		}
 		return -1;
 	}
@@ -6503,7 +6556,7 @@ static void update_copper (int until_hpos)
 			alloc_cycle (old_hpos, CYCLE_COPPER);
 #ifdef DEBUGGER
 			if (debug_dma)
-				record_dma (0x8c, chipmem_wget_indirect (cop_state.ip), cop_state.ip, old_hpos, vpos, DMARECORD_COPPER);
+				record_dma (0x8c, chipmem_wget_indirect (cop_state.ip), cop_state.ip, old_hpos, vpos, DMARECORD_COPPER, 0);
 			if (memwatch_enabled)
 				debug_wgetpeekdma_chipram(cop_state.ip, chipmem_wget_indirect (cop_state.ip), MW_MASK_COPPER, 0x8c);
 #endif
@@ -6529,7 +6582,7 @@ static void update_copper (int until_hpos)
 				alloc_cycle (old_hpos, CYCLE_COPPER);
 #ifdef DEBUGGER
 				if (debug_dma)
-					record_dma (0x1fe, chipmem_wget_indirect (cop_state.ip), cop_state.ip, old_hpos, vpos, DMARECORD_COPPER);
+					record_dma (0x1fe, chipmem_wget_indirect (cop_state.ip), cop_state.ip, old_hpos, vpos, DMARECORD_COPPER, 0);
 				if (memwatch_enabled)
 					debug_wgetpeekdma_chipram(cop_state.ip, chipmem_wget_indirect (cop_state.ip), MW_MASK_COPPER, 0x1fe);
 #endif
@@ -6558,7 +6611,7 @@ static void update_copper (int until_hpos)
 			cycle_line[old_hpos] |= CYCLE_COPPER_SPECIAL;
 #ifdef DEBUGGER
 			if (debug_dma)
-				record_dma (0x1fe, chipmem_wget_indirect (cop_state.ip), cop_state.ip, old_hpos, vpos, DMARECORD_COPPER);
+				record_dma (0x1fe, chipmem_wget_indirect (cop_state.ip), cop_state.ip, old_hpos, vpos, DMARECORD_COPPER, 2);
 			if (memwatch_enabled)
 				debug_wgetpeekdma_chipram(cop_state.ip, chipmem_wget_indirect (cop_state.ip), MW_MASK_COPPER, 0x1fe);
 #endif
@@ -6581,7 +6634,7 @@ static void update_copper (int until_hpos)
 			alloc_cycle (old_hpos, CYCLE_COPPER);
 #ifdef DEBUGGER
 			if (debug_dma)
-				record_dma (0x1fe, cop_state.i1, cop_state.ip, old_hpos, vpos, DMARECORD_COPPER);
+				record_dma (0x1fe, cop_state.i1, cop_state.ip, old_hpos, vpos, DMARECORD_COPPER, 2);
 			if (memwatch_enabled)
 				debug_wgetpeekdma_chipram(cop_state.ip, cop_state.i1, MW_MASK_COPPER, 0x1fe);
 #endif
@@ -6595,7 +6648,7 @@ static void update_copper (int until_hpos)
 			alloc_cycle (old_hpos, CYCLE_COPPER);
 #ifdef DEBUGGER
 			if (debug_dma)
-				record_dma (0x8c, cop_state.i1, cop_state.ip, old_hpos, vpos, DMARECORD_COPPER);
+				record_dma (0x8c, cop_state.i1, cop_state.ip, old_hpos, vpos, DMARECORD_COPPER, 0);
 			if (memwatch_enabled)
 				debug_wgetpeekdma_chipram(cop_state.ip, cop_state.i1, MW_MASK_COPPER, 0x8c);
 #endif
@@ -6621,7 +6674,7 @@ static void update_copper (int until_hpos)
 					cop_state.state = COP_wait_in2;
 #ifdef DEBUGGER
 				if (debug_dma)
-					record_dma (0x8c, cop_state.i2, cop_state.ip - 2, old_hpos, vpos, DMARECORD_COPPER);
+					record_dma (0x8c, cop_state.i2, cop_state.ip - 2, old_hpos, vpos, DMARECORD_COPPER, (cop_state.i1 & 1) ? 1 : 0);
 				if (memwatch_enabled)
 					debug_wgetpeekdma_chipram(cop_state.ip - 2, cop_state.i2, MW_MASK_COPPER, 0x8c);
 #endif
@@ -6634,7 +6687,7 @@ static void update_copper (int until_hpos)
 				cop_state.state = COP_read1;
 #ifdef DEBUGGER
 				if (debug_dma)
-					record_dma (reg, data, cop_state.ip - 2, old_hpos, vpos, DMARECORD_COPPER);
+					record_dma (reg, data, cop_state.ip - 2, old_hpos, vpos, DMARECORD_COPPER, 0);
 				if (memwatch_enabled)
 					debug_wgetpeekdma_chipram(cop_state.ip - 2, data, MW_MASK_COPPER, reg);
 #endif
@@ -6910,29 +6963,79 @@ static void cursorsprite (void)
 	}
 }
 
-static uae_u16 sprite_fetch(struct sprite *s, int dma, int hpos, int cycle, int mode)
+static uae_u16 sprite_fetch(struct sprite *s, uaecptr pt, bool dma, int hpos, int cycle, int mode)
 {
 	uae_u16 data = last_custom_value1;
 	if (dma) {
 		if (cycle && currprefs.cpu_memory_cycle_exact)
 			s->ptxhpos = hpos;
-		data = last_custom_value1 = chipmem_wget_indirect (s->pt);
+		data = last_custom_value1 = chipmem_wget_indirect (pt);
 		alloc_cycle (hpos, CYCLE_SPRITE);
 #ifdef DEBUGGER
+		int num = s - &spr[0];
 		if (debug_dma)
-			record_dma ((s - &spr[0]) * 8 + 0x140 + mode * 4 + cycle * 2, data, s->pt, hpos, vpos, DMARECORD_SPRITE);
+			record_dma (num * 8 + 0x140 + mode * 4 + cycle * 2, data, pt, hpos, vpos, DMARECORD_SPRITE, num);
 		if (memwatch_enabled)
-			debug_wgetpeekdma_chipram(s->pt, data, MW_MASK_SPR_0 << (s - &spr[0]), (s - &spr[0]) * 8 + 0x140 + mode * 4 + cycle * 2);
+			debug_wgetpeekdma_chipram(pt, data, MW_MASK_SPR_0 << num, num * 8 + 0x140 + mode * 4 + cycle * 2);
 #endif
 	}
-	s->pt += 2;
 	return data;
 }
-static uae_u16 sprite_fetch2(struct sprite *s, int hpos, int cycle, int mode)
+
+static void sprite_fetch_full(struct sprite *s, int hpos, int cycle, int mode, uae_u16 *v0, uae_u32 *v1, uae_u32 *v2)
 {
-	uae_u16 data = chipmem_wget_indirect (s->pt);
-	s->pt += 2;
-	return data;
+	uae_u32 data321 = 0, data322 = 0;
+	uae_u16 data16;
+
+	if (sprite_width == 16) {
+
+		data16 = sprite_fetch (s, s->pt, true, hpos, cycle, mode);
+		s->pt += 2;
+
+	} else if (sprite_width == 64) {
+
+		uaecptr pm = s->pt & ~7;
+		uaecptr pm1, pm2;
+		if (s->pt & 4) {
+			pm1 = pm + 4;
+			pm2 = pm + 4;
+		} else {
+			pm1 = pm;
+			pm2 = pm + 4;
+		}
+		data321 = sprite_fetch(s, pm1, true, hpos, cycle, mode) << 16;
+		data321 |= chipmem_wget_indirect(pm1 + 2);
+		data322 = chipmem_wget_indirect(pm2) << 16;
+		data322 |= chipmem_wget_indirect(pm2 + 2);
+		if (s->pt & 2) {
+			data321 &= 0x0000ffff;
+			data322 &= 0x0000ffff;
+			data321 |= data321 << 16;
+			data322 |= data322 << 16;
+		}
+		data16 = data321 >> 16;
+		s->pt += 8;
+
+	} else { // 32
+
+		uaecptr pm = s->pt & ~3;
+		data321 = sprite_fetch(s, pm, true, hpos, cycle, mode) << 16;
+		data321 |= chipmem_wget_indirect(pm + 2);
+		if (s->pt & 2) {
+			data321 &= 0x0000ffff;
+			data321 |= data321 << 16;
+		} else if (fetchmode_fmode & 8) {
+			data321 &= 0xffff0000;
+			data321 |= data321 >> 16;
+		}
+		data16 = data321 >> 16;
+		s->pt += 4;
+
+	}
+
+	*v0 = data16;
+	*v1 = data321;
+	*v2 = data322;
 }
 
 static void do_sprites_1(int num, int cycle, int hpos)
@@ -6942,6 +7045,7 @@ static void do_sprites_1(int num, int cycle, int hpos)
 	uae_u16 data;
 	// fetch both sprite pairs even if DMA was switched off between sprites
 	int isdma = dmaen (DMA_SPRITE) || ((num & 1) && spr[num & ~1].dmacycle);
+	bool unaligned = (spr[num].pt & 2) != 0;
 
 	if (cant_this_last_line())
 		return;
@@ -6989,16 +7093,8 @@ static void do_sprites_1(int num, int cycle, int hpos)
 		s->dmastate = 0;
 		posctl = 1;
 		if (dma) {
-			data = sprite_fetch (s, dma, hpos, cycle, 0);
-			switch (sprite_width)
-			{
-			case 64:
-				sprite_fetch2 (s, hpos, cycle, 0);
-				sprite_fetch2 (s, hpos, cycle, 0);
-			case 32:
-				sprite_fetch2 (s, hpos, cycle, 0);
-				break;
-			}
+			uae_u32 data321, data322;
+			sprite_fetch_full(s, hpos, cycle, true, &data, &data321, &data322);
 			//write_log (_T("%d:%d: %04X=%04X\n"), vpos, hpos, 0x140 + cycle * 2 + num * 8, data);
 			if (cycle == 0) {
 				if (start_before_dma && s->armed) {
@@ -7027,7 +7123,8 @@ static void do_sprites_1(int num, int cycle, int hpos)
 #endif
 	}
 	if (s->dmastate && !posctl && dma) {
-		uae_u16 data = sprite_fetch (s, dma, hpos, cycle, 1);
+		uae_u32 data321, data322;
+		sprite_fetch_full(s, hpos, cycle, false, &data, &data321, &data322);
 #if SPRITE_DEBUG >= 256
 		if (vpos >= SPRITE_DEBUG_MINY && vpos <= SPRITE_DEBUG_MAXY && (SPRITE_DEBUG & (1 << num))) {
 			write_log (_T("%d:%d:dma:P=%06X "), vpos, hpos, s->pt);
@@ -7053,33 +7150,21 @@ static void do_sprites_1(int num, int cycle, int hpos)
 		switch (sprite_width)
 		{
 		case 64:
-			{
-				uae_u16 data32 = sprite_fetch2 (s, hpos, cycle, 1);
-				uae_u16 data641 = sprite_fetch2 (s, hpos, cycle, 1);
-				uae_u16 data642 = sprite_fetch2 (s, hpos, cycle, 1);
-				if (dma) {
-					if (cycle == 0) {
-						sprdata[num][3] = data642;
-						sprdata[num][2] = data641;
-						sprdata[num][1] = data32;
-					} else {
-						sprdatb[num][3] = data642;
-						sprdatb[num][2] = data641;
-						sprdatb[num][1] = data32;
-					}
-				}
+			if (cycle == 0) {
+				sprdata[num][1] = data321;
+				sprdata[num][2] = data322 >> 16;
+				sprdata[num][3] = data322;
+			} else {
+				sprdatb[num][1] = data321;
+				sprdatb[num][2] = data322 >> 16;
+				sprdatb[num][3] = data322;
 			}
 			break;
 		case 32:
-			{
-				uae_u16 data32 = sprite_fetch2 (s, hpos, cycle, 1);
-				if (dma) {
-					if (cycle == 0)
-						sprdata[num][1] = data32;
-					else
-						sprdatb[num][1] = data32;
-				}
-			}
+			if (cycle == 0)
+				sprdata[num][1] = data321;
+			else
+				sprdatb[num][1] = data321;
 			break;
 		}
 #endif
@@ -8165,7 +8250,7 @@ static void dmal_emu (uae_u32 v)
 		uae_u16 dat = chipmem_wget_indirect (pt);
 #ifdef DEBUGGER
 		if (debug_dma)
-			record_dma (0xaa + nr * 16, dat, pt, hpos, vpos, DMARECORD_AUDIO);
+			record_dma (0xaa + nr * 16, dat, pt, hpos, vpos, DMARECORD_AUDIO, nr);
 		if (memwatch_enabled)
 			debug_wgetpeekdma_chipram(pt, dat, MW_MASK_AUDIO_0 << nr, 0xaa + nr * 16);
 #endif
@@ -8192,7 +8277,7 @@ static void dmal_emu (uae_u32 v)
 		}
 #ifdef DEBUGGER
 		if (debug_dma)
-			record_dma (w ? 0x26 : 0x08, dat, pt, hpos, vpos, DMARECORD_DISK);
+			record_dma (w ? 0x26 : 0x08, dat, pt, hpos, vpos, DMARECORD_DISK, v / 2);
 		if (memwatch_enabled)
 			debug_wgetpeekdma_chipram(pt, dat, MW_MASK_DISK, w ? 0x26 : 0x08);
 #endif
@@ -8497,7 +8582,7 @@ static void hsync_handler_post (bool onvsync)
 					strobe = 0x38;
 				else if ((currprefs.chipset_mask & CSMASK_ECS_AGNUS) && lol)
 					strobe = 0x3e;
-				record_dma (i == 0 ? strobe : 0x1fe, 0xffff, 0xffffffff, hp, vpos, DMARECORD_REFRESH);
+				record_dma (i == 0 ? strobe : 0x1fe, 0xffff, 0xffffffff, hp, vpos, DMARECORD_REFRESH, i);
 			}
 #endif
 			hp += 2;
@@ -10356,7 +10441,7 @@ uae_u32 wait_cpu_cycle_read (uaecptr addr, int mode)
 			reg |= 2;
 		else
 			reg |= 1;
-		dr = record_dma (reg, v, addr, hpos, vpos, mode == -2 || mode == 2 ? DMARECORD_CPU_I : DMARECORD_CPU_D);
+		dr = record_dma (reg, v, addr, hpos, vpos, DMARECORD_CPU, mode == -2 || mode == 2 ? 0 : 1);
 		checknasty (hpos, vpos);
 	}
 #endif
@@ -10410,7 +10495,7 @@ uae_u32 wait_cpu_cycle_read_ce020 (uaecptr addr, int mode)
 			reg |= 2;
 		else
 			reg |= 1;
-		dr = record_dma (reg, v, addr, hpos, vpos, mode == -2 || mode == 2 ? DMARECORD_CPU_I : DMARECORD_CPU_D);
+		dr = record_dma (reg, v, addr, hpos, vpos, DMARECORD_CPU, mode == -2 || mode == 2 ? 0 : 1);
 		checknasty (hpos, vpos);
 	}
 #endif
@@ -10460,7 +10545,7 @@ void wait_cpu_cycle_write (uaecptr addr, int mode, uae_u32 v)
 			reg |= 2;
 		else
 			reg |= 1;
-		record_dma (reg, v, addr, hpos, vpos, DMARECORD_CPU_D);
+		record_dma (reg, v, addr, hpos, vpos, DMARECORD_CPU, 1);
 		checknasty (hpos, vpos);
 	}
 #endif
@@ -10495,7 +10580,7 @@ void wait_cpu_cycle_write_ce020 (uaecptr addr, int mode, uae_u32 v)
 			reg |= 2;
 		else
 			reg |= 1;
-		record_dma (reg, v, addr, hpos, vpos, DMARECORD_CPU_D);
+		record_dma (reg, v, addr, hpos, vpos, DMARECORD_CPU, 1);
 		checknasty (hpos, vpos);
 	}
 #endif

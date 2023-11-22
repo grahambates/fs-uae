@@ -332,6 +332,7 @@ static const TCHAR *obsolete[] = {
 	_T("gfx_correct_aspect"), _T("gfx_autoscale"), _T("parallel_sampler"), _T("parallel_ascii_emulation"),
 	_T("avoid_vid"), _T("avoid_dga"), _T("z3chipmem_size"), _T("state_replay_buffer"), _T("state_replay"),
 	_T("z3realmapping"), _T("force_0x10000000_z3"),
+	_T("fpu_arithmetic_exceptions"),
 
 	_T("gfx_filter_vert_zoom"),_T("gfx_filter_horiz_zoom"),
 	_T("gfx_filter_vert_zoom_mult"), _T("gfx_filter_horiz_zoom_mult"),
@@ -762,7 +763,8 @@ end:
 }
 static void cfgfile_dwrite_coords(struct zfile *f, const TCHAR *option, int x, int y)
 {
-	cfgfile_dwrite(f, option, _T("%d,%d"), x, y);
+	if (x || y)
+		cfgfile_dwrite(f, option, _T("%d,%d"), x, y);
 }
 static void cfg_dowrite (struct zfile *f, const TCHAR *option, const TCHAR *value, int d, int target)
 {
@@ -1303,7 +1305,8 @@ static void cfgfile_write_board_rom(struct uae_prefs *prefs, struct zfile *f, st
 				if (br->device_order > 0 && prefs->autoconfig_custom_sort) {
 					if (buf2[0])
 						_tcscat(buf2, _T(","));
-					_stprintf(buf2, _T("order=%d"), br->device_order);
+					TCHAR *p2 = buf2 + _tcslen(buf2);
+					_stprintf(p2, _T("order=%d"), br->device_order);
 				}
 				if (br->roms[i].autoboot_disabled) {
 					if (buf2[0])
@@ -2245,7 +2248,6 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 	cfgfile_dwrite_bool (f, _T("cpu_no_unimplemented"), p->int_no_unimplemented);
 	cfgfile_write_bool (f, _T("fpu_strict"), p->fpu_strict);
 	cfgfile_dwrite_bool (f, _T("fpu_softfloat"), p->fpu_softfloat);
-	cfgfile_dwrite_bool (f, _T("fpu_arithmetic_exceptions"), p->fpu_exceptions);
 
 	cfgfile_write_bool (f, _T("rtg_nocustom"), p->picasso96_nocustom);
 	cfgfile_write (f, _T("rtg_modes"), _T("0x%x"), p->picasso96_modeflags);
@@ -4894,7 +4896,6 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, const TCHAR *option, TCH
 		|| cfgfile_yesno (option, value, _T("serial_direct"), &p->serial_direct)
 		|| cfgfile_yesno (option, value, _T("fpu_strict"), &p->fpu_strict)
 		|| cfgfile_yesno (option, value, _T("fpu_softfloat"), &p->fpu_softfloat)
-		|| cfgfile_yesno (option, value, _T("fpu_arithmetic_exceptions"), &p->fpu_exceptions)
 		|| cfgfile_yesno (option, value, _T("comp_nf"), &p->compnf)
 		|| cfgfile_yesno (option, value, _T("comp_constjump"), &p->comp_constjump)
 #ifdef USE_JIT_FPU
@@ -7075,7 +7076,6 @@ void default_prefs (struct uae_prefs *p, bool reset, int type)
 	p->int_no_unimplemented = false;
 	p->fpu_strict = 0;
 	p->fpu_softfloat = 0;
-	p->fpu_exceptions = 0;
 	p->m68k_speed = 0;
 	p->cpu_compatible = 1;
 	p->address_space_24 = 1;

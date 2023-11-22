@@ -1561,8 +1561,7 @@ static int check_prefs_changed_cpu2(void)
 		|| currprefs.cpu_compatible != changed_prefs.cpu_compatible
 		|| currprefs.cpu_cycle_exact != changed_prefs.cpu_cycle_exact
 		|| currprefs.cpu_memory_cycle_exact != changed_prefs.cpu_memory_cycle_exact
-		|| currprefs.fpu_softfloat != changed_prefs.fpu_softfloat
-		|| currprefs.fpu_exceptions != changed_prefs.fpu_exceptions) {
+		|| currprefs.fpu_softfloat != changed_prefs.fpu_softfloat) {
 			cpu_prefs_changed_flag |= 1;
 	}
 	if (changed
@@ -2586,7 +2585,7 @@ static void Exception_build_stack_frame_common (uae_u32 oldpc, uae_u32 currpc, u
 		regs.fp_unimp_ins = false;
 		if ((currprefs.cpu_model == 68060 && (currprefs.fpu_model == 0 || (regs.pcr & 2))) ||
 			(currprefs.cpu_model == 68040 && currprefs.fpu_model == 0)) {
-			Exception_build_stack_frame(regs.fp_ea, currpc, currpc, nr, 0x4);
+			Exception_build_stack_frame(regs.fp_ea, currpc, regs.instruction_pc, nr, 0x4);
 		} else {
 			Exception_build_stack_frame(regs.fp_ea, currpc, regs.mmu_ssw, nr, 0x2);
 		}
@@ -5571,6 +5570,14 @@ void m68k_go (int may_quit)
 		event_wait = true;
 		unset_special(SPCFLAG_MODE_CHANGE);
 
+		if (!regs.halted) {
+			// check that PC points to something that looks like memory.
+			uaecptr pc = m68k_getpc();
+			addrbank *ab = get_mem_bank_real(pc);
+			if (ab == NULL || ab == &dummy_bank || (!currprefs.cpu_compatible && !valid_address(pc, 2)) || (pc & 1)) {
+				cpu_halt(CPU_HALT_INVALID_START_ADDRESS);
+			}
+		}
 		if (regs.halted) {
 			cpu_halt (regs.halted);
 			if (regs.halted < 0) {

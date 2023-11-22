@@ -610,7 +610,8 @@ libuae_a_SOURCES = \
 	src/scp.cpp \
 	src/softfloat/softfloat.cpp \
 	src/softfloat/softfloat_decimal.cpp \
-	src/softfloat/softfloat_extension.cpp \
+	src/softfloat/softfloat_fpsp.cpp \
+	src/softfloat/softfloat_fpsp_tables.h \
 	src/softfloat/softfloat.h \
 	src/softfloat/SOFTFLOAT-MACROS.H \
 	src/softfloat/softfloat-specialize.h \
