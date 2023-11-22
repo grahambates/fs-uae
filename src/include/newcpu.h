@@ -192,7 +192,9 @@ struct regstruct
 
 #ifdef FPUEMU
 	fpdata fp[8];
+#ifdef JIT
 	fpdata fp_result;
+#endif
 	uae_u32 fp_result_status;
 	uae_u32 fpcr, fpsr, fpiar;
 	uae_u32 fpu_state;
@@ -228,7 +230,11 @@ struct regstruct
 	int pipeline_pos;
 	int pipeline_r8[2];
 	int pipeline_stop;
-	int ce020memcycles;
+
+	int ce020endcycle;
+	int ce020startcycle;
+	int ce020prefetchendcycle;
+
 	int ce020extracycles;
 	bool ce020memcycle_data;
 	int ce020_tail;

@@ -316,6 +316,8 @@ libuae_a_SOURCES = \
 	src/filesys.cpp \
 	src/flashrom.cpp \
 	src/fpp.cpp \
+	src/fpp_native.cpp \
+	src/fpp_softfloat.cpp \
 	src/framebufferboards.cpp \
 	src/fsdb.cpp \
 	src/fsusage.cpp \
@@ -606,6 +608,10 @@ libuae_a_SOURCES = \
 	src/sana2.cpp \
 	src/savestate.cpp \
 	src/scp.cpp \
+	src/softfloat/softfloat.cpp \
+	src/softfloat/softfloat.h \
+	src/softfloat/SOFTFLOAT-MACROS.H \
+	src/softfloat/softfloat-specialize.h \
 	src/scsi.cpp \
 	src/scsiemul.cpp \
 	src/scsitape.cpp \
@@ -1100,30 +1106,6 @@ libprowizard_a_SOURCES = \
 	prowizard/r/WantonPacker.c \
 	prowizard/r/XannPlayer.c \
 	prowizard/r/ZenPacker.c
-endif
-
-if WITH_SOFTFLOAT
-noinst_LIBRARIES += libsoftfloat.a
-AM_CPPFLAGS += -I$(s)/softfloat
-fs_uae_LDADD += libsoftfloat.a
-libsoftfloat_a_SOURCES = \
-	softfloat/softfloat-uae.h \
-	softfloat/fprem.cc \
-	softfloat/fpu_constant.h \
-	softfloat/fsincos.cc \
-	softfloat/poly.cc \
-	softfloat/softfloat16.cc \
-	softfloat/softfloat.cc \
-	softfloat/softfloat-compare.h \
-	softfloat/softfloat.h \
-	softfloat/softfloat-macros.h \
-	softfloat/softfloat-muladd.cc \
-	softfloat/softfloat-round-pack.cc \
-	softfloat/softfloat-round-pack.h \
-	softfloat/softfloat-specialize.cc \
-	softfloat/softfloat-specialize.h \
-	softfloat/softfloatx80.cc \
-	softfloat/softfloatx80.h
 endif
 
 if BUILTIN_LIBMPEG2
