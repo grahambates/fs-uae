@@ -41,6 +41,9 @@ typedef void (*FPP_FROM_DOUBLE)(fpdata*, uae_u32*, uae_u32*);
 typedef void (*FPP_TO_EXTEN)(fpdata*, uae_u32, uae_u32, uae_u32);
 typedef void (*FPP_FROM_EXTEN)(fpdata*, uae_u32*, uae_u32*, uae_u32*);
 
+typedef void (*FPP_PACK)(uae_u32*, uae_u32*, uae_u32*);
+typedef void (*FPP_PACKG)(uae_u32*, uae_u32*, uae_u32*, uae_u32*);
+
 typedef const TCHAR* (*FPP_PRINT)(fpdata*);
 
 extern FPP_PRINT fpp_print;
@@ -79,6 +82,8 @@ extern FPP_A fpp_round32;
 extern FPP_A fpp_round64;
 
 extern FPP_A fpp_normalize;
+extern FPP_PACK fpp_get_exceptional_operand;
+extern FPP_PACKG fpp_get_exceptional_operand_grs;
 
 extern FPP_AB fpp_int;
 extern FPP_AB fpp_sinh;

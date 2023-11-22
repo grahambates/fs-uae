@@ -482,7 +482,7 @@ void devices_pause(void)
 #endif
 	blkdev_entergui();
 #ifdef RETROPLATFORM
-	rp_pause(pause_emulation);
+	rp_pause(1);
 #endif
 #ifdef FSUAE
 #else
@@ -495,7 +495,7 @@ void devices_unpause(void)
 {
 	blkdev_exitgui();
 #ifdef RETROPLATFORM
-	rp_pause(pause_emulation);
+	rp_pause(0);
 #endif
 #ifdef WITH_PPC
 	uae_ppc_pause(0);
