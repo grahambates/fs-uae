@@ -412,6 +412,7 @@ libuae_a_SOURCES = \
 	src/include/picasso96.h \
 	src/include/readcpu.h \
 	src/include/rommgr.h \
+	src/include/rtc.h \
 	src/include/rtgmodes.h \
 	src/include/sampler.h \
 	src/include/sana2.h \
@@ -605,6 +606,7 @@ libuae_a_SOURCES = \
 	src/random.cpp \
 	src/readcpu.cpp \
 	src/rommgr.cpp \
+	src/rtc.cpp \
 	src/sana2.cpp \
 	src/savestate.cpp \
 	src/scp.cpp \
