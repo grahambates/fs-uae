@@ -1340,7 +1340,7 @@ static uae_u8 *REGPARAM2 uaeboard_xlate(uaecptr addr)
 {
 	addr -= uaeboard_base & 65535;
 	addr &= 65535;
-	return filesys_bank.baseaddr + addr;
+	return uaeboard_bank.baseaddr + addr;
 }
 
 static addrbank *expamem_map_uaeboard(struct autoconfig_info *aci)
@@ -4538,6 +4538,15 @@ const struct expansionromtype expansionroms[] = {
 		true, EXPANSIONTYPE_SCSI,
 		0, 0, 0, false, NULL,
 		false, 0, comspec_settings
+	},
+	{
+		_T("rapidfire"), _T("RapidFire"), _T("DKB"),
+		ncr_rapidfire_init, NULL, rapidfire_add_scsi_unit, ROMTYPE_RAPIDFIRE, 0, 0, BOARD_AUTOCONFIG_Z2, false,
+		NULL, 0,
+		false, EXPANSIONTYPE_SCSI,
+		2012, 1, 0, true, NULL,
+		true, 0, NULL,
+		{  0xd2, 0x0f ,0x00, 0x00, 0x07, 0xdc, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00 },
 	},
 	{
 		_T("dataflyerscsiplus"), _T("DataFlyer SCSI+"), _T("Expansion Systems"),
