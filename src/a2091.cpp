@@ -448,7 +448,7 @@ static bool is_dma_enabled(struct wd_state *wds)
 		case COMMODORE_8727:
 		return wds->cdmac.dmac_dma > 0;
 	}
-	return false;
+	return false;	
 }
 
 void rethink_a2091 (void)
@@ -532,12 +532,10 @@ static void doscsistatus(struct wd_state *wd, uae_u8 status)
 #endif
 	if (!wd->enabled)
 		return;
-#ifdef CDTV
 	if (wd->cdtv) {
 		cdtv_scsi_int ();
 		return;
 	}
-#endif
 	dmac_scsi_int(wd);
 #if WD33C93_DEBUG > 2
 	write_log (_T("Interrupt\n"));
@@ -739,10 +737,8 @@ static bool do_dma_commodore_8727(struct wd_state *wd, struct scsi_data *scsi)
 
 static bool do_dma_commodore(struct wd_state *wd, struct scsi_data *scsi)
 {
-#ifdef CDTV
 	if (wd->cdtv)
 		cdtv_getdmadata(&wd->cdmac.dmac_acr);
-#endif
 	if (scsi->direction < 0) {
 #if WD33C93_DEBUG || XT_DEBUG > 0
 		uaecptr odmac_acr = wd->cdmac.dmac_acr;
@@ -1114,7 +1110,7 @@ static void wd_cmd_sel_xfer (struct wd_chip_state *wd, struct wd_state *wds, boo
 	if (wd->wdregs[WD_COMMAND_PHASE] == 0x44) {
 		wd->wdregs[WD_COMMAND_PHASE] = 0x45;
 	}
-
+		
 	if (wd->wdregs[WD_COMMAND_PHASE] == 0x45) {
 		settc (wd, tmp_tc);
 		wd->wd_dataoffset = 0;
@@ -1340,7 +1336,7 @@ static void wd_cmd_sel (struct wd_chip_state *wd, struct wd_state *wds, bool atn
 	} else {
 		wd->wdregs[WD_COMMAND_PHASE] = 0x20;
 		set_status (wd, CSR_SRV_REQ | PHS_COMMAND, 4);
-	}
+	} 
 }
 
 static void wd_cmd_reset (struct wd_chip_state *wd, bool irq)
@@ -1618,10 +1614,8 @@ uae_u8 wdscsi_get (struct wd_chip_state *wd, struct wd_state *wds)
 		set_pio_data_irq(wd, wds);
 	} else if (wd->sasr == WD_SCSI_STATUS) {
 		wd->auxstatus &= ~0x80;
-#ifdef CDTV
 		if (wds->cdtv)
 			cdtv_scsi_clear_int ();
-#endif
 		wds->cdmac.dmac_istr &= ~ISTR_INTS;
 		wd_check_interrupt(wds, true);
 #if 0
@@ -1655,10 +1649,10 @@ uae_u8 wdscsi_get_data(struct wd_chip_state *wd, struct wd_state *wds)
 
 static void xt_default_geometry(struct wd_state *wds)
 {
-	wds->cdmac.xt_cyls = wds->wc.scsi->hdhfd->cyls > 1023 ? 1023 : wds->wc.scsi->hdhfd->cyls;
-	wds->cdmac.xt_heads = wds->wc.scsi->hdhfd->heads > 31 ? 31 : wds->wc.scsi->hdhfd->heads;
-	wds->cdmac.xt_sectors = wds->wc.scsi->hdhfd->secspertrack;
-	write_log(_T("XT Default CHS %d %d %d\n"), wds->cdmac.xt_cyls, wds->cdmac.xt_heads, wds->cdmac.xt_sectors);
+	wds->cdmac.xt_cyls[0] = wds->wc.scsi->hdhfd->cyls > 1023 ? 1023 : wds->wc.scsi->hdhfd->cyls;
+	wds->cdmac.xt_heads[0] = wds->wc.scsi->hdhfd->heads > 31 ? 31 : wds->wc.scsi->hdhfd->heads;
+	wds->cdmac.xt_sectors[0] = wds->wc.scsi->hdhfd->secspertrack;
+	write_log(_T("XT Default CHS %d %d %d\n"), wds->cdmac.xt_cyls[0], wds->cdmac.xt_heads[0], wds->cdmac.xt_sectors[0]);
 }
 
 static void xt_set_status(struct wd_state *wds, uae_u8 state)
@@ -1686,11 +1680,11 @@ static void xt_command_done(struct wd_state *wds, uae_u8 status)
 	if (scsi->direction > 0) {
 		if (scsi->cmd[0] == 0x0c) {
 			xt_default_geometry(wds);
-			int size = wds->cdmac.xt_cyls * wds->cdmac.xt_heads * wds->cdmac.xt_sectors;
-			wds->cdmac.xt_heads = scsi->buffer[2] & 0x1f;
-			wds->cdmac.xt_cyls = (scsi->buffer[0] << 8) | scsi->buffer[1];
-			wds->cdmac.xt_sectors = size / (wds->cdmac.xt_cyls * wds->cdmac.xt_heads);
-			write_log(_T("XT_SETPARAM: Cyls=%d Heads=%d Sectors=%d\n"), wds->cdmac.xt_cyls, wds->cdmac.xt_heads, wds->cdmac.xt_sectors);
+			int size = wds->cdmac.xt_cyls[0] * wds->cdmac.xt_heads[0] * wds->cdmac.xt_sectors[0];
+			wds->cdmac.xt_heads[0] = scsi->buffer[2] & 0x1f;
+			wds->cdmac.xt_cyls[0] = (scsi->buffer[0] << 8) | scsi->buffer[1];
+			wds->cdmac.xt_sectors[0] = size / (wds->cdmac.xt_cyls[0] * wds->cdmac.xt_heads[0]);
+			write_log(_T("XT_SETPARAM: Cyls=%d Heads=%d Sectors=%d\n"), wds->cdmac.xt_cyls[0], wds->cdmac.xt_heads[0], wds->cdmac.xt_sectors[0]);
 			for (int i = 0; i < 8; i++) {
 				write_log(_T("%02X "), scsi->buffer[i]);
 			}
@@ -1946,6 +1940,9 @@ static void dmac8727_cbp(struct wd_state *wd)
 static void a2090_st506(struct wd_state *wd, uae_u8 b)
 {
 	uae_u8 cb[16];
+
+	if (wd->rc->device_settings & 1)
+		return;
 	if (!b) {
 		wd->cdmac.dmac_istr &= ~(ISTR_INT_F | ISTR_INTS);
 		return;
@@ -1958,40 +1955,106 @@ static void a2090_st506(struct wd_state *wd, uae_u8 b)
 	for (int i = 0; i < sizeof cb; i++) {
 		cb[i] = get_byte(cbp + i);
 	}
-	int unit = (cb[1] >> 5) & 1;
-	// new command?
-	if (cb[12] != 0xff)
-		return;
+	int lun = cb[1] >> 5;
+	int unit = (lun & 1) ? 1 : 0;
 	uaecptr dmaaddr = (cb[6] << 16) | (cb[7] << 8) | cb[8];
 	memset(cb + 12, 0, 4);
 	struct scsi_data *scsi = wd->scsis[XT506_UNIT0 + unit];
 	if (scsi) {
+		uae_u8 cmd = cb[0];
 		memcpy(scsi->cmd, cb, 6);
-		// We handle LUN, not SCSI emulation.
-		scsi->cmd[1] &= ~0x20;
-		scsi->cmd_len = 6;
-		scsi_emulate_analyze(scsi);
-		if (scsi->direction < 0) {
-			scsi_emulate_cmd(scsi);
-			for (int i = 0; i < scsi->data_len; i++) {
-				put_byte(dmaaddr + i, scsi->buffer[i]);
+		write_log(_T("ST-506 CMD %08X %02x.%02x.%02x.%02x.%02x.%02x %02x.%02x.%02x\n"),
+			cbp,
+			cb[0], cb[1], cb[2], cb[3], cb[4], cb[5],
+			cb[6], cb[7], cb[8]);
+		// Set Drive Parameters? 0x0c = both drives, 0xcc = drive 1 only.
+		if (cmd == 0x0c || cmd == 0xcc) {
+			uae_u8 sdp[6];
+			for (int i = 0; i < sizeof sdp; i++) {
+				sdp[i] = get_byte(dmaaddr + i);
+			}
+			uae_u8 user_options = sdp[0] >> 4;
+			uae_u8 step_rate = sdp[0] & 15;
+			uae_u8 heads = (sdp[1] >> 4) & 15;
+			uae_u16 cyls = ((sdp[1] & 15) << 8) | sdp[2];
+			uae_u8 precomp = sdp[3];
+			uae_u8 reduce_write_current = sdp[4];
+			uae_u8 secs_per_track = sdp[5];
+			write_log(_T("ST-506 Set Drive Parameters %02X: CHS=%d,%d,%d %02x %02x %02x %02x\n"),
+				cmd, cyls, secs_per_track, heads,
+				user_options, step_rate, precomp, reduce_write_current);
+			wd->cdmac.xt_cyls[1] = cyls;
+			wd->cdmac.xt_heads[1] = heads;
+			wd->cdmac.xt_sectors[1] = secs_per_track;
+			if (cmd == 0x0c) {
+				wd->cdmac.xt_cyls[0] = cyls;
+				wd->cdmac.xt_heads[0] = heads;
+				wd->cdmac.xt_sectors[0] = secs_per_track;
+			}
+		} else if (cmd == 0x0f) { // change command block address
+			uae_u8 ccba[4];
+			for (int i = 0; i < sizeof ccba; i++) {
+				ccba[i] = get_byte(dmaaddr + i);
+			}
+			wd->cdmac.c8727_st506_cb = (ccba[1] << 16) | (ccba[2] << 8) | (ccba[3] << 0);
+			write_log(_T("ST-506 Change Command Block %02x.%02x.%02x.%02x\n"),
+				ccba[0], ccba[1], ccba[2], ccba[3]);
+		} else if (cmd == 0x00 || cmd == 0x01 || cmd == 0x03 || cmd == 0x05 || cmd == 0x06 || cmd == 0x08 || cmd == 0x0a || cmd == 0x0b) {
+			bool outofbounds = false;
+			if (cmd == 0x05 || cmd == 0x06 || cmd == 0x08 || cmd == 0x0a) {
+				// limit check
+				uae_u32 lba = ((cb[1] & 31) << 16) | (cb[2] << 8) | cb[3];
+				uae_u32 maxlba = wd->cdmac.xt_cyls[unit] * wd->cdmac.xt_heads[unit] * wd->cdmac.xt_sectors[unit];
+				int blocks = cb[4] == 0 ? 256 : cb[4];
+				if (lba + blocks > maxlba) {
+					outofbounds = true;
+				}
+			}
+			if (!outofbounds) {
+				// We handle LUN, not SCSI emulation.
+				scsi->cmd[1] &= ~0x20;
+				scsi->cmd_len = 6;
+				scsi_emulate_analyze(scsi);
+				if (scsi->direction < 0) {
+					scsi_emulate_cmd(scsi);
+					for (int i = 0; i < scsi->data_len; i++) {
+						put_byte(dmaaddr + i, scsi->buffer[i]);
+					}
+				} else {
+					for (int i = 0; i < scsi->data_len; i++) {
+						scsi->buffer[i] = get_byte(dmaaddr + i);
+					}
+					scsi_emulate_cmd(scsi);
+				}
+				if (scsi->status && scsi->sense_len) {
+					memcpy(cb + 12, scsi->sense, 4);
+				}
+			} else {
+				cb[12] = 0x21; // invalid sector address
+			}
+			if (cmd == 0x05 || cmd == 0x06 || cmd == 0x08 || cmd == 0x0a) {
+				cb[12] |= 0x80; // ADV
+				// Calculate LBA of last transferred block
+				uae_u32 lba = ((cb[1] & 31) << 16) | (cb[2] << 8) | cb[3];
+				uae_u32 add;
+				if (cmd == 0x05 || cmd == 0x06)
+					add = cb[4];
+				else
+					add = scsi->data_len / 512;
+				if (add)
+					lba += add - 1;
+				cb[13] = ((lba >> 16) & 31) | (lun << 5);
+				cb[14] = lba >> 8;
+				cb[15] = lba >> 0;
 			}
 		} else {
-			for (int i = 0; i < scsi->data_len; i++) {
-				scsi->buffer[i] = get_byte(dmaaddr + i);
-			}
-			scsi_emulate_cmd(scsi);
-		}
-		if (scsi->status && scsi->sense_len) {
-			memcpy(cb + 12, scsi->sense, 4);
+			cb[12] = 0x20; // invalid command
 		}
 	} else {
-		cb[12] = 0x04; // Drive not ready
-		cb[13] = cb[1];
-		cb[14] = cb[2];
-		cb[15] = cb[3];
+		cb[12] = 0x04; // drive not ready
 	}
-	for (int i = 0; i < sizeof cb; i++) {
+	// return status bytes
+	for (int i = 12; i < sizeof cb; i++) {
 		put_byte(cbp + i, cb[i]);
 	}
 	set_dma_done(wd);
@@ -2312,7 +2375,7 @@ static void dmac_a2091_write_byte (struct wd_state *wd, uaecptr addr, uae_u32 b)
 #if A2091_DEBUG_IO > 0
 		write_log (_T("dmac_bput %04X=%02X PC=%08X\n"), addr, b & 255, M68K_GETPC);
 #endif
-
+	
 	if (addr < 0x40)
 		return;
 
@@ -3040,7 +3103,7 @@ static void dmac_gvp_write_byte(struct wd_state *wd, uaecptr addr, uae_u32 b)
 			case 0x63: // SCMD
 			wdscsi_put(&wd->wc, wd, b);
 			break;
-
+		
 			case 0x74: // "secret1"
 			case 0x75:
 			case 0x7a: // "secret2"
@@ -3065,9 +3128,9 @@ static void dmac_gvp_write_byte(struct wd_state *wd, uaecptr addr, uae_u32 b)
 			case 0x62: // SCMD
 			wdscsi_put(&wd->wc, wd, b);
 			break;
-
+		
 			// 68:
-			// 00 CPU SRAM access
+			// 00 CPU SRAM access 
 			// ff WD SRAM access
 
 			// 6c:
@@ -3092,7 +3155,7 @@ static void dmac_gvp_write_byte(struct wd_state *wd, uaecptr addr, uae_u32 b)
 				wd_master_reset(wd, true);
 			wd->gdmac.cntr = b;
 			break;
-
+		
 			default:
 			write_log(_T("gvp_s1_bput_unk %04X=%02X PC=%08X\n"), addr, b & 255, M68K_GETPC);
 			break;
@@ -3718,6 +3781,12 @@ void a2090_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig
 	if (!wd || ch < 0)
 		return;
 	add_scsi_device(&wd->scsis[ch], ch, ci, rc);
+	if (ch >= XT506_UNIT0) {
+		int unit = ch - XT506_UNIT0;
+		wd->cdmac.xt_cyls[unit] = ci->pcyls > 2047 ? 2047 : ci->pcyls;
+		wd->cdmac.xt_heads[unit] = ci->pheads > 15 ? 15 : ci->pheads;
+		wd->cdmac.xt_sectors[unit] = ci->psecs > 255 ? 255 : ci->psecs;
+	}
 }
 
 void a2091_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
@@ -3899,12 +3968,14 @@ bool a2090_init (struct autoconfig_info *aci)
 
 	init_wd_scsi(wd);
 
+	if (aci->rc->device_settings & 1)
+		ew(aci->autoconfig_raw, 0x30, 0x80); // SCSI only flag
+
 	wd->configured = 0;
 	wd->autoconfig = true;
 	wd->board_mask = 65535;
 	memcpy(&wd->bank, &dmaca2091_bank, sizeof(addrbank));
 	memcpy(wd->dmacmemory, aci->autoconfig_raw, sizeof wd->dmacmemory);
-	//ew(wd, 0x30, 0x80); // SCSI only flag
 
 	alloc_expansion_bank(&wd->bank, aci);
 
@@ -4131,7 +4202,6 @@ bool gvp_init_accelerator(struct autoconfig_info *aci)
 	return gvp_init(aci, true, true);
 }
 
-#ifdef CDTV
 void cdtv_add_scsi_unit (int ch, struct uaedev_config_info *ci, struct romconfig *rc)
 {
 	struct wd_state *wd = allocscsi(&wd_cdtv, rc, ch);
@@ -4139,7 +4209,6 @@ void cdtv_add_scsi_unit (int ch, struct uaedev_config_info *ci, struct romconfig
 		return;
 	add_scsi_device(&wd_cdtv->scsis[ch], ch, ci, rc);
 }
-#endif
 
 bool comspec_init (struct autoconfig_info *aci)
 {
