@@ -872,6 +872,7 @@ static void pfield_init_linetoscr (bool border)
 	int ddf_right = dp_for_drawing->plfright * 2 + DIW_DDF_OFFSET;
 	int leftborderhidden;
 	int native_ddf_left2;
+	bool expanded = false;
 
 	hsync_shift_hack = 0;
 
@@ -944,6 +945,13 @@ static void pfield_init_linetoscr (bool border)
 	}
 
 #ifdef AGA
+	// if BPLCON4 is non-zero: it will affect background color until end of DIW.
+	if (dp_for_drawing->xor_seen) {
+		if (playfield_end < linetoscr_diw_end && hblank_right_stop > playfield_end) {
+			playfield_end = linetoscr_diw_end;
+			expanded = true;
+		}
+	}
 	may_require_hard_way = false;
 	if (dp_for_drawing->bordersprite_seen && !ce_is_borderblank(colors_for_drawing.extra) && dip_for_drawing->nr_sprites) {
 		int min = visible_right_border, max = visible_left_border, i;
@@ -998,6 +1006,8 @@ static void pfield_init_linetoscr (bool border)
 
 	/* Now, compute some offsets.  */
 	ddf_left -= DISPLAY_LEFT_SHIFT;
+	if (ddf_left < 0)
+		ddf_left = 0;
 	pixels_offset = MAX_PIXELS_PER_LINE - (ddf_left << bplres);
 	ddf_left <<= bplres;
 
@@ -1006,10 +1016,10 @@ static void pfield_init_linetoscr (bool border)
 		leftborderhidden += hblank_left_start - playfield_start;
 	src_pixel = MAX_PIXELS_PER_LINE + res_shift_from_window (leftborderhidden);
 
-	if (dip_for_drawing->nr_sprites == 0)
+	if (dip_for_drawing->nr_sprites == 0 && !expanded)
 		return;
 
-	if (aga_mode) {
+	if (dip_for_drawing->nr_sprites && aga_mode) {
 		int add = get_shdelay_add();
 		if (add) {
 			if (sprite_playfield_start > 0) {
@@ -1029,8 +1039,11 @@ static void pfield_init_linetoscr (bool border)
 	if (linetoscr_diw_end > native_ddf_right) {
 		int pos = res_shift_from_window (native_ddf_right - native_ddf_left);
 		int size = res_shift_from_window (linetoscr_diw_end - native_ddf_right);
+		if (pos + size > MAX_PIXELS_PER_LINE)
+			size = MAX_PIXELS_PER_LINE - pos;
+		if (size > 0)
+			memset (pixdata.apixels + MAX_PIXELS_PER_LINE + pos, 0, size);
 		linetoscr_diw_start = native_ddf_left;
-		memset (pixdata.apixels + MAX_PIXELS_PER_LINE + pos, 0, size);
 	}
 }
 
@@ -1044,7 +1057,10 @@ static void pfield_erase_hborder_sprites (void)
 	if (sprite_last_x > native_ddf_right) {
 		int pos = res_shift_from_window (native_ddf_right - native_ddf_left);
 		int size = res_shift_from_window (sprite_last_x - native_ddf_right);
-		memset (pixdata.apixels + MAX_PIXELS_PER_LINE + pos, 0, size);
+		if (pos + size > MAX_PIXELS_PER_LINE)
+			size = MAX_PIXELS_PER_LINE - pos;
+		if (size > 0)
+			memset (pixdata.apixels + MAX_PIXELS_PER_LINE + pos, 0, size);
 	}
 }
 
@@ -3531,24 +3547,22 @@ static void draw_lightpen_cursor (int x, int y, int line, int onscreen)
 	}
 }
 
-static void lightpen_update (struct vidbuffer *vb)
+static void lightpen_update (struct vidbuffer *vb, int lpnum)
 {
-	int i;
+	if (lightpen_x[lpnum] < LIGHTPEN_WIDTH + 1)
+		lightpen_x[lpnum] = LIGHTPEN_WIDTH + 1;
+	if (lightpen_x[lpnum] >= gfxvidinfo.drawbuffer.inwidth - LIGHTPEN_WIDTH - 1)
+		lightpen_x[lpnum] = gfxvidinfo.drawbuffer.inwidth - LIGHTPEN_WIDTH - 2;
+	if (lightpen_y[lpnum] < LIGHTPEN_HEIGHT + 1)
+		lightpen_y[lpnum] = LIGHTPEN_HEIGHT + 1;
+	if (lightpen_y[lpnum] >= gfxvidinfo.drawbuffer.inheight - LIGHTPEN_HEIGHT - 1)
+		lightpen_y[lpnum] = gfxvidinfo.drawbuffer.inheight - LIGHTPEN_HEIGHT - 2;
+	if (lightpen_y[lpnum] >= max_ypos_thisframe - LIGHTPEN_HEIGHT - 1)
+		lightpen_y[lpnum] = max_ypos_thisframe - LIGHTPEN_HEIGHT - 2;
 
-	if (lightpen_x < LIGHTPEN_WIDTH + 1)
-		lightpen_x = LIGHTPEN_WIDTH + 1;
-	if (lightpen_x >= gfxvidinfo.drawbuffer.inwidth - LIGHTPEN_WIDTH - 1)
-		lightpen_x = gfxvidinfo.drawbuffer.inwidth - LIGHTPEN_WIDTH - 2;
-	if (lightpen_y < LIGHTPEN_HEIGHT + 1)
-		lightpen_y = LIGHTPEN_HEIGHT + 1;
-	if (lightpen_y >= gfxvidinfo.drawbuffer.inheight - LIGHTPEN_HEIGHT - 1)
-		lightpen_y = gfxvidinfo.drawbuffer.inheight - LIGHTPEN_HEIGHT - 2;
-	if (lightpen_y >= max_ypos_thisframe - LIGHTPEN_HEIGHT - 1)
-		lightpen_y = max_ypos_thisframe - LIGHTPEN_HEIGHT - 2;
+	lightpen_cx = (((lightpen_x[lpnum] + visible_left_border) >> lores_shift) >> 1) + DISPLAY_LEFT_SHIFT - DIW_DDF_OFFSET;
 
-	lightpen_cx = (((lightpen_x + visible_left_border) >> lores_shift) >> 1) + DISPLAY_LEFT_SHIFT - DIW_DDF_OFFSET;
-
-	lightpen_cy = lightpen_y;
+	lightpen_cy = lightpen_y[lpnum];
 	lightpen_cy >>= linedbl;
 	lightpen_cy += minfirstline;
 
@@ -3561,15 +3575,15 @@ static void lightpen_update (struct vidbuffer *vb)
 	if (lightpen_cy >= maxvpos)
 		lightpen_cy = maxvpos - 1;
 
-	for (i = 0; i < LIGHTPEN_HEIGHT; i++) {
-		int line = lightpen_y + i - LIGHTPEN_HEIGHT / 2;
+	for (int i = 0; i < LIGHTPEN_HEIGHT; i++) {
+		int line = lightpen_y[lpnum] + i - LIGHTPEN_HEIGHT / 2;
 		if (line >= 0 || line < max_ypos_thisframe) {
 			if (lightpen_active > 0)
-				draw_lightpen_cursor (lightpen_x, i, line, lightpen_cx > 0);
+				draw_lightpen_cursor (lightpen_x[lpnum], i, line, lightpen_cx > 0);
 			flush_line (vb, line);
 		}
 	}
-	lightpen_y1 = lightpen_y - LIGHTPEN_HEIGHT / 2 - 1 + min_ypos_for_screen;
+	lightpen_y1 = lightpen_y[lpnum] - LIGHTPEN_HEIGHT / 2 - 1 + min_ypos_for_screen;
 	lightpen_y2 = lightpen_y1 + LIGHTPEN_HEIGHT + 2;
 
 	if (lightpen_active < 0)
@@ -3776,7 +3790,7 @@ static void finish_drawing_frame (void)
 	}
 
 	if (lightpen_active)
-		lightpen_update (vb);
+		lightpen_update (vb, inputdevice_get_lightpen());
 	if (refresh_indicator_buffer)
 		refresh_indicator_update(vb);
 

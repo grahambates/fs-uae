@@ -168,7 +168,8 @@ static int lof_togglecnt_lace, lof_togglecnt_nlace; //, nlace_cnt;
 */
 static int vpos_previous, hpos_previous;
 static int vpos_lpen, hpos_lpen, lightpen_triggered;
-int lightpen_x = -1, lightpen_y = -1, lightpen_cx, lightpen_cy, lightpen_active, lightpen_enabled;
+int lightpen_x[2], lightpen_y[2];
+int lightpen_cx, lightpen_cy, lightpen_active, lightpen_enabled;
 
 static uae_u32 sprtaba[256],sprtabb[256];
 static uae_u32 sprite_ab_merge[256];
@@ -1075,6 +1076,8 @@ static void record_color_change2 (int hpos, int regno, unsigned long value)
 	curr_color_changes[next_color_change].value = value;
 	next_color_change++;
 	curr_color_changes[next_color_change].regno = -1;
+	if (value & 0xff00)
+		thisline_decision.xor_seen = true;
 }
 
 static bool isehb (uae_u16 bplcon0, uae_u16 bplcon2)
@@ -1321,8 +1324,9 @@ static void update_toscr_planes (int fm)
 
 STATIC_INLINE void maybe_first_bpl1dat (int hpos)
 {
-	if (thisline_decision.plfleft < 0)
+	if (thisline_decision.plfleft < 0) {
 		thisline_decision.plfleft = hpos;
+	}
 }
 
 static int fetch_warn (int nr, int hpos)
@@ -2388,6 +2392,9 @@ static void finish_final_fetch (void)
 
 	// This is really the end of scanline, we can finally flush all remaining data.
 	thisline_decision.plfright += flush_plane_data (fetchmode);
+	// This can overflow if display setup is really bad.
+	if (out_offs > MAX_PIXELS_PER_LINE / 32)
+		out_offs = MAX_PIXELS_PER_LINE / 32;
 	thisline_decision.plflinelen = out_offs;
 
 	finish_playfield_line ();
@@ -2764,7 +2771,7 @@ static void decide_fetch (int hpos)
 
 STATIC_INLINE void decide_fetch_safe (int hpos)
 {
-	if (!blitter_dangerous_bpl) {
+	if (!blitter_dangerous_bpl && !bitplane_overrun) {
 		decide_fetch (hpos);
 		decide_blitter (hpos);
 	} else {
@@ -3724,6 +3731,10 @@ static void finish_decisions (void)
 	if (nodraw ())
 		return;
 
+	// if overrun at the beginning of scanline was not handled: do it here first.
+	if (bitplane_overrun) {
+		do_overrun_fetch(hpos, fetchmode);
+	}
 	decide_diw (hpos);
 	decide_line (hpos);
 	decide_fetch_safe (hpos);
@@ -3835,6 +3846,7 @@ static void reset_decisions (void)
 	thisline_decision.ehb_seen = !! isehb (bplcon0, bplcon2);
 	thisline_decision.ham_at_start = !! (bplcon0 & 0x800);
 	thisline_decision.bordersprite_seen = issprbrd (-1, bplcon0, bplcon3);
+	thisline_decision.xor_seen = (bplcon4 & 0xff00) != 0;
 
 	/* decided_res shouldn't be touched before it's initialized by decide_line(). */
 	thisline_decision.diwfirstword = -1;
@@ -8774,6 +8786,10 @@ void custom_reset (bool hardreset, bool keyboardreset)
 	lightpen_active = -1;
 	lightpen_triggered = 0;
 	lightpen_cx = lightpen_cy = -1;
+	lightpen_x[0] = -1;
+	lightpen_y[0] = -1;
+	lightpen_x[1] = -1;
+	lightpen_y[1] = -1;
 	nr_armed = 0;
 
 	if (!savestate_state) {
