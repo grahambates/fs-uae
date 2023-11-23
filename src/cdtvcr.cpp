@@ -28,6 +28,7 @@
 #include "uae.h"
 #include "custom.h"
 #include "rommgr.h"
+#include "devices.h"
 
 #if CDTVCR_4510_EMULATION
 static void init_65c02(void);
@@ -250,7 +251,7 @@ static void cdtvcr_4510_reset(uae_u8 v)
 void rethink_cdtvcr(void)
 {
 	if ((cdtvcr_4510_ram[CDTVCR_INTREQ] & cdtvcr_4510_ram[CDTVCR_INTENA]) && !cdtvcr_4510_ram[CDTVCR_INTDISABLE]) {
-		INTREQ_0 (0x8000 | 0x0008);
+		safe_interrupt_set(IRQ_SOURCE_CD32CDTV, 0, false);
 		cd_led ^= LED_CD_ACTIVE2;
 	}
 }
@@ -456,6 +457,7 @@ static void cdtvcr_play_track(uae_u32 track_start, uae_u32 track_end)
 		if (track_start == s->track) {
 			start_found++;
 			start = s->paddress;
+			end = toc.toc[toc.last_track_offset].paddress;
 		}
 		if (track_end == s->track) {
 			end = s->paddress;

@@ -130,7 +130,7 @@ TCHAR *my_strdup_trim (const TCHAR *s)
 	return out;
 }
 
-void discard_prefs (struct uae_prefs *p, int type)
+void discard_prefs(struct uae_prefs *p, int type)
 {
 	struct strlist **ps = &p->all_lines;
 	while (*ps) {
@@ -147,63 +147,59 @@ void discard_prefs (struct uae_prefs *p, int type)
 #endif
 }
 
-static void fixup_prefs_dim2 (struct wh *wh)
+static void fixup_prefs_dim2(int monid, struct wh *wh)
 {
 	if (wh->special)
 		return;
 	if (wh->width < 160) {
-		error_log (_T("Width (%d) must be at least 160."), wh->width);
+		if (!monid)
+			error_log (_T("Width (%d) must be at least 160."), wh->width);
 		wh->width = 160;
 	}
 	if (wh->height < 128) {
-		error_log (_T("Height (%d) must be at least 128."), wh->height);
+		if (!monid)
+			error_log (_T("Height (%d) must be at least 128."), wh->height);
 		wh->height = 128;
 	}
 	if (wh->width > max_uae_width) {
-		error_log (_T("Width (%d) max is %d."), wh->width, max_uae_width);
+		if (!monid)
+			error_log (_T("Width (%d) max is %d."), wh->width, max_uae_width);
 		wh->width = max_uae_width;
 	}
 	if (wh->height > max_uae_height) {
-		error_log (_T("Height (%d) max is %d."), wh->height, max_uae_height);
+		if (!monid)
+			error_log (_T("Height (%d) max is %d."), wh->height, max_uae_height);
 		wh->height = max_uae_height;
 	}
 }
 
 void fixup_prefs_dimensions (struct uae_prefs *prefs)
 {
-	fixup_prefs_dim2 (&prefs->gfx_size_fs);
-	fixup_prefs_dim2 (&prefs->gfx_size_win);
+	for (int i = 0; i < MAX_AMIGADISPLAYS; i++) {
+		fixup_prefs_dim2(i, &prefs->gfx_monitor[i].gfx_size_fs);
+		fixup_prefs_dim2(i, &prefs->gfx_monitor[i].gfx_size_win);
+	}
 	if (prefs->gfx_apmode[1].gfx_vsync > 0)
 		prefs->gfx_apmode[1].gfx_vsyncmode = 1;
 
 	for (int i = 0; i < 2; i++) {
 		struct apmode *ap = &prefs->gfx_apmode[i];
+		if (ap->gfx_backbuffers < 1)
+			ap->gfx_backbuffers = 1;
 		ap->gfx_vflip = 0;
 		ap->gfx_strobo = false;
-#if 0
-		if (currprefs.gfx_api > 1 && ap->gfx_vsyncmode) {
-			ap->gfx_vsyncmode = false;
-			error_log(_T("Low latency vsync is not yet supported in Direct3D11 mode."));
-		}
-#endif
-		if (ap->gfx_vsync < 0) {
-			// adaptive sync
-			ap->gfx_vsyncmode = 0;
-			ap->gfx_vflip = 0;
-			ap->gfx_strobo = prefs->lightboost_strobo;
-		} else if (ap->gfx_vsync > 0) {
+		if (ap->gfx_vsync) {
 			if (ap->gfx_vsyncmode) {
-				// low latency vsync: no flip only if no-buffer
-				if (ap->gfx_backbuffers >= 1)
-					ap->gfx_vflip = 1;
-				if (!i && ap->gfx_backbuffers == 2)
-					ap->gfx_vflip = 1;
-				ap->gfx_strobo = prefs->lightboost_strobo;
+				if (ap->gfx_fullscreen != 0) {
+					ap->gfx_backbuffers = 1;
+					ap->gfx_strobo = false;
+				} else {
+					ap->gfx_vsyncmode = 0;
+					ap->gfx_vsync = 0;
+				}
 			} else {
 				// legacy vsync: always wait for flip
 				ap->gfx_vflip = -1;
-				if (prefs->gfx_api && ap->gfx_backbuffers < 1)
-					ap->gfx_backbuffers = 1;
 				if (ap->gfx_vflip)
 					ap->gfx_strobo = prefs->lightboost_strobo;
 			}
@@ -318,10 +314,32 @@ void fixup_cpu (struct uae_prefs *p)
 		error_log (_T("JIT is not compatible with unimplemented CPU/FPU instruction emulation."));
 		p->fpu_no_unimplemented = p->int_no_unimplemented = false;
 	}
-	if (p->cachesize && p->compfpu && p->fpu_softfloat) {
+	if (p->cachesize && p->compfpu && p->fpu_mode > 0) {
 		error_log (_T("JIT FPU emulation is not compatible with softfloat FPU emulation."));
-		p->fpu_softfloat = false;
+		p->fpu_mode = 0;
 	}
+
+	if (p->comptrustbyte < 0 || p->comptrustbyte > 3) {
+		error_log(_T("Bad value for comptrustbyte parameter: value must be within 0..2."));
+		p->comptrustbyte = 1;
+	}
+	if (p->comptrustword < 0 || p->comptrustword > 3) {
+		error_log(_T("Bad value for comptrustword parameter: value must be within 0..2."));
+		p->comptrustword = 1;
+	}
+	if (p->comptrustlong < 0 || p->comptrustlong > 3) {
+		error_log(_T("Bad value for comptrustlong parameter: value must be within 0..2."));
+		p->comptrustlong = 1;
+	}
+	if (p->comptrustnaddr < 0 || p->comptrustnaddr > 3) {
+		error_log(_T("Bad value for comptrustnaddr parameter: value must be within 0..2."));
+		p->comptrustnaddr = 1;
+	}
+	if (p->cachesize < 0 || p->cachesize > MAX_JIT_CACHE || (p->cachesize > 0 && p->cachesize < MIN_JIT_CACHE)) {
+		error_log(_T("JIT Bad value for cachesize parameter: value must zero or within %d..%d."), MIN_JIT_CACHE, MAX_JIT_CACHE);
+		p->cachesize = 0;
+	}
+
 
 #if 0
 	if (p->cpu_cycle_exact && p->m68k_speed < 0 && currprefs.cpu_model <= 68020)
@@ -410,21 +428,56 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		}
 	}
 
+#ifdef _WIN32
+	if (p->monitoremu && p->monitoremu_mon > 0) {
+		if (!p->gfx_api) {
+			p->monitoremu_mon = 0;
+			error_log(_T("Multi virtual monitor support requires Direct3D mode."));
+		}
+		if (isfullscreen() != 0) {
+			p->monitoremu_mon = 0;
+			error_log(_T("Multi virtual monitor support requires windowed mode."));
+		}
+	}
+#endif
+
 	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
 		struct rtgboardconfig *rbc = &p->rtgboards[i];
+		if (rbc->monitor_id > 0 && p->monitoremu_mon == rbc->monitor_id) {
+			error_log(_T("Video port monitor %d was allocated for graphics card %d."), rbc->monitor_id + 1, i + 1);
+			p->monitoremu_mon = 0;
+		}
+		if (rbc->monitor_id > 0) {
+			if (!p->gfx_api) {
+				rbc->monitor_id = 0;
+				error_log(_T("Multi virtual monitor support requires Direct3D mode."));
+			}
+			if (isfullscreen() > 0) {
+				rbc->monitor_id = 0;
+				error_log(_T("Multi virtual monitor support is not available in fullscreen mode."));
+			}
+		}
 		if (rbc->rtgmem_size > max_z3fastmem && rbc->rtgmem_type == GFXBOARD_UAE_Z3) {
-			error_log (_T("Graphics card memory size %d (0x%x) larger than maximum reserved %d (0x%x)."), rbc->rtgmem_size, rbc->rtgmem_size, max_z3fastmem, max_z3fastmem);
+			error_log (_T("Graphics card %d memory size %d (0x%x) larger than maximum reserved %d (0x%x)."), i + 1, rbc->rtgmem_size, rbc->rtgmem_size, max_z3fastmem, max_z3fastmem);
 			rbc->rtgmem_size = max_z3fastmem;
 			err = 1;
 		}
-
 		if ((rbc->rtgmem_size & (rbc->rtgmem_size - 1)) != 0 || (rbc->rtgmem_size != 0 && (rbc->rtgmem_size < 0x100000))) {
-			error_log (_T("Unsupported graphics card memory size %d (0x%x)."), rbc->rtgmem_size, rbc->rtgmem_size);
+			error_log (_T("Unsupported graphics card %d memory size %d (0x%x)."), rbc->rtgmem_size, rbc->rtgmem_size, i + 1);
 			if (rbc->rtgmem_size > max_z3fastmem)
 				rbc->rtgmem_size = max_z3fastmem;
 			else
 				rbc->rtgmem_size = 0;
 			err = 1;
+		}
+		for (int j = 0; j < MAX_RTG_BOARDS; j++) {
+			struct rtgboardconfig *rbc2 = &p->rtgboards[j];
+			if (j == i)
+				continue;
+			if (rbc->monitor_id > 0 && rbc2->monitor_id == rbc->monitor_id) {
+				rbc2->monitor_id = 0;
+				error_log(_T("Graphics card %d and %d can't use same monitor %d."), i + 1, j + 1);
+			}
 		}
 	}
 
@@ -536,31 +589,7 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		p->produce_sound = 0;
 		err = 1;
 	}
-	if (p->comptrustbyte < 0 || p->comptrustbyte > 3) {
-		error_log (_T("Bad value for comptrustbyte parameter: value must be within 0..2."));
-		p->comptrustbyte = 1;
-		err = 1;
-	}
-	if (p->comptrustword < 0 || p->comptrustword > 3) {
-		error_log (_T("Bad value for comptrustword parameter: value must be within 0..2."));
-		p->comptrustword = 1;
-		err = 1;
-	}
-	if (p->comptrustlong < 0 || p->comptrustlong > 3) {
-		error_log (_T("Bad value for comptrustlong parameter: value must be within 0..2."));
-		p->comptrustlong = 1;
-		err = 1;
-	}
-	if (p->comptrustnaddr < 0 || p->comptrustnaddr > 3) {
-		error_log (_T("Bad value for comptrustnaddr parameter: value must be within 0..2."));
-		p->comptrustnaddr = 1;
-		err = 1;
-	}
-	if (p->cachesize < 0 || p->cachesize > 16384) {
-		error_log (_T("Bad value for cachesize parameter: value must be within 0..16384."));
-		p->cachesize = 0;
-		err = 1;
-	}
+
 	if ((p->z3fastmem[0].size || p->z3fastmem[1].size || p->z3fastmem[2].size || p->z3fastmem[3].size || p->z3chipmem_size) && p->address_space_24) {
 		error_log (_T("Z3 fast memory can't be used if address space is 24-bit."));
 		p->z3fastmem[0].size = 0;
@@ -705,6 +734,11 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 #endif
 	if (p->gfx_framerate < 1)
 		p->gfx_framerate = 1;
+	if (p->gfx_display_sections < 1) {
+		p->gfx_display_sections = 1;
+	} else if (p->gfx_display_sections > 99) {
+		p->gfx_display_sections = 99;
+	}
 	if (p->maprom && !p->address_space_24) {
 #ifdef FSUAE
 		write_log("MAPROM: Setting address 0x0f000000 (was 0x%08x)\n", p->maprom);
@@ -1081,7 +1115,7 @@ static int real_main2 (int argc, TCHAR **argv)
 	if (restart_config[0])
 		parse_cmdline_and_init_file (argc, argv);
 	else
-		currprefs = changed_prefs;
+		copy_prefs(&changed_prefs, &currprefs);
 
 	if (!machdep_init ()) {
 		restart_program = 0;
@@ -1099,7 +1133,8 @@ static int real_main2 (int argc, TCHAR **argv)
 	}
 	inputdevice_init ();
 
-	changed_prefs = currprefs;
+	copy_prefs(&currprefs, &changed_prefs);
+
 	no_gui = ! currprefs.start_gui;
 	if (restart_program == 2)
 		no_gui = 1;
@@ -1108,7 +1143,7 @@ static int real_main2 (int argc, TCHAR **argv)
 	restart_program = 0;
 	if (! no_gui) {
 		int err = gui_init ();
-		currprefs = changed_prefs;
+		copy_prefs(&changed_prefs, &currprefs);
 		set_config_changed ();
 		if (err == -1) {
 			write_log (_T("Failed to initialize the GUI\n"));
@@ -1137,7 +1172,7 @@ static int real_main2 (int argc, TCHAR **argv)
 	uae_lua_init ();
 #endif
 #ifdef PICASSO96
-	picasso_reset ();
+	picasso_reset(0);
 #endif
 
 #if 0
@@ -1151,7 +1186,7 @@ static int real_main2 (int argc, TCHAR **argv)
 #ifdef RETROPLATFORM
 	rp_fixup_options (&currprefs);
 #endif
-	changed_prefs = currprefs;
+	copy_prefs(&currprefs, &changed_prefs);
 	target_run ();
 	/* force sound settings change */
 	currprefs.produce_sound = 0;
@@ -1207,7 +1242,7 @@ void real_main (int argc, TCHAR **argv)
 
 	while (restart_program) {
 		int ret;
-		changed_prefs = currprefs;
+		copy_prefs(&currprefs, &changed_prefs);
 		ret = real_main2 (argc, argv);
 		if (ret == 0 && quit_to_gui)
 			restart_program = 1;

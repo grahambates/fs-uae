@@ -32,6 +32,7 @@
 #include "qemuvga/scsi/scsi.h"
 #include "qemuvga/scsi/esp.h"
 #include "gui.h"
+#include "devices.h"
 
 #define FASTLANE_BOARD_SIZE (2 * 16777216)
 #define FASTLANE_ROM_SIZE 32768
@@ -160,10 +161,12 @@ struct ncr9x_state
 static struct ncr9x_state *ncr_blizzard_scsi;
 static struct ncr9x_state *ncr_fastlane_scsi[MAX_DUPLICATE_EXPANSION_BOARDS];
 static struct ncr9x_state *ncr_oktagon2008_scsi[MAX_DUPLICATE_EXPANSION_BOARDS];
+static struct ncr9x_state *ncr_alf3_scsi[MAX_DUPLICATE_EXPANSION_BOARDS];
 static struct ncr9x_state *ncr_masoboshi_scsi[MAX_DUPLICATE_EXPANSION_BOARDS];
 static struct ncr9x_state *ncr_dkb1200_scsi;
 static struct ncr9x_state *ncr_ematrix530_scsi;
 static struct ncr9x_state *ncr_multievolution_scsi;
+static struct ncr9x_state *ncr_typhoon2_scsi;
 static struct ncr9x_state *ncr_golemfast_scsi[MAX_DUPLICATE_EXPANSION_BOARDS];
 static struct ncr9x_state *ncr_scram5394_scsi[MAX_DUPLICATE_EXPANSION_BOARDS];
 static struct ncr9x_state *ncr_rapidfire_scsi[MAX_DUPLICATE_EXPANSION_BOARDS];
@@ -246,11 +249,7 @@ void ncr9x_rethink(void)
 {
 	for (int i = 0; ncr_units[i]; i++) {
 		if (ncr_units[i]->boardirq) {
-			if (ncr_units[i]->irq6)
-				INTREQ_0(0x8000 | 0x2000);
-			else
-				INTREQ_0(0x8000 | 0x0008);
-			return;
+			safe_interrupt_set(IRQ_SOURCE_NCR9X, i, ncr_units[i]->irq6);
 		}
 	}
 }
@@ -259,7 +258,7 @@ static void set_irq2(struct ncr9x_state *ncr)
 {
 	if (ncr->chipirq && !ncr->boardirq) {
 		ncr->boardirq = true;
-		ncr9x_rethink();
+		devices_rethink_all(ncr9x_rethink);
 	}
 	if (!ncr->chipirq && ncr->boardirq) {
 		ncr->boardirq = false;
@@ -272,7 +271,7 @@ static void set_irq2_dkb1200(struct ncr9x_state *ncr)
 		ncr->boardirq = false;
 	if (ncr->chipirq && !ncr->boardirq && (ncr->states[0] & 0x40)) {
 		ncr->boardirq = true;
-		ncr9x_rethink();
+		devices_rethink_all(ncr9x_rethink);
 	}
 }
 
@@ -282,7 +281,17 @@ static void set_irq2_oktagon(struct ncr9x_state *ncr)
 		ncr->boardirq = false;
 	if (ncr->chipirq && !ncr->boardirq && (ncr->states[0] & 0x80)) {
 		ncr->boardirq = true;
-		ncr9x_rethink();
+		devices_rethink_all(ncr9x_rethink);
+	}
+}
+
+static void set_irq2_alf3(struct ncr9x_state *ncr)
+{
+	if (!(ncr->states[0] & 0x01))
+		ncr->boardirq = false;
+	if (ncr->chipirq && !ncr->boardirq && (ncr->states[0] & 0x01)) {
+		ncr->boardirq = true;
+		devices_rethink_all(ncr9x_rethink);
 	}
 }
 
@@ -298,7 +307,7 @@ static void set_irq2_fastlane(struct ncr9x_state *ncr)
 	if (ncr->states[0] & FLSC_PB_ESI) {
 		if (!ncr->boardirq) {
 			ncr->boardirq = true;
-			ncr9x_rethink();
+			devices_rethink_all(ncr9x_rethink);
 		}
 	}
 }
@@ -313,7 +322,7 @@ static void set_irq2_masoboshi(struct ncr9x_state *ncr)
 		ncr->boardirqlatch = true;
 		if (1 || ncr->intena) {
 			ncr->boardirq = true;
-			ncr9x_rethink();
+			devices_rethink_all(ncr9x_rethink);
 #if NCR_DEBUG > 1
 			write_log(_T("MASOBOSHI IRQ\n"));
 #endif
@@ -665,7 +674,7 @@ int32_t scsiesp_req_enqueue(SCSIRequest *req)
 	struct scsi_data *sd = (struct scsi_data*)req->dev->handle;
 
 	if (sd->device_type == UAEDEV_CD)
-		gui_flicker_led (LED_CD, sd->id, 1);
+		gui_flicker_led (LED_CD, sd->uae_unitnum, 1);
 
 	sd->data_len = 0;
 	scsi_start_transfer(sd);
@@ -710,7 +719,8 @@ SCSIDevice *scsiesp_device_find(SCSIBus *bus, int channel, int target, int lun)
 }
 void scsiesp_req_cancel(SCSIRequest *req)
 {
-	write_log(_T("scsi_req_cancel\n"));
+	write_log(_T("scsi_req_cancel!?\n"));
+	esp_request_cancelled(req);
 }
 
 #define IO_MASK 0x3f
@@ -729,7 +739,7 @@ static bool isncr(struct ncr9x_state *ncr, struct ncr9x_state **arr)
 	return false;
 }
 
-static void ncr9x_io_bput(struct ncr9x_state *ncr, uaecptr addr, uae_u32 val)
+static void ncr9x_io_bput3(struct ncr9x_state *ncr, uaecptr addr, uae_u32 val, int *reg)
 {
 	int reg_shift = 2;
 	uaecptr oldaddr = addr;
@@ -878,7 +888,26 @@ static void ncr9x_io_bput(struct ncr9x_state *ncr, uaecptr addr, uae_u32 val)
 			return;
 		}
 		reg_shift = 1;
+
+	} else if (isncr(ncr, ncr_alf3_scsi)) {
+
+		if (addr >= 0xd000 && addr < 0xe000) {
+			ncr->data = val;
+			ncr->data_valid_r = true;
+			esp_dma_enable(ncr->devobject.lsistate, 1);
+			return;
+		} else if (addr == 0xa001) {
+			ncr->states[0] = val;
+			set_irq2_alf3(ncr);
+			return;
+		}
+		if (addr < 0x8000 || addr >= 0x8000 + 0x100)
+			return;
+
+		reg_shift = 1;
+
 	} else if (isncr(ncr, ncr_fastlane_scsi)) {
+
 		if (addr >= FASTLANE_HARDBITS) {
 			if (addr == FASTLANE_HARDBITS) {
 				int oldstate = ncr->states[0];
@@ -1039,7 +1068,7 @@ static void ncr9x_io_bput(struct ncr9x_state *ncr, uaecptr addr, uae_u32 val)
 			write_log(_T("DKB IO %08X PUT %02x %08x\n"), addr, val & 0xff, M68K_GETPC);
 			return;
 		}
-	} else if (ISCPUBOARD(BOARD_MTEC, BOARD_MTEC_SUB_EMATRIX530)) {
+	} else if (ISCPUBOARD(BOARD_MTEC, BOARD_MTEC_SUB_EMATRIX530) || ISCPUBOARD(BOARD_DCE, BOARD_DCE_SUB_TYPHOON2)) {
 		if ((addr & 0xf000) >= 0xe000) {
 			if ((addr & 0x3ff) <= 7) {
 				if (ncr->fakedma_data_offset < ncr->fakedma_data_size) {
@@ -1065,13 +1094,22 @@ static void ncr9x_io_bput(struct ncr9x_state *ncr, uaecptr addr, uae_u32 val)
 		return;
 	addr >>= reg_shift;
 	addr &= IO_MASK;
-#if NCR_DEBUG > 1
-	write_log(_T("ESP write %02X (%08X) %02X %08X\n"), addr, oldaddr, val & 0xff, M68K_GETPC);
-#endif
 	esp_reg_write(ncr->devobject.lsistate, (addr), val);
+	*reg = addr;
 }
 
-static uae_u32 ncr9x_io_bget(struct ncr9x_state *ncr, uaecptr addr)
+static void ncr9x_io_bput(struct ncr9x_state *ncr, uaecptr addr, uae_u32 val)
+{
+	int reg = -1;
+	ncr9x_io_bput3(ncr, addr, val, &reg);
+#if NCR_DEBUG > 1
+	if (ncr)
+		write_log(_T("ESP write %02X (%08X) %02X %08X\n"), reg & 0xff, addr, val & 0xff, M68K_GETPC);
+#endif
+}
+
+
+static uae_u32 ncr9x_io_bget3(struct ncr9x_state *ncr, uaecptr addr, int *reg)
 {
 	uae_u8 v = 0xff;
 	int reg_shift = 2;
@@ -1228,6 +1266,38 @@ static uae_u32 ncr9x_io_bget(struct ncr9x_state *ncr, uaecptr addr)
 		if (addr < OKTAGON_ESP_ADDR || addr >= OKTAGON_ESP_ADDR + 0x100)
 			return 0xff;
 		reg_shift = 1;
+
+	} else if (isncr(ncr, ncr_alf3_scsi)) {
+
+		if (addr >= 0xd000 && addr < 0xe000) {
+			esp_dma_enable(ncr->devobject.lsistate, 1);
+			v = ncr->data;
+			ncr->data_valid_w = false;
+			return v;
+		} else if (addr == 0xa000) {
+			v = 0;
+			if (ncr->rc->device_settings & 1)
+				v |= 1 << 4;
+			if (ncr->rc->device_settings & 2)
+				v |= 1 << 5;
+			if (ncr->rc->device_settings & 4)
+				v |= 1 << 3;
+			if (ncr->rc->device_settings & 8)
+				v |= 1 << 7;
+			if (ncr->rc->device_settings & 16)
+				v |= 1 << 6;
+			v |= ncr->rc->device_id & 7;
+			return v;
+		} else if (addr == 0xa001) {
+			v = ncr->boardirq ? 1 : 0;
+			if (ncr->rc->device_settings & (1 << 5))
+				v |= 2;
+			return v;
+		}
+		if (addr < 0x8000 || addr >= 0x8000 + 0x100)
+			return 0xff;
+		reg_shift = 1;
+
 	} else if (isncr(ncr, ncr_fastlane_scsi)) {
 		if (addr >= FASTLANE_HARDBITS) {
 			if (addr == FASTLANE_HARDBITS) {
@@ -1336,7 +1406,7 @@ static uae_u32 ncr9x_io_bget(struct ncr9x_state *ncr, uaecptr addr)
 			write_log(_T("DKB IO GET %08x %08x\n"), addr, M68K_GETPC);
 			return 0;
 		}
-	} else if (ISCPUBOARD(BOARD_MTEC, BOARD_MTEC_SUB_EMATRIX530)) {
+	} else if (ISCPUBOARD(BOARD_MTEC, BOARD_MTEC_SUB_EMATRIX530) || ISCPUBOARD(BOARD_DCE, BOARD_DCE_SUB_TYPHOON2)) {
 		if ((addr & 0xf000) >= 0xe000) {
 			if ((addr & 0x3ff) <= 7) {
 				if (ncr->fakedma_data_offset >= ncr->fakedma_data_size) {
@@ -1373,8 +1443,17 @@ static uae_u32 ncr9x_io_bget(struct ncr9x_state *ncr, uaecptr addr)
 	addr >>= reg_shift;
 	addr &= IO_MASK;
 	v = esp_reg_read(ncr->devobject.lsistate, (addr));
+	*reg = addr;
+	return v;
+}
+
+static uae_u32 ncr9x_io_bget(struct ncr9x_state *ncr, uaecptr addr)
+{
+	int reg = -1;
+	uae_u8 v = ncr9x_io_bget3(ncr, addr, &reg);
 #if NCR_DEBUG > 1
-	write_log(_T("ESP read %02X (%08X) %02X %08X\n"), addr, oldaddr, v, M68K_GETPC);
+	if (ncr)
+		write_log(_T("ESP read %02X (%08X) %02X %08X\n"), reg & 0xff, addr, v, M68K_GETPC);
 #endif
 	return v;
 }
@@ -1424,7 +1503,7 @@ static void ncr9x_bput2(struct ncr9x_state *ncr, uaecptr addr, uae_u32 val)
 	uae_u32 v = val;
 
 #if NCR_DEBUG > 5
-	write_log(_T("ncr9x_bget2 %08x %02x %08x\n"), addr, (uae_u8)val, M68K_GETPC);
+	write_log(_T("ncr9x_bput %08x %02x %08x\n"), addr, (uae_u8)val, M68K_GETPC);
 #endif
 
 	addr &= ncr->board_mask;
@@ -1857,6 +1936,75 @@ bool ncr_oktagon_autoconfig_init(struct autoconfig_info *aci)
 	return true;
 }
 
+static const uae_u8 alf3_autoconfig[16] = {
+	0xd1, 0x03, 0x40, 0x00, 0x08, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0xC0, 0x16, 0x68
+};
+
+bool ncr_alf3_autoconfig_init(struct autoconfig_info *aci)
+{
+	struct zfile *z = read_device_from_romconfig(aci->rc, ROMTYPE_ALF3);
+	if (z) {
+		zfile_fread(aci->autoconfig_raw, 128, 1, z);
+		zfile_fclose(z);
+	} else {
+		memcpy(aci->autoconfig_bytes, alf3_autoconfig, 16);
+		aci->autoconfigp = aci->autoconfig_bytes;
+	}
+	if (!aci->doinit) {
+		return true;
+	}
+
+	struct ncr9x_state *ncr = getscsi(aci->rc);
+	if (!ncr)
+		return false;
+
+	xfree(ncr->rom);
+	ncr->rom = NULL;
+	eeprom_free(ncr->eeprom);
+	ncr->eeprom = NULL;
+
+	ncr->enabled = true;
+	memset(ncr->acmemory, 0xff, sizeof ncr->acmemory);
+	ncr->rom_start = 0;
+	ncr->rom_offset = 0;
+	ncr->rom_end = 0x8000;
+	ncr->io_start = 0x8000;
+	ncr->io_end = ncr->io_start + 0x8000;
+	ncr->romisoddonly = true;
+	ncr->bank = &ncr9x_bank_generic;
+
+	ncr->irq6 = (ncr->rc->device_settings & (1 << 5)) == 0;
+
+	ncr->rom = xcalloc(uae_u8, 65536);
+	memset(ncr->rom, 0xff, 65536);
+
+	ncr9x_reset_board(ncr);
+
+	z = read_device_from_romconfig(aci->rc, ROMTYPE_ALF3);
+	if (z) {
+		zfile_fread(ncr->rom, 32768, 1, z);
+		zfile_fclose(z);
+	}
+
+	if (!z) {
+		for (int i = 0; i < 16; i++) {
+			uae_u8 v = alf3_autoconfig[i];
+			if (ncr->rc->autoboot_disabled && i == 0)
+				v &= ~0x10;
+			ew(ncr, i * 4, v);
+		}
+	} else {
+		if (ncr->rc->autoboot_disabled)
+			ncr->rom[0] &= ~0x10;
+		for (int i = 0; i < 128; i++) {
+			ncr->acmemory[i] = ncr->rom[i];
+		}
+	}
+
+	aci->addrbank = ncr->bank;
+	return true;
+}
+
 static const uae_u8 dkb_autoconfig[16] = {
 	0xd2, 0x12, 0x40, 0x00, 0x07, 0xdc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80
 };
@@ -1905,41 +2053,59 @@ bool ncr_dkb_autoconfig_init(struct autoconfig_info *aci)
 	return true;
 }
 
-bool ncr_ematrix_autoconfig_init(struct autoconfig_info *aci)
+bool typhoon2scsi_init(struct autoconfig_info *aci)
 {
-	struct zfile *z = read_device_from_romconfig(aci->rc, ROMTYPE_CB_EMATRIX);
 	uae_u8 *rom = xcalloc(uae_u8, 65536);
-	if (z) {
-		int i;
-		memset(rom, 0xff, 65536);
-
-		zfile_fseek(z, 32768, SEEK_SET);
-		for (i = 0; i < (sizeof aci->autoconfig_raw) / 2; i++) {
-			uae_u8 b;
-			zfile_fread(&b, 1, 1, z);
-			aci->autoconfig_raw[i * 2] = b;
-		}
-		for (;;) {
-			uae_u8 b;
-			if (!zfile_fread(&b, 1, 1, z))
-				break;
-			rom[i * 2] = b;
-			i++;
-		}
-		zfile_fclose(z);
-	}
-
+	load_rom_rc(aci->rc, ROMTYPE_CB_TYPHOON2, 32768, 32768, rom, 65536, LOADROM_EVENONLY_ODDONE);
+	memcpy(aci->autoconfig_raw, aci->rc->autoboot_disabled ? rom + 256 : rom, 128);
 	if (!aci->doinit) {
 		xfree(rom);
 		return true;
 	}
 
 	struct ncr9x_state *ncr = getscsi(aci->rc);
-	if (!ncr)
+	if (!ncr) {
+		xfree(rom);
 		return false;
+	}
 
 	xfree(ncr->rom);
-	ncr->rom = NULL;
+	ncr->rom = rom;
+
+	ncr->enabled = true;
+	memcpy(ncr->acmemory, aci->autoconfig_raw, sizeof aci->autoconfig_raw);
+	ncr->rom_start = 0;
+	ncr->rom_offset = 0;
+	ncr->rom_end = 0x8000;
+	ncr->io_start = 0x8000;
+	ncr->io_end = 0x10000;
+	ncr->bank = &ncr9x_bank_generic;
+	ncr->board_mask = 65535;
+
+	ncr9x_reset_board(ncr);
+
+	aci->addrbank = ncr->bank;
+	return true;
+}
+
+bool ncr_ematrix_autoconfig_init(struct autoconfig_info *aci)
+{
+	uae_u8 *rom = xcalloc(uae_u8, 65536);
+	load_rom_rc(aci->rc, ROMTYPE_CB_EMATRIX, 32768, 32768, rom, 65536, LOADROM_EVENONLY_ODDONE);
+	memcpy(aci->autoconfig_raw, aci->rc->autoboot_disabled ? rom + 256 : rom, 128);
+	if (!aci->doinit) {
+		xfree(rom);
+		return true;
+	}
+
+	struct ncr9x_state *ncr = getscsi(aci->rc);
+	if (!ncr) {
+		xfree(rom);
+		return false;
+	}
+
+	xfree(ncr->rom);
+	ncr->rom = rom;
 
 	ncr->enabled = true;
 	memcpy(ncr->acmemory, aci->autoconfig_raw, sizeof aci->autoconfig_raw);
@@ -2063,15 +2229,16 @@ void ncr9x_init(void)
 {
 }
 
-static void allocscsidevice(struct ncr9x_state *ncr, int ch, struct scsi_data *handle)
+static void allocscsidevice(struct ncr9x_state *ncr, int ch, struct scsi_data *handle, int uae_unitnum)
 {
 	handle->privdata = ncr;
 	ncr->scsid[ch] = xcalloc (SCSIDevice, 1);
 	ncr->scsid[ch]->id = ch;
 	ncr->scsid[ch]->handle = handle;
+	handle->uae_unitnum = uae_unitnum;
 }
 
-static void add_ncr_scsi_hd(struct ncr9x_state *ncr, int ch, struct hd_hardfiledata *hfd, struct uaedev_config_info *ci)
+static void add_ncr_scsi_hd(struct ncr9x_state *ncr, int ch, struct hd_hardfiledata *hfd, struct uaedev_config_info *ci, int uae_unitnum)
 {
 	struct scsi_data *handle = NULL;
 
@@ -2079,11 +2246,11 @@ static void add_ncr_scsi_hd(struct ncr9x_state *ncr, int ch, struct hd_hardfiled
 	ncr->scsid[ch] = NULL;
 	if (!add_scsi_hd(&handle, ch, hfd, ci))
 		return;
-	allocscsidevice(ncr, ch, handle);
+	allocscsidevice(ncr, ch, handle, uae_unitnum);
 	ncr->enabled = true;
 }
 
-static void add_ncr_scsi_cd(struct ncr9x_state *ncr, int ch, int unitnum)
+static void add_ncr_scsi_cd(struct ncr9x_state *ncr, int ch, int unitnum, int uae_unitnum)
 {
 	struct scsi_data *handle = NULL;
 
@@ -2091,11 +2258,11 @@ static void add_ncr_scsi_cd(struct ncr9x_state *ncr, int ch, int unitnum)
 	ncr->scsid[ch] = NULL;
 	if (!add_scsi_cd(&handle, ch, unitnum))
 		return;
-	allocscsidevice(ncr, ch, handle);
+	allocscsidevice(ncr, ch, handle, uae_unitnum);
 	ncr->enabled = true;
 }
 
-static void add_ncr_scsi_tape(struct ncr9x_state *ncr, int ch, const TCHAR *tape_directory, bool readonly)
+static void add_ncr_scsi_tape(struct ncr9x_state *ncr, int ch, const TCHAR *tape_directory, bool readonly, int uae_unitnum)
 {
 	struct scsi_data *handle = NULL;
 
@@ -2103,7 +2270,7 @@ static void add_ncr_scsi_tape(struct ncr9x_state *ncr, int ch, const TCHAR *tape
 	ncr->scsid[ch] = NULL;
 	if (!add_scsi_tape(&handle, ch, tape_directory, readonly))
 		return;
-	allocscsidevice(ncr, ch, handle);
+	allocscsidevice(ncr, ch, handle, uae_unitnum);
 	ncr->enabled = true;
 }
 
@@ -2112,11 +2279,11 @@ static void ncr9x_add_scsi_unit(struct ncr9x_state **ncrp, int ch, struct uaedev
 	struct ncr9x_state *ncr = allocscsi(ncrp, rc, ch);
 	if (ch >= 0 && ncr) {
 		if (ci->type == UAEDEV_CD)
-			add_ncr_scsi_cd (ncr, ch, ci->device_emu_unit);
+			add_ncr_scsi_cd (ncr, ch, ci->device_emu_unit, ci->uae_unitnum);
 		else if (ci->type == UAEDEV_TAPE)
-			add_ncr_scsi_tape (ncr, ch, ci->rootdir, ci->readonly);
+			add_ncr_scsi_tape (ncr, ch, ci->rootdir, ci->readonly, ci->uae_unitnum);
 		else if (ci->type == UAEDEV_HDF)
-			add_ncr_scsi_hd (ncr, ch, NULL, ci);
+			add_ncr_scsi_hd (ncr, ch, NULL, ci, ci->uae_unitnum);
 	}
 }
 
@@ -2155,6 +2322,12 @@ void oktagon_add_scsi_unit (int ch, struct uaedev_config_info *ci, struct romcon
 {
 	ncr9x_add_scsi_unit(&ncr_oktagon2008_scsi[ci->controller_type_unit], ch, ci, rc);
 	ncr9x_esp_scsi_init(ncr_oktagon2008_scsi[ci->controller_type_unit], fake2_dma_read, fake2_dma_write, set_irq2_oktagon, 0);
+}
+
+void alf3_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	ncr9x_add_scsi_unit(&ncr_alf3_scsi[ci->controller_type_unit], ch, ci, rc);
+	ncr9x_esp_scsi_init(ncr_alf3_scsi[ci->controller_type_unit], fake2_dma_read, fake2_dma_write, set_irq2_alf3, 0);
 }
 
 void masoboshi_add_scsi_unit (int ch, struct uaedev_config_info *ci, struct romconfig *rc)
@@ -2196,6 +2369,13 @@ void rapidfire_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romco
 	ncr9x_add_scsi_unit(&ncr_rapidfire_scsi[ci->controller_type_unit], ch, ci, rc);
 	ncr9x_esp_scsi_init(ncr_rapidfire_scsi[ci->controller_type_unit], fake_dma_read, fake_dma_write, set_irq2, 0);
 	esp_dma_enable(ncr_rapidfire_scsi[ci->controller_type_unit]->devobject.lsistate, 1);
+}
+
+void typhoon2scsi_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	ncr9x_add_scsi_unit(&ncr_typhoon2_scsi, ch, ci, rc);
+	ncr9x_esp_scsi_init(ncr_typhoon2_scsi, fake_dma_read_ematrix, fake_dma_write_ematrix, set_irq2, 0);
+	esp_dma_enable(ncr_typhoon2_scsi->devobject.lsistate, 1);
 }
 
 #endif

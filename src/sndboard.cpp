@@ -22,6 +22,7 @@
 #include "pci_hw.h"
 #include "qemuvga/qemuaudio.h"
 #include "rommgr.h"
+#include "devices.h"
 
 static uae_u8 *sndboard_get_buffer(int *frames);
 static void sndboard_release_buffer(uae_u8 *buffer, int frames);
@@ -488,7 +489,7 @@ static void uaesnd_irq(struct uaesndboard_stream *s, uae_u8 mask)
 	s->intreqmask |= mask;
 	if ((s->intenamask & mask)) {
 		s->intreqmask |= 0x80;
-		sndboard_rethink();
+		devices_rethink_all(sndboard_rethink);
 	}
 }
 
@@ -1287,11 +1288,11 @@ static bool audio_state_sndboard_toccata(int streamid)
 		if ((data->fifo_half & STATUS_FIFO_PLAY) && (data->toccata_status & STATUS_PLAY_INTENA) && (data->toccata_status & STATUS_FIFO_PLAY)) {
 			data->toccata_irq |= STATUS_READ_PLAY_HALF;
 		}
-		if ((data->fifo_half & STATUS_FIFO_RECORD) && (data->toccata_status & STATUS_FIFO_RECORD) && (data->toccata_status & STATUS_FIFO_RECORD)) {
+		if ((data->fifo_half & STATUS_FIFO_RECORD) && (data->toccata_status & STATUS_RECORD_INTENA) && (data->toccata_status & STATUS_FIFO_RECORD)) {
 			data->toccata_irq |= STATUS_READ_RECORD_HALF;
 		}
 		if (old != data->toccata_irq) {
-			sndboard_rethink();
+			devices_rethink_all(sndboard_rethink);
 #if DEBUG_TOCCATA > 2
 			write_log(_T("TOCCATA IRQ\n"));
 #endif
@@ -1404,6 +1405,8 @@ static void codec_start(void)
 static void codec_stop(void)
 {
 	struct toccata_data *data = &toccata[0];
+	if (!data->toccata_active)
+		return;
 	write_log(_T("TOCCATA stop\n"));
 	data->toccata_active = 0;
 	sndboard_free_capture();
@@ -1415,19 +1418,18 @@ static void codec_stop(void)
 
 void sndboard_rethink(void)
 {
-	bool irq = false;
 	if (toccata[0].enabled) {
 		struct toccata_data *data = &toccata[0];
-		irq = data->toccata_irq != 0;
+		bool irq = data->toccata_irq != 0;
+		if (irq) {
+			safe_interrupt_set(IRQ_SOURCE_SOUND, 0, true);
+		}
 	}
 	if (uaesndboard[0].enabled) {
-		irq |= uaesnd_rethink();
-	}
-	if (irq) {
-		atomic_or(&uae_int_requested, 0x200);
-		set_special_exter(SPCFLAG_UAEINT);
-	} else {
-		atomic_and(&uae_int_requested, ~0x200);
+		bool irq = uaesnd_rethink();
+		if (irq) {
+			safe_interrupt_set(IRQ_SOURCE_SOUND, 1, true);
+		}
 	}
 }
 
@@ -1794,25 +1796,25 @@ bool sndboard_init(struct autoconfig_info *aci)
 	return true;
 }
 
-void sndboard_free(void)
-{
-	struct toccata_data *data = &toccata[0];
-	data->enabled = false;
-	data->toccata_irq = 0;
-	data->rc = NULL;
-	sndboard_rethink();
-	mapped_free(&toccata_bank);
-}
-
 void sndboard_reset(void)
 {
 	struct toccata_data *data = &toccata[0];
 	data->ch_sample[0] = 0;
 	data->ch_sample[1] = 0;
-	audio_enable_stream(false, data->streamid, 0, NULL);
+	codec_stop();
+	data->toccata_irq = 0;
+	if (data->streamid > 0)
+		audio_enable_stream(false, data->streamid, 0, NULL);
 	data->streamid = 0;
 	sndboard_rethink();
 	mapped_free(&toccata_bank);
+}
+
+void sndboard_free(void)
+{
+	sndboard_reset();
+	struct toccata_data *data = &toccata[0];
+	data->rc = NULL;
 }
 
 struct fm801_data

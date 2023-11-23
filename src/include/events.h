@@ -38,7 +38,7 @@ extern void do_cycles_ce (unsigned long cycles);
 extern void do_cycles_ce020 (unsigned long cycles);
 extern void events_schedule (void);
 extern void do_cycles_slow (unsigned long cycles_to_add);
-extern void do_cycles_fast (unsigned long cycles_to_add);
+extern void events_reset_syncline(void);
 
 extern int is_cycle_ce (void);
 
@@ -83,8 +83,6 @@ extern uae_s32 pissoff;
 extern struct ev eventtab[ev_max];
 extern struct ev2 eventtab2[ev2_max];
 
-extern volatile bool vblank_found_chipset;
-extern volatile bool vblank_found_rtg;
 extern int hpos_offset;
 extern int maxhpos;
 

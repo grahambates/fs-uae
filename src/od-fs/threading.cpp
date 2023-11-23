@@ -62,6 +62,12 @@ bool uae_is_main_thread(void)
     return SDL_ThreadID() == g_main_thread_id;
 }
 
+bool is_mainthread(void)
+{
+    return uae_is_main_thread();
+}
+
+
 void uae_register_emulation_thread(void)
 {
     g_emulation_thread_id = SDL_ThreadID();

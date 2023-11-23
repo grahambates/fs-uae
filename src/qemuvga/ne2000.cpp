@@ -35,6 +35,7 @@
 #include "custom.h"
 #include "debug.h"
 #include "sana2.h"
+#include "devices.h"
 
 #include "qemuuaeglue.h"
 #include "queue.h"
@@ -1606,7 +1607,8 @@ static int toariadne2(struct ne2000_s *ne, uaecptr addr, uae_u32 *vp, int size, 
 			}
 		} else if ((addr & 0x8101) == 0x0100) {
 			// mac rom
-			*vp = ncs.ne2000state->c.macaddr.a[(addr >> 1) & 7];
+			int macoffset = (addr >> 1) & 7;
+			*vp = macoffset < 6 ? ncs.ne2000state->c.macaddr.a[macoffset] : 0;
 		} else if ((addr & 0x8101) == 0x0001) {
 			// io
 			addr &= (15 << 1);
@@ -1641,7 +1643,8 @@ static int toariadne2(struct ne2000_s *ne, uaecptr addr, uae_u32 *vp, int size, 
 			}
 		} else if ((addr & 0xffe1) == 0xffc0) {
 			// mac rom
-			*vp = ncs.ne2000state->c.macaddr.a[(addr >> 1) & 7];
+			int macoffset = (addr >> 1) & 7;
+			*vp = macoffset < 6 ? ncs.ne2000state->c.macaddr.a[macoffset] : 0;
 		} else if ((addr & 0xffe1) == 0xffe1) {
 			// io
 			addr &= (15 << 1);
@@ -1855,10 +1858,7 @@ void rethink_ne2000(void)
 	if (!ne->ariadne2_board_state)
 		return;
 	if (ne->ariadne2_irq) {
-		if (ne->level6)
-			INTREQ_0(0x8000 | 0x2000);
-		else
-			INTREQ_0(0x8000 | 0x0008);
+		safe_interrupt_set(IRQ_SOURCE_NE2000, 0, ne->level6);
 	}
 }
 
@@ -1877,7 +1877,7 @@ static void ariadne2_irq_callback(struct pci_board_state *pcibs, bool irq)
 	write_log(_T("ariadne2_irq_callback %d\n"), irq);
 #endif
 	ne->ariadne2_irq = irq;
-	rethink_ne2000();
+	devices_rethink_all(rethink_ne2000);
 }
 
 static addrbank ariadne2_bank = {
@@ -1887,6 +1887,11 @@ static addrbank ariadne2_bank = {
 	ariadne2_wget, ariadne2_lget,
 	ABFLAG_IO | ABFLAG_PPCIOSPACE, S_READ, S_WRITE
 };
+
+void ne2000_free(void)
+{
+	ne2000_reset();
+}
 
 void ne2000_reset(void)
 {

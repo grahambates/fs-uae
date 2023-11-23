@@ -58,12 +58,13 @@ struct scsi_data
 	int cd_emu_unit;
 	bool atapi;
 	uae_u32 unit_attention;
+	int uae_unitnum;
 };
 
-extern struct scsi_data *scsi_alloc_generic(struct hardfiledata *hfd, int type);
-extern struct scsi_data *scsi_alloc_hd(int, struct hd_hardfiledata*);
-extern struct scsi_data *scsi_alloc_cd(int, int, bool);
-extern struct scsi_data *scsi_alloc_tape(int id, const TCHAR *tape_directory, bool readonly);
+extern struct scsi_data *scsi_alloc_generic(struct hardfiledata *hfd, int type, int);
+extern struct scsi_data *scsi_alloc_hd(int, struct hd_hardfiledata*, int);
+extern struct scsi_data *scsi_alloc_cd(int, int, bool, int);
+extern struct scsi_data *scsi_alloc_tape(int id, const TCHAR *tape_directory, bool readonly, int);
 extern struct scsi_data *scsi_alloc_native(int, int);
 extern void scsi_free(struct scsi_data*);
 extern void scsi_reset(void);
@@ -74,6 +75,7 @@ extern int scsi_receive_data(struct scsi_data*, uae_u8*, bool next);
 extern void scsi_emulate_cmd(struct scsi_data *sd);
 extern void scsi_illegal_lun(struct scsi_data *sd);
 extern void scsi_clear_sense(struct scsi_data *sd);
+extern bool scsi_cmd_is_safe(uae_u8 cmd);
 
 extern int scsi_hd_emulate(struct hardfiledata *hfd, struct hd_hardfiledata *hdhfd, uae_u8 *cmdbuf, int scsi_cmd_len,
 		uae_u8 *scsi_data, int *data_len, uae_u8 *r, int *reply_len, uae_u8 *s, int *sense_len);
@@ -293,6 +295,9 @@ void eveshamref_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romc
 
 bool profex_init(struct autoconfig_info *aci);
 void profex_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
+
+bool fasttrak_init(struct autoconfig_info *aci);
+void fasttrak_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
 
 uae_u8 idescsi_scsi_get(uaecptr addr);
 void idescsi_scsi_put(uaecptr addr, uae_u8 v);

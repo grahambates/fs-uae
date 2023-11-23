@@ -237,6 +237,7 @@ libuae_a_SOURCES = \
 	src/blkdev_cdimage.cpp \
 	src/bsdsocket.cpp \
 	src/calc.cpp \
+	src/casablanca.cpp \
 	src/cd32_fmv.cpp \
 	src/cd32_fmv_genlock.cpp \
 	src/cdrom.cpp \
@@ -252,6 +253,7 @@ libuae_a_SOURCES = \
 	src/custom.cpp \
 	src/debug.cpp \
 	src/debuginfo.cpp \
+	src/debugmem.cpp \
 	src/def_icons.cpp \
 	src/devices.cpp \
 	src/disk.cpp \
@@ -342,6 +344,7 @@ libuae_a_SOURCES = \
 	src/include/blkdev.h \
 	src/include/bsdsocket.h \
 	src/include/calc.h \
+	src/include/casablanca.h \
 	src/include/catweasel.h \
 	src/include/cd32_fmv.h \
 	src/include/cdtv.h \
@@ -357,6 +360,7 @@ libuae_a_SOURCES = \
 	src/include/crc32.h \
 	src/include/custom.h \
 	src/include/debug.h \
+	src/include/debugmem.h \
 	src/include/devices.h \
 	src/include/disk.h \
 	src/include/diskutil.h \
@@ -549,6 +553,7 @@ libuae_a_SOURCES = \
 	src/od-fs/paths.cpp \
 	src/od-fs/roms.cpp \
 	src/od-fs/sleep.h \
+	src/od-fs/spin.cpp \
 	src/od-fs/sounddep/sound.h \
 	src/od-fs/statusline.cpp \
 	src/od-fs/stubs.cpp \

@@ -24,6 +24,7 @@
 #define _sntprintf snprintf
 #define _stprintf sprintf
 #define _strtoui64 strtoll
+#define _tcstoul strtoul 
 #define _tcscat strcat
 #define _tcschr strchr
 #define _tcscmp strcmp

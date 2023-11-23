@@ -44,13 +44,12 @@ extern void do_disk (void);
 extern void do_copper (void);
 
 extern void notice_new_xcolors (void);
-extern void notice_screen_contents_lost (void);
+extern void notice_screen_contents_lost(int monid);
 extern void init_row_map (void);
 extern void init_hz_normal (void);
 extern void init_custom (void);
 
-extern bool picasso_requested_on, picasso_requested_forced_on, picasso_on;
-extern void set_picasso_hack_rate (int hz);
+extern void set_picasso_hack_rate(int hz);
 
 /* Set to 1 to leave out the current frame in average frame time calculation.
 * Useful if the debugger was active.  */
@@ -140,8 +139,8 @@ extern int maxhpos, maxhpos_short;
 extern int maxvpos, maxvpos_nom, maxvpos_display;
 extern int hsyncstartpos, hsyncendpos;
 extern int minfirstline, vblank_endline, numscrlines;
-extern double vblank_hz, fake_vblank_hz;
-extern double hblank_hz;
+extern float vblank_hz, fake_vblank_hz;
+extern float hblank_hz;
 extern int vblank_skip, doublescan;
 extern bool programmedmode;
 
@@ -246,9 +245,17 @@ extern void alloc_cycle_blitter (int hpos, uaecptr *ptr, int);
 extern bool ispal (void);
 extern bool isvga (void);
 extern int current_maxvpos (void);
-extern struct chipset_refresh *get_chipset_refresh (void);
+extern struct chipset_refresh *get_chipset_refresh (struct uae_prefs*);
 extern void compute_framesync (void);
 extern void getsyncregisters(uae_u16 *phsstrt, uae_u16 *phsstop, uae_u16 *pvsstrt, uae_u16 *pvsstop);
 int is_bitplane_dma (int hpos);
+void custom_cpuchange(void);
+
+struct custom_store
+{
+	uae_u16 value;
+	uae_u32 pc;
+};
+extern struct custom_store custom_storage[256];
 
 #endif /* UAE_CUSTOM_H */

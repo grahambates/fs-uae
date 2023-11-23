@@ -95,7 +95,7 @@ struct romdata *getromdatabypath (const TCHAR *path)
 	return NULL;
 }
 
-#define NEXT_ROM_ID 224
+#define NEXT_ROM_ID 237
 
 #define ALTROM(id,grp,num,size,flags,crc32,a,b,c,d,e) \
 { _T("X"), 0, 0, 0, 0, 0, size, id, 0, 0, flags, (grp << 16) | num, 0, NULL, crc32, a, b, c, d, e },
@@ -189,6 +189,13 @@ static struct romdata roms[] = {
 	ALTROMPN(17, 1, 2, 262144, ROMTYPE_ODD , _T("391658-01"), 0xdfe03120,0xcd7a706c,0x431b04d8,0x7814d3a2,0xd8b39710,0x0cf44c0c)
 	{ _T("KS ROM v3.X (A4000)(Cloanto)"), 3, 10, 45, 57, _T("A4000\0"), 524288, 46, 2 | 4, 1, ROMTYPE_KICK, 0, 0, NULL,
 	0x3ac99edc, 0x3cbfc9e1,0xfe396360,0x157bd161,0xde74fc90,0x1abee7ec },
+
+	{ _T("Casablanca 74095 - 00 717 - 02"), 3, 1, 0, 0, _T("CASABLANCA\0"), 524288 * 2, 231, 2 | 4, 0, ROMTYPE_KICK, 0, 0, NULL,
+	0x2ec384e3,0x47f9ee6d, 0x0f8ac5a6,0x5c6eddc3,0x0bcd47c8,0x574d8725 },
+	ALTROMPN(231, 1, 1, 524288, ROMTYPE_EVEN, _T("74095 00 717 02 01 U4"), 0x1bdcd18c, 0xabc7b734,0x1f8df24d,0xd4f1d062,0xfc0f7680,0x4d1053b9)
+	ALTROMPN(231, 1, 2, 524288, ROMTYPE_ODD , _T("74095 00 717 02 02 U5"), 0x6ccb0431, 0xa2a43444,0xbeda38be,0x1fa5cabe,0x75fc4def,0x063bcd7a)
+	{ _T("DraCo Boot ROM v1.3"), 1, 3, 1, 3, _T("DRACO\0"), 131072, 234, 2 | 4, 0, ROMTYPE_EXTCDTV, 0, 0, NULL,
+	0x0e9c5899,0x82151324,0x01207554,0x60c8a068,0x4793ec18,0x3f744d74 },
 
 	{ _T("CD32 KS ROM v3.1"), 3, 1, 40, 60, _T("CD32\0"), 524288, 18, 1, 0, ROMTYPE_KICKCD32, 0, 0, NULL,
 	0x1e62d4a5, 0x3525BE88,0x87F79B59,0x29E017B4,0x2380A79E,0xDFEE542D },
@@ -375,8 +382,8 @@ static struct romdata roms[] = {
 	0xfd2c772f, 0x1411c248, 0x72f7cb8d, 0xecbe4744, 0xf0b8d12a, 0x1aaaad44, NULL, _T("blizzard_scsi_kit_iv.rom") },
 	{ _T("Blizzard SCSI Kit IV"), 8, 5, 8, 5, _T("BSCSIIV\0"), 32768, 94, 0, 0, ROMTYPE_BLIZKIT4, 0, 0, NULL,
 	0xf53a0fca, 0xefe17ca5,0x88c44a7f,0x0f8c62be,0x20f23278,0xcfe06727, NULL, _T("blizzard_scsi_kit_iv.rom") },
-	{ _T("Fastlane"), 8, 5, 8, 5, _T("FASTLANE\0"), 20788, 102, 0, 0, ROMTYPE_FASTLANE, 0, 0, NULL,
-	0xe4f485a5, 0x20bf7de5,0x05e45d0a,0xc411cfd2,0x806d0fd8,0xe46276de, NULL, _T("fastlanez3.rom") },
+	{ _T("Fastlane"), 8, 5, 8, 5, _T("FASTLANE\0"), 32768, 102, 0, 0, ROMTYPE_FASTLANE, 0, 0, NULL,
+	0x00447765, 0x2644e7cb,0xba5cc54e,0x880b4b42,0x49fd1dd1,0x2eb4a3bc, NULL, _T("fastlanez3.rom") },
 	{ _T("Oktagon 2008"), 6, 12, 6, 12, _T("OKTAGON\0"), 32768, 103, 0, 0, ROMTYPE_OKTAGON, 0, 0, NULL,
 	0xbb0d2f6a, 0x56c441fa,0x37d19339,0x3081b2e8,0xceae823b,0xc7e97e49, NULL, _T("oktagon2008.rom") },
 	{ _T("Warp Engine A4000"), 0, 0, 0, 0, _T("WARPENGINE\0WARPENGINEA4000\0"), 32768, 93, 0, 0, ROMTYPE_CB_WENGINE, 0, 0, NULL,
@@ -385,6 +392,18 @@ static struct romdata roms[] = {
 	0x9e9781d5, 0xf65b60d1,0x4300c50f,0x2ed17cf4,0x4dcfdef9,0x16697bc9, NULL,  _T("tekmagic2060.rom") },
 	ALTROMPN(104, 1, 1, 32768, ROMTYPE_ODD  | ROMTYPE_8BIT, NULL, 0x888da4cf, 0x6ae85f3a, 0x65331ba4, 0xaaba67ae, 0x34763d70, 0x2bde0495)
 	ALTROMPN(104, 1, 2, 32768, ROMTYPE_EVEN | ROMTYPE_8BIT, NULL, 0xaf1f47db, 0x28d5bed0, 0xbc517d46, 0x500e8159, 0x723e0b64, 0x4733c26a)
+	{ _T("Zeus 040"), 2, 98, 2, 98, _T("ZEUS040\0"), 16384, 225, 0, 0, ROMTYPE_CB_ZEUS040, 0, 0, NULL,
+	0x2c609194, 0x9a91cf45,0x6816067a,0x943c18f1,0xbd30effe,0x482d4aaf, NULL, NULL },
+	ALTROMPN(225, 1, 1, 8192, ROMTYPE_ODD  | ROMTYPE_8BIT, NULL, 0xc0bea5dd, 0x1540a755, 0x36066da4, 0x8bcb3dd4, 0xf13f179b, 0x9439f379)
+	ALTROMPN(225, 1, 2, 8192, ROMTYPE_EVEN | ROMTYPE_8BIT, NULL, 0x7989684f, 0x9dc4d885, 0x242bf7eb, 0xe75a01b2, 0x483c9e3c, 0x8013896b)
+	{ _T("CSA Magnum 040"), 0, 0, 0, 0, _T("MAGNUM040\0"), 65536, 226, 0, 0, ROMTYPE_CB_MAGNUM40, 0, 0, NULL,
+	0xb94e805b, 0x4c1859ba,0x7ea2cedb,0xf5251bed,0xfbb76e6c,0x0617300e },
+	{ _T("Hardital TQM"), 0, 0, 0, 0, _T("TQM\0"), 32768, 228, 0, 0, ROMTYPE_CB_TQM, 0, 0, NULL,
+	0x3bc9b90c, 0x24fa6ab8, 0x5ca64ae6, 0x43851a85, 0xa473ff0c, 0x5a48f272, NULL, NULL },
+	{ _T("MacroSystem Falcon 040 (No SCSI)"), 0, 0, 0, 0, _T("FALCON040\0"), 131072, 229, 0, 0, ROMTYPE_CB_FALCON40, 0, 0, NULL,
+	0xa2ba67d1, 0x2015685f, 0xaadfbaf6, 0x8b19b07e, 0x5f4e888f, 0x738b99d7, NULL, NULL },
+	{ _T("GVP A1230 Turbo+ Series II"), 0, 0, 0, 0, _T("A1230SII\0"), 16384, 230, 0, 0, ROMTYPE_CB_A1230S2, 0, 0, NULL,
+	0x96bd351f, 0xb7648daf, 0x52d0732d, 0x897548f3, 0x29ebf624, 0x101474d5, NULL, NULL },
 
 	{ _T("A2620/A2630 -07"), 0, 0, 0, 0, _T("A2620\0A2630\0"), 65536, 105, 0, 0, ROMTYPE_CB_A26x0, 0, 0, _T("390282-07/390283-07"),
 	0x169d80e9, 0x41f518cb,0x41c1dc1f,0xcc636383,0x20676af5,0x4969010c, NULL, NULL },
@@ -410,14 +429,12 @@ static struct romdata roms[] = {
 	0x6ee2ecdd, 0x4c82e3ba, 0x2d2dd1d3, 0x82f01098, 0xc26681b8, 0xff62f36d, NULL, NULL },
 	ALTROMPN(164, 1, 1, 32768, ROMTYPE_ODD  | ROMTYPE_8BIT, _T("390282-01"), 0xdf76493b, 0x331ede0a, 0x8ca995cc, 0x1917f592, 0x18718e5b, 0x3c7fac39)
 	ALTROMPN(164, 1, 2, 32768, ROMTYPE_EVEN | ROMTYPE_8BIT, _T("390283-01"), 0xd74187de, 0x681e4985, 0x4da64bf1, 0x6f2f99f7, 0x4b195f54, 0x0b8bd614)
-
 	{ _T("DKB 1230/1240/Cobra"), 1, 23, 1, 23, _T("DKB\0"), 1460, 112, 0, 0, ROMTYPE_CB_DKB, 0, 0, NULL,
 	0x15ac5257, 0xf0431d02,0xac0f83d3,0x45db18c0,0x23f0cefb,0x33d17217, NULL, NULL },
 	{ _T("DKB 1230/1240/Cobra + Ferret v1.23"), 1, 23, 1, 23, _T("DKB\0"), 12060, 208, 0, 0, ROMTYPE_CB_DKB, 0, 0, NULL,
 	0xda878913, 0xb62a68ef,0xb9378d74,0x0be17452,0x1ad07d2e,0xa461a313, NULL, NULL },
-	{ _T("DKB Rapidfire v1.31"), 1, 31, 1, 31, _T("RAPIDFIRE\0"), 11284, 207, 0, 0, ROMTYPE_RAPIDFIRE, 0, 0, NULL,
+	{ _T("DKB Rapidfire/Spitfire v1.31"), 1, 31, 1, 31, _T("RAPIDFIRE\0"), 11284, 207, 0, 0, ROMTYPE_RAPIDFIRE, 0, 0, NULL,
 	0x68725e50, 0xa66f8ef6,0x901e0e41,0xf8b72bba,0x12165788,0xa452cf01, NULL, NULL },
-
 	{ _T("Fusion Forty"), 0, 0, 0, 0, _T("FUSIONFORTY\0"), 131072, 113, 0, 0, ROMTYPE_CB_FUSION, 0, 0, NULL,
 	0x48fcb5fd, 0x15674dac,0x90b6d8db,0xdda3a175,0x997184c2,0xa423d733, NULL, NULL },
 	ALTROMPN(113, 1, 1, 32768, ROMTYPE_QUAD | ROMTYPE_EVEN | ROMTYPE_8BIT, _T("U28"), 0x434a21a8, 0x472c1623, 0x02babd00, 0x7c1a77ff, 0x40dd12ab, 0x39c97f82)
@@ -434,6 +451,8 @@ static struct romdata roms[] = {
 	0xb2dae8c4, 0xcdfe2d96, 0xe44d4f8d, 0x3833a5e8, 0xb6c832fd, 0xc7b341a9, NULL, NULL },
 	{ _T("M-Tec E-Matrix 530"), 0, 0, 0, 0, _T("EMATRIX530\0"), 65536, 144, 0, 0, ROMTYPE_CB_EMATRIX, 0, 0, NULL,
 	0x3942d827, 0x5aaf118f, 0x61fc3083, 0x1435b87c, 0x8bdab6a4, 0x59b4ee22, NULL, NULL },
+	{ _T("Typhoon MK2"), 0, 0, 0, 0, _T("TYPHOON2\0"), 65536, 236, 0, 0, ROMTYPE_CB_TYPHOON2, 0, 0, NULL,
+	0xf5edf7e2, 0xf62bab24, 0xeaa91a16, 0x07d838af, 0x7b5fef4d, 0x05c58edc, NULL, NULL },
 	{ _T("SX32 Pro"), 0, 0, 0, 0, _T("SX32PRO\0"), 65536, 160, 0, 0, ROMTYPE_CB_SX32PRO, 0, 0, NULL,
 	0xbfd68a88, 0x84a50880, 0x76917549, 0xadf33b16, 0x8a869adb, 0x9e5a6fac, NULL, NULL },
 	{ _T("IVS Vector 4.14"), 4, 14, 4, 14, _T("VECTOR030\0"), 65536, 166, 0, 0, ROMTYPE_CB_VECTOR, 0, 0, NULL,
@@ -443,8 +462,12 @@ static struct romdata roms[] = {
 
 	{ _T("Preferred Technologies Nexus"), 1, 0, 1, 0, _T("PTNEXUS\0"), 8192, 139, 0, 0, ROMTYPE_PTNEXUS, 0, 0, NULL,
 	0xf495879a, 0xa3bd0202, 0xe14aa5b6, 0x49d3ce88, 0x22975950, 0x6500dbc2, NULL, NULL },
-	{ _T("ICD AdSCSI 2000"), 1, 6, 1, 6, _T("ADSCSI\0"), 32768, 133, 0, 0, ROMTYPE_ADSCSI, 0, 0, NULL,
+	{ _T("ICD AdSCSI 2000 v1.6 (icddisk v1.0)"), 1, 6, 1, 6, _T("ADSCSI\0"), 32768, 133, 0, 0, ROMTYPE_ADSCSI, 0, 0, NULL,
 	0x7dba3e1f, 0x1e05f284, 0xd59a1e5d, 0x4e4de44e, 0x6f075175, 0x625cd6c0, NULL, NULL },
+	{ _T("ICD AdSCSI 2000 v2.? (icddisk v33.0)"), 0, 0, 0, 0, _T("ADSCSI\0"), 32768, 232, 0, 0, ROMTYPE_ADSCSI, 0, 0, NULL,
+	0x3184ec04, 0xf8ab84b0, 0x4853404f, 0x840085ce, 0x5fe992e3, 0x5dc443da, NULL, NULL },
+	{ _T("ICD AdSCSI 2000 v2.2 (icddisk v34.0)"), 2, 2, 2, 2, _T("ADSCSI\0"), 32768, 233, 0, 0, ROMTYPE_ADSCSI, 0, 0, NULL,
+	0x6881cd2f, 0x482fab24, 0xdf39446b, 0xa8662c7e, 0x67f11854, 0x895a46d9, NULL, NULL },
 	{ _T("Archos ADD-500"), 1, 21, 1, 21, _T("ADD\0"), 16384, 132, 0, 0, ROMTYPE_ADD500, 0, 0, NULL,
 	0x3f4e4a74, 0x9ed96fc0,0xd6381dc3,0x3192b0af,0xdfae4b74,0x576c3a69, NULL, NULL },
 	{ _T("Protar A500HD"), 1, 193, 1, 193, _T("PROTAR\0"), 32768, 131, 0, 0, ROMTYPE_PROTAR, 0, 0, NULL,
@@ -515,7 +538,7 @@ static struct romdata roms[] = {
 	ALTROMPN(157, 1, 2, 8192, ROMTYPE_EVEN | ROMTYPE_8BIT, NULL, 0x39b0075e, 0xf6644ea0, 0x6c3ed349, 0xfb0fb6b4, 0xa9f07655, 0x0b104179)
 	{ _T("Phoenix Board SCSI v.J"), 3, 1, 3, 1, _T("PBSCSI\0"), 32768, 159, 0, 0, ROMTYPE_PHOENIXB, 0, 0, NULL,
 	0x1f672e4b, 0xb20d50b8, 0x31ec9823, 0xfa732fc6, 0x522ecc6a, 0xae36ec33, NULL, NULL },
-	{ _T("IVS GramdSlam/Trumpcard Pro v4.9"), 4, 9, 4, 9, _T("IVSPRO\0"), 16384, 161, 0, 0, ROMTYPE_IVSTPRO, 0, 0, NULL,
+	{ _T("IVS GrandSlam/Trumpcard Pro v4.9"), 4, 9, 4, 9, _T("IVSPRO\0"), 16384, 161, 0, 0, ROMTYPE_IVSTPRO, 0, 0, NULL,
 	0x4a15f224, 0x29500b47, 0x289e84ac, 0x575e3c7d, 0x82199b45, 0x605d8fc9, NULL, NULL },
 	{ _T("Expansion Systems Dataflyer+ v1.5"), 1, 5, 1, 5, _T("DATAFLYERPLUS\0"), 32768, 170, 0, 0, ROMTYPE_DATAFLYER, 0, 0, NULL,
 	0x00888f19, 0x54b73354, 0xb3592691, 0x59a80909, 0x0bdb67df, 0x8ac22aa9, NULL, NULL },
@@ -551,6 +574,14 @@ static struct romdata roms[] = {
 	0xb0225f48, 0x2b170b40, 0x2f60d28c, 0x344fc463, 0x7e99915f, 0x92e0e8f1, NULL, NULL },
 	{ _T("Profex Electronics HD 3300"), 22, 0, 22, 0, _T("PROFEXHD3300\0"), 8192, 223, 0, 0, ROMTYPE_PROFEX, 0, 0, NULL,
 	0xfe4bf404, 0xc6c1e465, 0xc05e4794, 0xee76c9e2, 0x94def44d, 0x1c7560a1, NULL, NULL },
+	{ _T("Elsat Mega Ram HD"), 1, 0, 1, 0, _T("ELSATHD\0"), 16384, 224, 0, 0, ROMTYPE_ELSATHD, 0, 0, NULL,
+	0x1b854f6b, 0xc39d6202, 0xccb65f17, 0x63d1835e, 0x19d5b63d, 0x28f1b6a3, NULL, NULL },
+	ALTROMPN(224, 1, 1, 8192, ROMTYPE_ODD  | ROMTYPE_8BIT, NULL, 0x3ba56b91, 0xef55760e, 0x8d5a5408, 0x7062f9ab, 0xc63ef067, 0x0b23f108)
+	ALTROMPN(224, 1, 2, 8192, ROMTYPE_EVEN | ROMTYPE_8BIT, NULL, 0x20c2cbb6, 0xb83d7406, 0x6c335a77, 0x0acb30d6, 0xff79a00f, 0x629a6953)
+	{ _T("Xetec FastTrak"), 1, 42, 1, 42, _T("FASTTRACK\0"), 32768, 227, 0, 0, ROMTYPE_FASTTRAK, 0, 0, NULL,
+	0xc5ae45d4, 0x8d682bc1,0x72bd2d35,0x4ba2db5c,0x9f6745a4,0x8937782c, NULL, NULL },
+	{ _T("C-Ltd Kronos"), 1, 0, 1, 0, _T("KRONOS\0"), 8192, 235, 0, 0, ROMTYPE_KRONOS, 0, 0, NULL,
+	0x9366d357, 0x7113add0,0x4c782ed7,0xa56a74ba,0x3378d55c,0x5605eaf6, NULL, NULL },
 
 	{ _T("CyberStorm MK I 68040"), 0, 0, 0, 0, _T("CSMKI\0"), 32768, 95, 0, 0, ROMTYPE_CB_CSMK1, 0, 0, NULL,
 	  0, 0, 0, 0, 0, 0, NULL, _T("cyberstormmk1_040.rom") },
@@ -603,12 +634,12 @@ static struct romdata roms[] = {
 	{ _T("A2386SX BIOS 1.00.03"), 1, 0, 1, 0, _T("A2386SX\0"), 65536, 205, 0, 0, ROMTYPE_A2386, 0, 0, _T("391168-01"),
 	0x41041761, 0x78659be4,0x5755f8bd,0x004a101b,0x658ae75d,0xf142ddc9, NULL, NULL },
 
-	{ _T("Arcadia OnePlay 2.11"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 49, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
-	{ _T("Arcadia TenPlay 2.11"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 50, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
-	{ _T("Arcadia TenPlay 2.20"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 75, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
-	{ _T("Arcadia OnePlay 3.00"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 51, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
-	{ _T("Arcadia TenPlay 3.11"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 76, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
-	{ _T("Arcadia TenPlay 4.00"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 77, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+	{ _T("Arcadia OnePlay 2.11"), 2, 11, 0, 0, _T("ARCADIA\0"), 0, 49, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+	{ _T("Arcadia TenPlay 2.11"), 2, 11, 0, 0, _T("ARCADIA\0"), 0, 50, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+	{ _T("Arcadia TenPlay 2.20"), 2, 20, 0, 0, _T("ARCADIA\0"), 0, 75, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+	{ _T("Arcadia OnePlay 3.00"), 3, 0, 0, 0, _T("ARCADIA\0"), 0, 51, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+	{ _T("Arcadia TenPlay 3.11"), 3, 11, 0, 0, _T("ARCADIA\0"), 0, 76, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+	{ _T("Arcadia TenPlay 4.00"), 4, 0, 0, 0, _T("ARCADIA\0"), 0, 77, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
 
 	{ _T("Arcadia SportTime Table Hockey v2.1"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 33, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
 	{ _T("Arcadia SportTime Bowling v2.1"), 0, 0, 0, 0, _T("ARCADIA\0"), 0, 34, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
@@ -877,7 +908,7 @@ struct romlist **getromlistbyident (int ver, int rev, int subver, int subrev, co
 			continue;
 		if (model && !_tcsicmp (model, rd->name))
 			ok = 2;
-		if ((ver < 0 || rd->ver == ver) && (rev < 0 || rd->rev == rev)) {
+		if ((ver < 0 || rd->ver == ver) && (rev < 0 || rd->rev == rev) && (rd->rev != 0 || rd->ver != 0)) {
 			if (subver >= 0) {
 				if (rd->subver == subver && (subrev < 0 || rd->subrev == subrev) && rd->subver > 0)
 					ok = 1;
@@ -934,7 +965,7 @@ struct romdata *getarcadiarombyname (const TCHAR *name)
 {
 	int i;
 	for (i = 0; roms[i].name; i++) {
-		if (roms[i].group == 0 && (roms[i].type == ROMTYPE_ARCADIAGAME || roms[i].type == ROMTYPE_ARCADIAGAME)) {
+		if (roms[i].group == 0 && (roms[i].type == ROMTYPE_ARCADIABIOS || roms[i].type == ROMTYPE_ARCADIAGAME)) {
 			const TCHAR *p = roms[i].name;
 			p = p + _tcslen (p) + 1;
 			if (_tcslen (name) >= _tcslen (p) + 4) {

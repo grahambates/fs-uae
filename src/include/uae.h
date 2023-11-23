@@ -35,6 +35,9 @@ extern void target_addtorecent (const TCHAR*, int);
 extern void target_run (void);
 extern void target_quit (void);
 extern void target_restart (void);
+extern void target_getdate(int *y, int *m, int *d);
+extern void target_cpu_speed(void);
+extern int target_sleep_nanos(int);
 extern bool get_plugin_path (TCHAR *out, int size, const TCHAR *path);
 extern void stripslashes (TCHAR *p);
 extern void fixtrailing (TCHAR *p);
@@ -43,6 +46,7 @@ extern void getpathpart (TCHAR *outpath, int size, const TCHAR *inpath);
 extern void getfilepart (TCHAR *out, int size, const TCHAR *path);
 extern uae_u32 getlocaltime (void);
 extern bool isguiactive(void);
+extern bool is_mainthread(void);
 
 extern int quit_program;
 extern bool console_emulation;

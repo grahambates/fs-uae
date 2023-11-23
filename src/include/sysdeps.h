@@ -220,8 +220,8 @@ typedef uae_u32 uaecptr;
 #ifdef FSUAE
 #include "uae/atomic.h"
 #else
-void atomic_and(volatile uae_atomic *p, uae_u32 v);
-void atomic_or(volatile uae_atomic *p, uae_u32 v);
+uae_atomic atomic_and(volatile uae_atomic *p, uae_u32 v);
+uae_atomic atomic_or(volatile uae_atomic *p, uae_u32 v);
 uae_atomic atomic_inc(volatile uae_atomic *p);
 uae_atomic atomic_dec(volatile uae_atomic *p);
 uae_u32 atomic_bit_test_and_reset(volatile uae_atomic *p, uae_u32 v);
@@ -492,6 +492,7 @@ extern void logging_init (void);
 extern FILE *log_open (const TCHAR *name, int append, int bootlog, TCHAR*);
 extern void log_close (FILE *f);
 
+extern bool use_long_double;
 
 #ifndef O_BINARY
 #define O_BINARY 0
@@ -501,7 +502,7 @@ extern void log_close (FILE *f);
 #include "uae/inline.h"
 #else
 #ifndef STATIC_INLINE
-#if __GNUC__ - 1 > 1 && __GNUC_MINOR__ - 1 >= 0
+#if __GNUC__ - 1 > 2 || (__GNUC__ - 1 == 2 && __GNUC_MINOR__ - 1 >= 0)
 #define STATIC_INLINE static __inline__ __attribute__ ((always_inline))
 #define NOINLINE __attribute__ ((noinline))
 #define NORETURN __attribute__ ((noreturn))

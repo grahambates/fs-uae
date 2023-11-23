@@ -27,6 +27,7 @@
 ; 2015.09.27 KS 1.2 boot hack supported
 ; 2015.09.28 KS 1.2 boot hack improved, 1.1 and older BCPL-only DOS support.
 ; 2016.01.14 'Indirect' boot ROM trap support.
+; 2018.03.22 Segment tracking
 
 AllocMem = -198
 FreeMem = -210
@@ -83,7 +84,7 @@ NRF_NOTIFY_INITIAL = 16
 NRF_MAGIC = $80000000
 
 ; normal filehandler segment entrypoint
-	dc.l 16 								; 4
+	dc.l (rom_end-start)/4 					; 4
 our_seglist:
 	dc.l 0 									; 8 /* NextSeg */
 start:
@@ -130,6 +131,15 @@ bcpl_start:
 	dc.l 2
 bcpl_end:
 
+resident
+	dc.w $4afc
+	dc.l 0
+	dc.l rom_end-resident
+	dc.b 0,1,0,0
+	dc.l exter_name-resident
+	dc.l 0
+	dc.l start-resident
+
 afterdos:
 	movem.l d2-d7/a2-a6,-(sp)
 
@@ -151,6 +161,8 @@ afterdos:
 	
 	bsr.w clipboard_init
 	bsr.w consolehook
+	bsr.w segtrack_init
+
 	movem.l (sp)+,d2-d7/a2-a6
 	moveq #0,d0
 	rts
@@ -870,8 +882,7 @@ relocate: ;a0=pointer to executable, returns first segment in A0
 	addq.l #1,d7
 	move.l a2,a3
 	move.l d7,d0
-	add.l d0,d0
-	add.l d0,d0
+	lsl.l #2,d0
 	add.l d0,a3
 	move.l a2,a4
 
@@ -908,8 +919,7 @@ r18	addq.l #1,d6
 
 	moveq #0,d6
 r3	move.l d6,d1
-	add.l d1,d1
-	add.l d1,d1
+	lsl.l #2,d1
 	move.l 0(a4,d1.l),a0
 	addq.l #4,a0
 	move.l (a3)+,d3 ; hunk type
@@ -931,22 +941,20 @@ r5
 	cmp.l #$3eb,d3 ;bss
 	bne.s ree
 
-r7 ; scan for reloc32 or hunk_end
+r7 ; scan for reloc32, symbol, debug or hunk_end
 	move.l (a3)+,d3
 	cmp.l #$3ec,d3 ;reloc32
 	bne.s r13
 
 	; relocate
 	move.l d6,d1
-	add.l d1,d1
-	add.l d1,d1
+	lsl.l #2,d1
 	move.l 0(a4,d1.l),a0 ; current hunk
 	addq.l #4,a0
 r11	move.l (a3)+,d0 ;number of relocs
 	beq.s r7
 	move.l (a3)+,d1 ;hunk
-	add.l d1,d1
-	add.l d1,d1
+	lsl.l #2,d1
 	move.l 0(a4,d1.l),d3 ;hunk start address
 	addq.l #4,d3
 r9	move.l (a3)+,d2 ;offset
@@ -955,6 +963,25 @@ r9	move.l (a3)+,d2 ;offset
 	bne.s r9
 	bra.s r11
 r13
+	cmp.l #$3f0,d3 ;symbol
+	bne.s r20
+r21
+	move.l (a3)+,d0
+	beq.s r7
+	and.l #$ffffff,d0
+	addq.l #1,d0
+	lsl.l #2,d0
+	add.l d0,a3
+	bra.s r21
+r20
+	cmp.l #$3f1,d3 ;debug
+	bne.s r22
+	move.l (a3)+,d0
+	lsl.l #2,d0
+	add.l d0,a3
+	bra.s r7
+
+r22
 	cmp.l #$3f2,d3 ;end
 	bne.s ree
 	
@@ -1367,8 +1394,7 @@ make_dev: ; IN: A0 param_packet, D6: unit_no
 mountalways
 	; allocate memory for loaded filesystem
 	move.l PP_FSSIZE(a0),d0
-	beq.s .nordbfs1
-	bmi.s .nordbfs1
+	ble.s .nordbfs1
 	move.l a0,-(sp)
 	moveq #1,d1
 	move.l 4.w,a6
@@ -1405,6 +1431,18 @@ do_mount:
 dont_mount:
 	move.l PP_FSPTR(a1),a0
 	tst.l PP_FSSIZE(a1)
+	bpl.s nordbfs4
+	movem.l d1/a0-a1,-(sp)
+	move.l PP_FSSIZE(a1),d0
+	neg.l d0
+	move.l PP_FSPTR(a1),a0
+	bsr.w fstrack_init
+	movem.l (sp)+,d1/a0-a1
+	move.l d0,PP_FSPTR(a1)
+	move.l d0,a0
+	clr.l PP_FSSIZE(a1)
+	bra.s nordbfs3
+nordbfs4
 	beq.s nordbfs3
 	; filesystem needs relocation?
 	move.l a0,d0
@@ -1759,11 +1797,11 @@ FSML_loop:
 	beq.s nonnotif
 
 	; notify reply?
-	cmp.w #38, 18(a4)
-	bne.s nonnotif
 	cmp.l #NOTIFY_CLASS, 20(a4)
 	bne.s nonnotif
 	cmp.w #NOTIFY_CODE, 24(a4)
+	bne.s nonnotif
+	cmp.w #38, 18(a4)
 	bne.s nonnotif
 	move.l 26(a4),a0 ; NotifyRequest
 	move.l 12(a0),d0 ; flags
@@ -3949,6 +3987,316 @@ keymapfunc_entry
 	movem.l (sp)+,d0-d7/a0-a6
 	rts
 
+FSTRACK_DATA = 16
+
+	; a0 = fsdata (raw)
+	; d0 = size
+fstrack_init
+	movem.l d2-d7/a2-a6,-(sp)
+	move.l d0,d5
+	move.l a0,a5
+	moveq #0,d7
+
+	move.l 4.w,a6
+	cmp.w #37,20(a6)
+	bcs .noinit
+
+	move.w #$FF38,d0
+	move.l #208,d1
+	bsr.w getrtbaselocal
+	move.l a0,a4
+	jsr (a0)
+	btst #1,d0
+	beq .noinit
+
+	move.l #fstrack_end-fstrack_start+FSTRACK_DATA,d0
+	move.l #65536+1,d1
+	jsr -$c6(a6)
+	tst.l d0
+	beq .noinit
+	move.l d0,a2
+	add.w #FSTRACK_DATA,a2
+
+	move.l a2,a1
+	moveq #(fstrack_end-fstrack_start)/4-1,d0
+	lea fstrack_start(pc),a0
+.copyfstrack
+	move.l (a0)+,(a1)+
+	dbf d0,.copyfstrack
+
+	lea allocmem_uae_p+2-fstrack_start(a2),a0
+	move.l a4,(a0)
+	lea freemem_uae_p+2-fstrack_start(a2),a0
+	move.l a4,(a0)
+
+	lea allocvec_uae_p+2-fstrack_start(a2),a0
+	move.l a4,(a0)
+	lea freevec_uae_p+2-fstrack_start(a2),a0
+	move.l a4,(a0)
+
+	lea allocmem-fstrack_start(a2),a0
+	move.l a0,d0
+	move.l a6,a1
+	move.w #-$c6,a0
+	jsr -$1a4(a6)
+	lea allocmem_func+2-fstrack_start(a2),a0
+	move.l d0,(a0)
+
+	lea freemem-fstrack_start(a2),a0
+	move.l a0,d0
+	move.l a6,a1
+	move.w #-$d2,a0
+	jsr -$1a4(a6)
+	lea freemem_func+2-fstrack_start(a2),a0
+	move.l d0,(a0)
+
+	lea allocvec-fstrack_start(a2),a0
+	move.l a0,d0
+	move.l a6,a1
+	move.w #-$2ac,a0
+	jsr -$1a4(a6)
+	lea allocvec_func+2-fstrack_start(a2),a0
+	move.l d0,(a0)
+
+	lea freevec-fstrack_start(a2),a0
+	move.l a0,d0
+	move.l a6,a1
+	move.w #-$2b2,a0
+	jsr -$1a4(a6)
+	lea freevec_func+2-fstrack_start(a2),a0
+	move.l d0,(a0)
+
+	lea -FSTRACK_DATA(a2),a0
+	move.l a5,(a0)+
+	move.l d5,(a0)+
+	move.l a4,(a0)+
+
+	move.l a2,d7
+
+.noinit
+	move.l d7,d0
+	movem.l (sp)+,d2-d7/a2-a6
+	rts
+
+	cnop 0,4
+fstrack_start
+
+	;dc.l 0 ;real_filesys_entry
+	;dc.l 0 ;fs_size
+	;dc.l 0 ;misc_funcs
+	;dc.l 0
+
+fstrack_entry
+	nop
+	nop
+	move.l 4.w,a1
+	move.l 276(a1),a1 ;task
+	lea freemem+2(pc),a0
+	move.l a1,(a0)
+	lea allocmem+2(pc),a0
+	move.l a1,(a0)
+	lea freevec+2(pc),a0
+	move.l a1,(a0)
+	lea allocvec+2(pc),a0
+	move.l a1,(a0)
+	lea fstrack_entry-FSTRACK_DATA(pc),a2
+	move.l (a2)+,a0 ;data
+	move.l (a2)+,d0 ;len
+	move.l (a2),a2 ;misc_funcs
+	moveq #0,d2 ;stack
+	move.l #200,d1
+	jsr (a2)
+	move.l d0,-(sp)
+	rts
+
+	; a1 / d0
+freemem
+	cmp.l #$ffffffff,276(a6)
+	beq.s freemem_uae
+freemem_func
+	jsr 0.l
+	rts
+freemem_uae
+	move.l #205,d1
+	move.l (sp),a0
+freemem_uae_p
+	jsr 0.l
+	tst.l d0
+	beq.s freemem_func
+	rts
+
+	; d0 / d1
+allocmem
+	cmp.l #$ffffffff,276(a6)
+	beq.s allocmem_uae
+allocmem_func
+	jsr 0.l
+	rts
+allocmem_uae
+	move.l d1,a1
+	move.l (sp),a0
+	move.l #204,d1
+allocmem_uae_p
+	jsr 0.l
+	cmp.w #0,a0
+	beq.s allocmem_func
+	rts
+
+	; a1
+freevec
+	cmp.l #$ffffffff,276(a6)
+	beq.s freevec_uae
+freevec_func
+	jsr 0.l
+	rts
+freevec_uae
+	move.l #207,d1
+	move.l (sp),a0
+freevec_uae_p
+	jsr 0.l
+	tst.l d0
+	beq.s freevec_func
+	rts
+
+	; d0 / d1
+allocvec
+	cmp.l #$ffffffff,276(a6)
+	beq.s allocvec_uae
+allocvec_func
+	jsr 0.l
+	rts
+allocvec_uae
+	move.l d1,a1
+	move.l (sp),a0
+	move.l #206,d1
+allocvec_uae_p
+	jsr 0.l
+	cmp.w #0,a0
+	beq.s allocvec_func
+	rts
+
+	cnop 0,4
+fstrack_end
+
+segtrack_init
+	move.l 4.w,a0
+	cmp.w #37,20(a0)
+	bcs .noinit
+
+	move.w #$FF38,d0
+	move.l #208,d1
+	bsr.w getrtbaselocal
+	move.l a0,d4
+	jsr (a0)
+	btst #0,d0
+	beq .noinit
+
+	move.l #segtrack_end-segtrack_start,d0
+	move.l #65536+1,d1
+	jsr -$c6(a6)
+	tst.l d0
+	beq .noinit
+	move.l d0,a2
+
+	move.l a2,a1
+	moveq #(segtrack_end-segtrack_start)/4-1,d0
+	lea segtrack_start(pc),a0
+.copysegtrack
+	move.l (a0)+,(a1)+
+	dbf d0,.copysegtrack
+
+	lea doslibname(pc),a1
+	moveq #0,d0
+	jsr -$0228(a6) ; OpenLibrary
+	tst.l d0
+	beq.s .noinit
+	move.l d0,a4
+
+	lea loadseg_uae+2-segtrack_start(a2),a0
+	move.l d4,(a0)
+	lea unloadseg_uae+2-segtrack_start(a2),a0
+	move.l d4,(a0)
+
+	lea loadseg-segtrack_start(a2),a0
+	move.l a0,d0
+	move.l a4,a1
+	move.w #-$96,a0
+	jsr -$1a4(a6)
+	lea loadseg_ptr+2-segtrack_start(a2),a0
+	move.l d0,(a0)
+
+	lea newloadseg-segtrack_start(a2),a0
+	move.l a0,d0
+	move.l a4,a1
+	move.w #-$300,a0
+	jsr -$1a4(a6)
+	lea newloadseg_ptr+2-segtrack_start(a2),a0
+	move.l d0,(a0)
+
+	lea unloadseg-segtrack_start(a2),a0
+	move.l a0,d0
+	move.l a4,a1
+	move.w #-$9c,a0
+	jsr -$1a4(a6)
+	lea unloadseg_ptr+2-segtrack_start(a2),a0
+	move.l d0,(a0)
+
+	moveq #0,d0
+	move.l d4,a0
+	move.l #209,d1
+	move.l a2,a1
+	jsr (a0)
+
+.noinit
+	rts
+
+	cnop 0,4
+segtrack_start
+
+newloadseg
+	move.l d1,-(sp)
+newloadseg_ptr
+	jsr 0.l
+	bra.s doloadseg
+
+loadseg
+	move.l d1,-(sp)
+loadseg_ptr
+	jsr 0.l
+
+doloadseg
+	movem.l d0-d3/a0-a1,-(sp)
+	move.l d0,d3 ; segment
+	move.l 6*4(sp),d1 ;name
+	jsr -$54(a6) ; Lock
+	move.l d0,d2
+	move.l #202,d1
+	move.l d3,a0
+	move.l 6*4(sp),a1 ;name
+loadseg_uae
+	jsr 0.l
+	move.l d2,d1
+	beq.s loadseg_nolock
+	jsr -$5a(a6) ;Unlock
+loadseg_nolock
+	movem.l (sp)+,d0-d3/a0-a1
+	addq.l #4,sp
+	rts
+
+unloadseg
+	movem.l d0-d1/a0-a1,-(sp)
+	move.l d1,a0
+	move.l #203,d1
+unloadseg_uae
+	jsr 0.l
+	movem.l (sp)+,d0-d1/a0-a1
+unloadseg_ptr
+	jsr 0.l
+	rts
+
+	cnop 0,4
+segtrack_end
+
 	include "filesys_helpers.asm"
 
 	cnop 0,4
@@ -3995,9 +4343,10 @@ fsresname: dc.b 'FileSystem.resource',0
 fchipname: dc.b 'megachip memory',0
 bcplfsname: dc.b "File System",0
 shellexecname: dc.b "UAE shell execute",0
-hwtrap_name:
-	dc.b "UAE board",0
-		even
+hwtrap_name: dc.b "UAE board",0
+uaeres dc.b "uae.resource",0
+uaeres_func dc.b "misc_funcs",0
+	cnop 0,4
 rom_end:
 
 	END

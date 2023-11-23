@@ -79,7 +79,7 @@ void debugger_change (int mode) {
     STUB("mode=%d", mode);
 }
 
-void screenshot (int mode, int doprepare) {
+void screenshot (int mode, int doprepare, int) {
     STUB("mode=%d doprepare=%d", mode, doprepare);
 }
 
@@ -129,9 +129,21 @@ uae_u8 *target_load_keyfile (struct uae_prefs *p, const TCHAR *path, int *sizep,
     return NULL;
 }
 
+bool vsync_switchmode(int monid, int hz)
+{
+    STUB("hz=%d", hz);
+    return 0;
+}
+
+
 bool vsync_switchmode (int hz) {
     STUB("hz=%d", hz);
     return 0;
+}
+
+void updatedisplayarea(int monid)
+{
+    LOG_STUB("");
 }
 
 #ifndef AHI
@@ -258,6 +270,21 @@ void target_inputdevice_acquire(void)
     STUB("");
 }
 
+void desktop_coords (int monid, int *dw, int *dh, int *ax, int *ay, int *aw, int *ah)
+{
+    STUB("");
+#if 0
+        struct MultiDisplay *md = getdisplay (&currprefs);
+
+        *dw = md->rect.right - md->rect.left;
+        *dh = md->rect.bottom - md->rect.top;
+        *ax = amigawin_rect.left;
+        *ay = amigawin_rect.top;
+        *aw = amigawin_rect.right - *ax;
+        *ah = amigawin_rect.bottom - *ay;
+#endif
+}
+
 int is_touch_lightpen(void) {
     return 0;
 }
@@ -274,12 +301,6 @@ uae_u8 *save_screenshot(int monid, size_t *len)
 {
     STUB("");
     return NULL;
-}
-
-/* Stub function for avioutput */
-bool frame_drawn (int monid)
-{
-    return false;
 }
 
 void uninitvideograb(void)

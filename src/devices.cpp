@@ -62,6 +62,7 @@
 #include "videograb.h"
 #include "arcadia.h"
 #include "rommgr.h"
+#include "newcpu.h"
 #include "uae/debuginfo.h"
 #include "uae/segtracker.h"
 #ifdef RETROPLATFORM
@@ -146,6 +147,7 @@ void devices_vsync_pre(void)
 	cd32_fmv_vsync_handler();
 #endif
 	cpuboard_vsync();
+	ncr_vsync();
 	statusline_vsync();
 #ifdef WITH_X86
 	x86_bridge_vsync();
@@ -154,10 +156,6 @@ void devices_vsync_pre(void)
 
 void devices_vsync_post(void)
 {
-#ifdef GFXBOARD
-	if (!picasso_on)
-		gfxboard_vsync_handler(false);
-#endif
 #ifdef WITH_TOCCATA
 	sndboard_vsync();
 #endif
@@ -213,6 +211,11 @@ void devices_hsync(void)
 #ifdef A2091
 	scsi_hsync ();
 #endif
+}
+
+void devices_rethink_all(void func(void))
+{
+	func();
 }
 
 // these really should be dynamically allocated..
@@ -280,7 +283,9 @@ void reset_all_systems (void)
 	uae_ppc_reset(is_hardreset());
 #endif
 #ifdef PICASSO96
-	picasso_reset ();
+	for (int i = 0; i < MAX_AMIGADISPLAYS; i++) {
+		picasso_reset(i);
+	}
 #endif
 #ifdef SCSIEMU
 	scsi_reset ();
@@ -321,6 +326,7 @@ void reset_all_systems (void)
 	native2amiga_reset ();
 	dongle_reset ();
 	sampler_init ();
+	device_func_reset();
 	uae_int_requested = 0;
 }
 
@@ -330,6 +336,7 @@ void do_leave_program (void)
 	// must be first
 	uae_ppc_free();
 #endif
+	picasso_free();
 	free_traps();
 	sampler_free ();
 	graphics_leave ();
@@ -359,6 +366,10 @@ void do_leave_program (void)
 #ifdef NCR9X
 	ncr9x_free();
 #endif
+#ifdef A2065
+	a2065_free();
+#endif
+	ne2000_free();
 #ifdef CD32
 	akiko_free ();
 	cd32_fmv_free();
@@ -385,7 +396,7 @@ void do_leave_program (void)
 #endif
 	gayle_free ();
 	idecontroller_free();
-	device_func_reset ();
+	device_func_free();
 #ifdef WITH_LUA
 	uae_lua_free ();
 #endif

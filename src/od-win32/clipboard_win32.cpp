@@ -296,7 +296,7 @@ static void to_iff_ilbm(TrapContext *ctx, HBITMAP hbmp)
 	BITMAP bmp;
 	int bmpw, w, h, bpp, iffbpp, tsize, size, x, y, i;
 	int iffsize, bodysize;
-	uae_u32 colors[256];
+	uae_u32 colors[256] = { 0 };
 	int cnt;
 	uae_u8 *iff, *p;
 	uae_u8 iffilbm[] = {
@@ -519,6 +519,8 @@ static void from_iff_ilbm(uae_u8 *saddr, uae_u32 len)
 	int bmhd, body;
 	RGBQUAD rgbx[256];
 
+	if (len < 12)
+		return;
 	bmih = NULL;
 	bmhd = 0, body = 0;
 	bmsize = 0;
@@ -527,6 +529,8 @@ static void from_iff_ilbm(uae_u8 *saddr, uae_u32 len)
 	addr = saddr;
 	eaddr = addr + len;
 	size = (addr[4] << 24) | (addr[5] << 16) | (addr[6] << 8) | (addr[7] << 0);
+	if (size > 0xffffff)
+		return;
 	if (memcmp ("ILBM", addr + 8, 4))
 		return;
 	camg = 0;
@@ -544,10 +548,15 @@ static void from_iff_ilbm(uae_u8 *saddr, uae_u32 len)
 		uae_u8 *paddr, *ceaddr;
 
 		paddr = addr;
+		if (paddr + 8 > eaddr)
+			return;
 		memcpy (chunk, addr, 4);
 		csize = (addr[4] << 24) | (addr[5] << 16) | (addr[6] << 8) | (addr[7] << 0);
 		addr += 8;
 		ceaddr = addr + csize;
+		// chunk end larger than end of data?
+		if (ceaddr > eaddr)
+			return;
 		if (!memcmp (chunk, "BMHD" ,4)) {
 			bmhd = 1;
 			w = (addr[0] << 8) | addr[1];
@@ -1055,7 +1064,7 @@ int amiga_clipboard_want_data(TrapContext *ctx)
 void clipboard_active(HWND hwnd, int active)
 {
 	clipactive = active;
-+	if (!initialized)
+	if (!initialized || !hwnd)
 		return;
 	if (clipactive && clipboard_change) {
 		clipboard_read(NULL, hwnd, false);

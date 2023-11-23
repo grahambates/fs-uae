@@ -21,6 +21,7 @@
 #include "debug.h"
 #include "custom.h"
 #include "audio.h"
+#include "devices.h"
 #include "threaddep/thread.h"
 
 #include "cda_play.h"
@@ -303,9 +304,7 @@ static int isdebug(uaecptr addr)
 
 static void do_irq(void)
 {
-	if (!(intreq & 8)) {
-		INTREQ_0(0x8000 | 0x0008);
-	}
+	safe_interrupt_set(IRQ_SOURCE_CD32CDTV, 1, false);
 }
 
 static bool l64111_checkint(bool enabled)
@@ -1299,7 +1298,7 @@ static void io_wput(uaecptr addr, uae_u16 v)
 
 static uae_u32 REGPARAM2 fmv_wget (uaecptr addr)
 {
-	uae_u32 v;
+	uae_u32 v = 0;
 	addr -= fmv_start & fmv_bank.mask;
 	addr &= fmv_bank.mask;
 	int mask = addr & BANK_MASK;
@@ -1330,7 +1329,7 @@ static uae_u32 REGPARAM2 fmv_lget (uaecptr addr)
 
 static uae_u32 REGPARAM2 fmv_bget (uaecptr addr)
 {
-	uae_u32 v;
+	uae_u32 v = 0;
 	addr -= fmv_start & fmv_bank.mask;
 	addr &= fmv_bank.mask;
 	int mask = addr & BANK_MASK;

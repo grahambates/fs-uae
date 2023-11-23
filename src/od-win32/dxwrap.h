@@ -6,6 +6,7 @@
 #else
 #include <ddraw.h>
 #include <d3d9.h>
+#include <D3dkmthk.h>
 #endif
 
 #define MAX_DISPLAYS 10
@@ -89,9 +90,73 @@ struct MultiDisplay {
 #else
 	RECT rect;
 	RECT workrect;
+	LUID AdapterLuid;
+	UINT VidPnSourceId;
+	UINT AdapterHandle;
 #endif
+	bool HasAdapterData;
 };
 extern struct MultiDisplay Displays[MAX_DISPLAYS + 1];
+
+extern int amigamonid;
+
+struct winuae_currentmode {
+	unsigned int flags;
+	int native_width, native_height, native_depth, pitch;
+	int current_width, current_height, current_depth;
+	int amiga_width, amiga_height;
+	int initdone;
+	int fullfill;
+	int vsync;
+	int freq;
+};
+
+#define MAX_AMIGAMONITORS 4
+struct AmigaMonitor {
+	int monitor_id;
+#ifdef FSUAE
+#else
+	HWND hAmigaWnd;
+	HWND hMainWnd;
+#endif
+	struct MultiDisplay *md;
+
+#ifdef FSUAE
+#else
+	RECT amigawin_rect, mainwin_rect;
+	RECT amigawinclip_rect;
+#endif
+	int window_extra_width, window_extra_height;
+	int win_x_diff, win_y_diff;
+	int setcursoroffset_x, setcursoroffset_y;
+	int mouseposx, mouseposy;
+	int windowmouse_max_w;
+	int windowmouse_max_h;
+	int prevsbheight;
+	bool render_ok, wait_render;
+
+	int in_sizemove;
+	int manual_painting_needed;
+	int minimized;
+	int screen_is_picasso;
+	int screen_is_initialized;
+	int scalepicasso;
+	bool rtg_locked;
+	int p96_double_buffer_firstx, p96_double_buffer_lastx;
+	int p96_double_buffer_first, p96_double_buffer_last;
+	int p96_double_buffer_needs_flushing;
+
+#ifdef FSUAE
+#else
+	HWND hStatusWnd;
+	HBRUSH hStatusBkgB;
+#endif
+
+	struct winuae_currentmode currentmode;
+	struct uae_filter *usedfilter;
+};
+extern struct AmigaMonitor *amon;
+extern struct AmigaMonitor AMonitors[MAX_AMIGAMONITORS];
 
 typedef enum
 {
@@ -149,10 +214,10 @@ void DirectDraw_Fill (RECT *rect, uae_u32 color);
 void DirectDraw_FillPrimary (void);
 bool DD_getvblankpos (int *vpos);
 void DD_vblank_reset (double freq);
+#endif
 
 void dx_check (void);
 int dx_islost (void);
-#endif
 
 #define DDFORCED_NONLOCAL 0
 #define DDFORCED_DEFAULT 1

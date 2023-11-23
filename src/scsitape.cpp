@@ -36,7 +36,7 @@ static int rl (uae_u8 *p)
 {
 	return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | (p[3]);
 }
-static void wl (uae_u8 *p, int v)
+static void wl (uae_u8 *p, uae_u32 v)
 {
 	p[0] = v >> 24;
 	p[1] = v >> 16;
@@ -51,11 +51,11 @@ void tape_free (struct scsi_data_tape *tape)
 	zfile_fclose (tape->zf);
 	zfile_fclose (tape->index);
 	zfile_closedir_archive (tape->zd);
-	xfree(tape);
 	for (int i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
 		if (tapeunits[i] == tape)
 			tapeunits[i] = NULL;
 	}
+	xfree(tape);
 }
 
 static void tape_init (int unit, struct scsi_data_tape *tape, const TCHAR *tape_directory, bool readonly)

@@ -76,6 +76,7 @@ struct cputbl {
 };
 
 #ifdef JIT
+#define MIN_JIT_CACHE 128
 #define MAX_JIT_CACHE 16384
 typedef uae_u32 REGPARAM3 compop_func (uae_u32) REGPARAM;
 
@@ -104,10 +105,8 @@ typedef uae_u8 flagtype;
 
 #ifdef USE_LONG_DOUBLE
 typedef long double fptype;
-#define LDPTR tbyte ptr
 #else
 typedef double fptype;
-#define LDPTR qword ptr
 #endif
 #endif
 
@@ -155,10 +154,25 @@ struct mmufixup
 };
 extern struct mmufixup mmufixup[2];
 
+#ifdef MSVC_LONG_DOUBLE
+typedef struct {
+	uae_u64 m;
+	uae_u16 e;
+	uae_u16 dummy;
+} fprawtype;
+#endif
+
 typedef struct
 {
 	floatx80 fpx;
+#ifdef MSVC_LONG_DOUBLE
+	union {
+		fptype fp;
+		fprawtype rfp;
+	};
+#else
 	fptype fp;
+#endif
 } fpdata;
 
 struct regstruct
@@ -170,6 +184,7 @@ struct regstruct
 	uae_u8 *pc_oldp;
 	uae_u16 opcode;
 	uae_u32 instruction_pc;
+	uae_u32 instruction_pc_user_exception;
 
 	uae_u16 irc, ir, db;
 	volatile uae_atomic spcflags;
@@ -297,6 +312,8 @@ extern int cpu_cycles;
 extern int cpucycleunit;
 extern int m68k_pc_indirect;
 
+extern void safe_interrupt_set(int, int, bool);
+
 STATIC_INLINE void set_special_exter(uae_u32 x)
 {
 	atomic_or(&regs.spcflags, x);
@@ -356,12 +373,22 @@ uae_u32 mem_access_delay_longi_read_c040 (uaecptr addr);
 
 extern uae_u32(REGPARAM3 *x_cp_get_disp_ea_020)(uae_u32 base, int idx) REGPARAM;
 
+extern bool debugmem_trace;
+extern void branch_stack_push(uaecptr, uaecptr);
+extern void branch_stack_pop_rte(uaecptr);
+extern void branch_stack_pop_rts(uaecptr);
+
 /* direct (regs.pc_p) access */
 
 STATIC_INLINE void m68k_setpc(uaecptr newpc)
 {
 	regs.pc_p = regs.pc_oldp = get_real_address(newpc);
 	regs.instruction_pc = regs.pc = newpc;
+}
+STATIC_INLINE void m68k_setpc_j(uaecptr newpc)
+{
+	regs.pc_p = regs.pc_oldp = get_real_address(newpc);
+	regs.pc = newpc;
 }
 STATIC_INLINE uaecptr m68k_getpc(void)
 {
@@ -420,6 +447,10 @@ STATIC_INLINE void m68k_do_rts(void)
 STATIC_INLINE void m68k_setpci(uaecptr newpc)
 {
 	regs.instruction_pc = regs.pc = newpc;
+}
+STATIC_INLINE void m68k_setpci_j(uaecptr newpc)
+{
+	regs.pc = newpc;
 }
 STATIC_INLINE uaecptr m68k_getpci(void)
 {
@@ -615,10 +646,10 @@ extern uae_u32 REGPARAM3 get_disp_ea_020 (uae_u32 base, int idx) REGPARAM;
 extern uae_u32 REGPARAM3 get_bitfield (uae_u32 src, uae_u32 bdata[2], uae_s32 offset, int width) REGPARAM;
 extern void REGPARAM3 put_bitfield (uae_u32 dst, uae_u32 bdata[2], uae_u32 val, uae_s32 offset, int width) REGPARAM;
 
-extern void m68k_disasm_ea (uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr);
-extern void m68k_disasm (uaecptr addr, uaecptr *nextpc, int cnt);
-extern void m68k_disasm_2 (TCHAR *buf, int bufsize, uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr, int safemode);
-extern void sm68k_disasm (TCHAR*, TCHAR*, uaecptr addr, uaecptr *nextpc);
+extern void m68k_disasm_ea (uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr, uaecptr lastpc);
+extern void m68k_disasm (uaecptr addr, uaecptr *nextpc, uaecptr lastpc, int cnt);
+extern void m68k_disasm_2 (TCHAR *buf, int bufsize, uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr, uaecptr lastpc, int safemode);
+extern void sm68k_disasm (TCHAR*, TCHAR*, uaecptr addr, uaecptr *nextpc, uaecptr lastpc);
 extern int m68k_asm(TCHAR *buf, uae_u16 *out, uaecptr pc);
 extern int get_cpu_model (void);
 
@@ -642,8 +673,7 @@ extern bool m68k_divl (uae_u32, uae_u32, uae_u16);
 extern bool m68k_mull (uae_u32, uae_u32, uae_u16);
 extern void init_m68k (void);
 extern void m68k_go (int);
-extern void m68k_dumpstate (uaecptr *);
-extern void m68k_dumpstate (uaecptr, uaecptr *);
+extern void m68k_dumpstate(uaecptr *, uaecptr);
 extern void m68k_dumpcache (bool);
 extern int getDivu68kCycles (uae_u32 dividend, uae_u16 divisor);
 extern int getDivs68kCycles (uae_s32 dividend, uae_s16 divisor);

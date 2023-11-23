@@ -245,8 +245,8 @@ static bool ks11orolder(void)
 */
 
 /* Autoconfig address space at 0xE80000 */
-static uae_u8 expamem[65536];
-static uae_u8 expamem_write_space[65536];
+static uae_u8 expamem[65536 + 4];
+static uae_u8 expamem_write_space[65536 + 4];
 #define AUTOMATIC_AUTOCONFIG_MAX_ADDRESS 0x80
 static int expamem_autoconfig_mode;
 static addrbank*(*expamem_map)(struct autoconfig_info*);
@@ -314,18 +314,20 @@ static void addextrachip (uae_u32 sysbase)
 		uae_u32 first = get_long (ml + 16);
 		put_long (ml + 24, currprefs.chipmem_size); // mh_Upper
 		put_long (ml + 28, get_long (ml + 28) + added); // mh_Free
-		uae_u32 next;
+		uae_u32 next = 0;
 		while (first) {
 			next = first;
 			first = get_long (next);
 		}
-		uae_u32 bytes = get_long (next + 4);
-		if (next + bytes == 0x00200000) {
-			put_long (next + 4, currprefs.chipmem_size - next);
-		} else {
-			put_long (0x00200000 + 0, 0);
-			put_long (0x00200000 + 4, added);
-			put_long (next, 0x00200000);
+		if (next) {
+			uae_u32 bytes = get_long(next + 4);
+			if (next + bytes == 0x00200000) {
+				put_long(next + 4, currprefs.chipmem_size - next);
+			} else {
+				put_long(0x00200000 + 0, 0);
+				put_long(0x00200000 + 4, added);
+				put_long(next, 0x00200000);
+			}
 		}
 		return;
 	}
@@ -4618,13 +4620,54 @@ static const struct expansionboardsettings a4091_settings[] = {
 static const struct expansionboardsettings dataflyersplus_settings[] = {
 	{
 		_T("Configuration\0") _T("SCSI+IDE\0") _T("SCSI\0") _T("IDE\0"),
-		_T("config\0") _T("scsiide") _T("scsi\0") _T("ide\0"),
+		_T("config\0") _T("scsiide\0") _T("scsi\0") _T("ide\0"),
 		true
 	},
 	{
 		NULL
 	}
 };
+static const struct expansionboardsettings alf3_settings[] = {
+	{
+		_T("Parity (J6)"),
+		_T("j6"),
+	},
+	{
+		_T("LUN (J7)"),
+		_T("j7"),
+	},
+	{
+		_T("Disconnect/Reconnect (J8)"),
+		_T("j8"),
+	},
+	{
+		_T("Login screen (J9)"),
+		_T("j9"),
+	},
+	{
+		_T("Login screen (J10)"),
+		_T("j10"),
+	},
+	{
+		_T("Interrupt level (J11)\0") _T("6\0") _T("2\0"),
+		_T("j11\0") _T("6\0") _T("2\0"),
+		true
+	},
+	{
+		NULL
+	}
+};
+static const struct expansionboardsettings cdtvsram_settings[] = {
+	{
+		_T("SRAM size\0") _T("64k\0") _T("128k\0") _T("256k\0"),
+		_T("sram\0") _T("64k\0") _T("128k\0") _T("256k\0"),
+		true
+	},
+	{
+		NULL
+	}
+};
+
 
 const struct expansionromtype expansionroms[] = {
 	{
@@ -4774,7 +4817,7 @@ const struct expansionromtype expansionroms[] = {
 		false, 0, comspec_settings
 	},
 	{
-		_T("rapidfire"), _T("RapidFire"), _T("DKB"),
+		_T("rapidfire"), _T("RapidFire/SpitFire"), _T("DKB"),
 		NULL, ncr_rapidfire_init, NULL, rapidfire_add_scsi_unit, ROMTYPE_RAPIDFIRE, 0, 0, BOARD_AUTOCONFIG_Z2, false,
 		NULL, 0,
 		false, EXPANSIONTYPE_SCSI,
@@ -4790,6 +4833,13 @@ const struct expansionromtype expansionroms[] = {
 		0, 0, 0, true, NULL,
 		true, 2, fastata_settings,
 		{ 0x90, 0, 0x10, 0x00, 0x08, 0x9e, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00 },
+	},
+	{
+		_T("elsathd"), _T("Mega Ram HD"), _T("Elsat"),
+		NULL, elsathd_init, NULL, elsathd_add_ide_unit, ROMTYPE_ELSATHD, 0, 0, BOARD_AUTOCONFIG_Z2, true,
+		NULL, 0,
+		true, EXPANSIONTYPE_IDE,
+		17740, 1, 0
 	},
 	{
 		_T("eveshamref"), _T("Reference 40/100"), _T("Evesham Micros"),
@@ -4847,11 +4897,11 @@ const struct expansionromtype expansionroms[] = {
 		true, EXPANSIONTYPE_IDE
 	},
 	{
-		_T("adscsi2000"), _T("AdSCSI Advantage 2000"), _T("ICD"),
+		_T("adscsi2000"), _T("AdSCSI Advantage 2000/2080"), _T("ICD"),
 		NULL, adscsi_init, NULL, adscsi_add_scsi_unit, ROMTYPE_ADSCSI, 0, 0, BOARD_AUTOCONFIG_Z2, false,
 		NULL, 0,
 		false, EXPANSIONTYPE_SCSI,
-		0, 0, 0, false, NULL,
+		2071, 4, 0, false, NULL,
 		true, 0, adscsi2000_settings
 	},
 	{
@@ -5057,6 +5107,14 @@ const struct expansionromtype expansionroms[] = {
 		false, EXPANSIONTYPE_CUSTOM | EXPANSIONTYPE_SCSI
 	},
 	{
+		_T("alf3"), _T("A.L.F.3"), _T("Elaborate Bytes"),
+		NULL, ncr_alf3_autoconfig_init, NULL, alf3_add_scsi_unit, ROMTYPE_ALF3 | ROMTYPE_NONE, 0, 0, BOARD_AUTOCONFIG_Z2, false,
+		NULL, 0,
+		true, EXPANSIONTYPE_SCSI,
+		0, 0, 0, false, NULL,
+		true, 0, alf3_settings
+	},
+	{
 		_T("alf1"), _T("A.L.F."), _T("Elaborate Bytes"),
 		NULL, alf1_init, NULL, alf1_add_scsi_unit, ROMTYPE_ALF1 | ROMTYPE_NOT, 0, 0, BOARD_NONAUTOCONFIG_BEFORE, true,
 		NULL, 0,
@@ -5093,16 +5151,15 @@ const struct expansionromtype expansionroms[] = {
 		NULL, 0,
 		false, EXPANSIONTYPE_SASI | EXPANSIONTYPE_SCSI
 	},
-#if 0
 	{
 		_T("kronos"), _T("Kronos"), _T("C-Ltd"),
-		NULL, kronos_init, kronos_add_scsi_unit, ROMTYPE_KRONOS, 0, 0, 2, false,
+		NULL, kronos_init, NULL, kronos_add_scsi_unit, ROMTYPE_KRONOS, 0, 0, BOARD_AUTOCONFIG_Z2, false,
 		NULL, 0,
 		false, EXPANSIONTYPE_SCSI,
-		0, 0, 0,
-		{ 0xd1, 4, 0x00, 0x00, 0x03, 0xec, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00 },
+		0, 0, 0, false, NULL,
+		false, 0, NULL,
+		{ 0xd1, 0x04, 0x40, 0x00, 0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00 },
 	},
-#endif
 	{
 		_T("hda506"), _T("HDA-506"), _T("Spirit Technology"),
 		NULL, hda506_init, NULL, hda506_add_scsi_unit, ROMTYPE_HDA506 | ROMTYPE_NOT, 0, 0, BOARD_AUTOCONFIG_Z2, true,
@@ -5111,6 +5168,13 @@ const struct expansionromtype expansionroms[] = {
 		0, 0, 0, false, NULL,
 		false, 0, NULL,
 		{ 0xc1, 0x04, 0x00, 0x00, 0x07, 0xf2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }
+	},
+	{
+		_T("fasttrak"), _T("FastTrak"), _T("Xetec"),
+		NULL, fasttrak_init, NULL, fasttrak_add_scsi_unit, ROMTYPE_FASTTRAK, 0, 0, BOARD_AUTOCONFIG_Z2, false,
+		NULL, 0,
+		true, EXPANSIONTYPE_SCSI,
+		2022, 2, 0
 	},
 	{
 		_T("amax"), _T("AMAX ROM dongle"), _T("ReadySoft"),
@@ -5392,6 +5456,14 @@ const struct expansionromtype expansionroms[] = {
 		false, EXPANSIONTYPE_INTERNAL | EXPANSIONTYPE_SCSI
 	},
 	{
+		_T("cdtvsram"), _T("CDTV SRAM"), _T("Commodore"),
+		NULL, cdtvsram_init, NULL, NULL, ROMTYPE_CDTVSRAM | ROMTYPE_NOT, 0, 0, BOARD_NONAUTOCONFIG_BEFORE, true,
+		NULL, 0,
+		false, EXPANSIONTYPE_INTERNAL,
+		0, 0, 0, false, NULL,
+		false, 0, cdtvsram_settings
+	},
+	{
 		_T("cdtvcr"), _T("CDTV-CR"), _T("Commodore"),
 		NULL, cdtvcr_init, NULL, NULL, ROMTYPE_CDTVCR | ROMTYPE_NOT, 0, 0, BOARD_NONAUTOCONFIG_AFTER_Z2, true,
 		NULL, 0,
@@ -5413,7 +5485,8 @@ const struct expansionromtype expansionroms[] = {
 		_T("ide_mb"), _T("A600/A1200/A4000 IDE"), _T("Commodore"),
 		NULL, gayle_ide_init, NULL, gayle_add_ide_unit, ROMTYPE_MB_IDE | ROMTYPE_NOT, 0, 0, BOARD_NONAUTOCONFIG_BEFORE, true,
 		NULL, 0,
-		false, EXPANSIONTYPE_INTERNAL | EXPANSIONTYPE_IDE
+		false, EXPANSIONTYPE_INTERNAL | EXPANSIONTYPE_IDE,
+		0, 0, 0, false, NULL, false, 1
 	},
 	{
 		_T("pcmcia_mb"), _T("A600/A1200 PCMCIA"), _T("Commodore"),
@@ -5475,6 +5548,22 @@ static const struct expansionboardsettings blizzardboard_settings_mk2[] = {
 	}
 };
 
+static const struct expansionboardsettings gvpa1230s2_settings[] = {
+	{
+		_T("Board disable (J5)"),
+		_T("disabled")
+	},
+	{
+		_T("SCSI Disable (J6)"),
+		_T("scsidisabled")
+	},
+	{
+		NULL
+	}
+};
+
+
+
 static const struct cpuboardsubtype gvpboard_sub[] = {
 	{
 		_T("A3001 Series I"),
@@ -5525,6 +5614,18 @@ static const struct cpuboardsubtype gvpboard_sub[] = {
 		tekmagic_add_scsi_unit, EXPANSIONTYPE_SCSI,
 		BOARD_MEMORY_HIGHMEM,
 		128 * 1024 * 1024
+	},
+	{
+		_T("A1230 Turbo+ Series II"),
+		_T("A1230SII"),
+		ROMTYPE_CB_A1230S2, 0,
+		gvp_s2_add_accelerator_scsi_unit, EXPANSIONTYPE_SCSI,
+		BOARD_MEMORY_25BITMEM,
+		128 * 1024 * 1024,
+		0,
+		gvp_init_accelerator, NULL, BOARD_AUTOCONFIG_Z2, 1,
+		gvpa1230s2_settings, NULL,
+		2017, 9, 0, false
 	},
 	{
 		NULL
@@ -5635,7 +5736,7 @@ static const struct cpuboardsubtype cyberstormboard_sub[] = {
 		NULL
 	}
 };
-static const struct cpuboardsubtype warpengine_sub[] = {
+static const struct cpuboardsubtype macrosystem_sub[] = {
 	{
 		_T("Warp Engine A4000"),
 		_T("WarpEngineA4000"),
@@ -5646,6 +5747,14 @@ static const struct cpuboardsubtype warpengine_sub[] = {
 		0x01000000,
 		ncr710_warpengine_autoconfig_init, NULL, BOARD_AUTOCONFIG_Z3, 1,
 		warpengine_settings
+	},
+	{
+		_T("Falcon 040"),
+		_T("Falcon040"),
+		ROMTYPE_CB_FALCON40, 0,
+		NULL, 0,
+		0,
+		128 * 1024 * 1024,
 	},
 	{
 		NULL
@@ -5776,6 +5885,20 @@ static const struct cpuboardsubtype dbk_sub[] = {
 		NULL
 	}
 };
+static const struct cpuboardsubtype hardital_sub[] = {
+	{
+		_T("TQM"),
+		_T("tqm"),
+		ROMTYPE_CB_TQM, 0,
+		NULL, 0,
+		BOARD_MEMORY_HIGHMEM,
+		128 * 1024 * 1024,
+	},
+	{
+		NULL
+	}
+};
+
 static const struct cpuboardsubtype fusionforty_sub[] = {
 	{
 		_T("Fusion Forty"),
@@ -5801,6 +5924,59 @@ static const struct cpuboardsubtype ivs_sub[] = {
 		ivsvector_init, NULL, BOARD_AUTOCONFIG_Z2, 1,
 		ivsvector_settings, NULL,
 		2112, 240, 0, false
+	},
+	{
+		NULL
+	}
+};
+
+static const struct expansionboardsettings magnum40_settings[] = {
+	{
+		_T("Autoboot disable"),
+		_T("autoboot")
+	},
+	{
+		NULL
+	}
+};
+static const struct expansionboardsettings zeus040_settings[] = {
+	{
+		_T("Autoboot disable (A3)"),
+		_T("autoboot")
+	},
+	{
+		NULL
+	}
+};
+static const struct cpuboardsubtype pps_sub[] = {
+	{
+		_T("Zeus 040"),
+		_T("Zeus"),
+		ROMTYPE_CB_ZEUS040, 0,
+		zeus040_add_scsi_unit, EXPANSIONTYPE_SCSI,
+		BOARD_MEMORY_HIGHMEM,
+		64 * 1024 * 1024,
+		0,
+		ncr710_zeus040_autoconfig_init, NULL, BOARD_AUTOCONFIG_Z2, 1,
+		zeus040_settings, NULL,
+		2016, 150, 0, false
+	},
+	{
+		NULL
+	}
+};
+
+static const struct cpuboardsubtype csa_sub[] = {
+	{
+		_T("Magnum 40/4"),
+		_T("Magnum40"),
+		ROMTYPE_CB_MAGNUM40, 0,
+		magnum40_add_scsi_unit, EXPANSIONTYPE_SCSI,
+		BOARD_MEMORY_HIGHMEM,
+		128 * 1024 * 1024,
+		0,
+		ncr710_magnum40_autoconfig_init, NULL, BOARD_AUTOCONFIG_Z2, 1,
+		magnum40_settings, NULL
 	},
 	{
 		NULL
@@ -5850,17 +6026,6 @@ static const struct cpuboardsubtype kupkeboard_sub[] = {
 		NULL
 	}
 };
-static const struct cpuboardsubtype icboard_sub[] = {
-	{
-		_T("ACA 500"),
-		_T("aca500"),
-		ROMTYPE_CB_ACA500, 0,
-		NULL, EXPANSIONTYPE_24BIT
-	},
-	{
-		NULL
-	}
-};
 static const struct cpuboardsubtype dceboard_sub[] = {
 	{
 		_T("SX32 Pro"),
@@ -5869,6 +6034,16 @@ static const struct cpuboardsubtype dceboard_sub[] = {
 		NULL, 0,
 		BOARD_MEMORY_CUSTOM_32,
 		64 * 1024 * 1024
+	},
+	{
+		_T("Typhoon MK2"),
+		_T("typhoon2"),
+		ROMTYPE_CB_TYPHOON2, 0,
+		typhoon2scsi_add_scsi_unit, EXPANSIONTYPE_SCSI,
+		BOARD_MEMORY_CUSTOM_32,
+		128 * 1024 * 1024,
+		0,
+		typhoon2scsi_init, NULL, BOARD_AUTOCONFIG_Z2, 1
 	},
 	{
 		NULL
@@ -5918,7 +6093,7 @@ const struct cpuboardtype cpuboards[] = {
 	{
 		BOARD_MACROSYSTEM,
 		_T("MacroSystem"),
-		warpengine_sub, 0
+		macrosystem_sub, 0
 	},
 	{
 		BOARD_MTEC,
@@ -5945,13 +6120,21 @@ const struct cpuboardtype cpuboards[] = {
 		_T("Interactive Video Systems"),
 		ivs_sub, 0
 	},
-#if 0
 	{
-		BOARD_IC,
-		_T("Individual Computers"),
-		icboard_sub, 0
+		BOARD_PPS,
+		_T("Progressive Peripherals & Software"),
+		pps_sub, 0
 	},
-#endif
+	{
+		BOARD_CSA,
+		_T("Computer System Associates"),
+		csa_sub, 0
+	},
+	{
+		BOARD_HARDITAL,
+		_T("Hardital"),
+		hardital_sub, 0
+	},
 	{
 		NULL
 	}

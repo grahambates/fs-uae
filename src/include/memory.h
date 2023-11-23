@@ -100,6 +100,7 @@ enum
 	ABFLAG_NONE = 16, ABFLAG_SAFE = 32, ABFLAG_INDIRECT = 64, ABFLAG_NOALLOC = 128,
 	ABFLAG_RTG = 256, ABFLAG_THREADSAFE = 512, ABFLAG_DIRECTMAP = 1024, ABFLAG_ALLOCINDIRECT = 2048,
 	ABFLAG_CHIPRAM = 4096, ABFLAG_CIA = 8192, ABFLAG_PPCIOSPACE = 16384,
+	ABFLAG_MAPPED = 32768,
 	ABFLAG_CACHE_ENABLE_DATA = CACHE_ENABLE_DATA << ABFLAG_CACHE_SHIFT,
 	ABFLAG_CACHE_ENABLE_DATA_BURST = CACHE_ENABLE_DATA_BURST << ABFLAG_CACHE_SHIFT,
 	ABFLAG_CACHE_ENABLE_INS = CACHE_ENABLE_INS << ABFLAG_CACHE_SHIFT,
@@ -195,6 +196,26 @@ struct autoconfig_info
 #define CE_MEMBANK_FAST16 4
 //#define CE_MEMBANK_FAST16_EXTRA_ACCURACY 5
 
+#define MEMORY_LGETI(name) \
+static uae_u32 REGPARAM3 name ## _lgeti (uaecptr) REGPARAM; \
+static uae_u32 REGPARAM2 name ## _lgeti (uaecptr addr) \
+{ \
+	uae_u8 *m; \
+	addr -= name ## _bank.start & name ## _bank.mask; \
+	addr &= name ## _bank.mask; \
+	m = name ## _bank.baseaddr + addr; \
+	return do_get_mem_long ((uae_u32 *)m); \
+}
+#define MEMORY_WGETI(name) \
+static uae_u32 REGPARAM3 name ## _wgeti (uaecptr) REGPARAM; \
+static uae_u32 REGPARAM2 name ## _wgeti (uaecptr addr) \
+{ \
+	uae_u8 *m; \
+	addr -= name ## _bank.start & name ## _bank.mask; \
+	addr &= name ## _bank.mask; \
+	m = name ## _bank.baseaddr + addr; \
+	return do_get_mem_word ((uae_u16 *)m); \
+}
 #define MEMORY_LGET(name) \
 static uae_u32 REGPARAM3 name ## _lget (uaecptr) REGPARAM; \
 static uae_u32 REGPARAM2 name ## _lget (uaecptr addr) \
@@ -410,6 +431,7 @@ extern addrbank bogomem_bank;
 extern addrbank z3fastmem_bank[MAX_RAM_BOARDS];
 extern addrbank z3chipmem_bank;
 extern addrbank mem25bit_bank;
+extern addrbank debugmem_bank;
 extern addrbank a3000lmem_bank;
 extern addrbank a3000hmem_bank;
 extern addrbank extendedkickmem_bank;
@@ -502,6 +524,7 @@ extern void free_fastmemory (int);
 extern void set_roms_modified (void);
 extern void reload_roms(void);
 extern bool read_kickstart_version(struct uae_prefs *p);
+extern void chipmem_setindirect(void);
 
 #define longget(addr) (call_mem_get_func(get_mem_bank(addr).lget, addr))
 #define wordget(addr) (call_mem_get_func(get_mem_bank(addr).wget, addr))

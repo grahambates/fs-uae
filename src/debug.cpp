@@ -21,6 +21,7 @@
 #include "newcpu.h"
 #include "cpu_prefetch.h"
 #include "debug.h"
+#include "debugmem.h"
 #include "cia.h"
 #include "xwin.h"
 #include "identify.h"
@@ -49,6 +50,18 @@
 #endif
 #include "drawing.h"
 #include "devices.h"
+#include "blitter.h"
+
+#define TRACE_SKIP_INS 1
+#define TRACE_MATCH_PC 2
+#define TRACE_MATCH_INS 3
+#define TRACE_RANGE_PC 4
+#define TRACE_SKIP_LINE 5
+#define TRACE_CHECKONLY 10
+
+static int trace_mode;
+static uae_u32 trace_param1;
+static uae_u32 trace_param2;
 
 #ifdef FSUAE // NL
 #include "uae/fs.h"
@@ -56,10 +69,6 @@
 #endif
 
 int debugger_active;
-static uaecptr skipaddr_start, skipaddr_end;
-static int skipaddr_doskip;
-static uae_u32 skipins;
-static int do_skip;
 static int debug_rewind;
 static int memwatch_triggered;
 int memwatch_enabled;
@@ -73,6 +82,13 @@ int debug_illegal = 0;
 uae_u64 debug_illegal_mask;
 static int debug_mmu_mode;
 static bool break_if_enforcer;
+static uaecptr debug_pc;
+
+static int trace_cycles;
+static int last_hpos1, last_hpos2;
+static int last_vpos1, last_vpos2;
+static int last_frame = -1;
+static uae_u32 last_cycles1, last_cycles2;
 
 static uaecptr processptr;
 static uae_char *processname;
@@ -82,6 +98,14 @@ static uaecptr debug_copper_pc;
 extern int audio_channel_mask;
 extern int inputdevice_logging;
 
+static void debug_cycles(void)
+{
+	trace_cycles = 1;
+	last_cycles2 = get_cycles();
+	last_vpos2 = vpos;
+	last_hpos2 = current_hpos();
+}
+
 void deactivate_debugger (void)
 {
 	debugger_active = 0;
@@ -90,17 +114,41 @@ void deactivate_debugger (void)
 	processptr = 0;
 	xfree (processname);
 	processname = NULL;
+	debugmem_enable();
+	debug_pc = 0xffffffff;
 }
 
 void activate_debugger (void)
 {
-	do_skip = 0;
+	if (isfullscreen() > 0)
+		return;
+
+	debugger_load_libraries();
+
+	debug_pc = 0xffffffff;
+	trace_mode = 0;
 	if (debugger_active)
 		return;
+	debug_cycles();
 	debugger_active = 1;
 	set_special (SPCFLAG_BRK);
 	debugging = 1;
 	mmu_triggered = 0;
+	debugmem_disable();
+}
+
+void activate_debugger_new(void)
+{
+	activate_debugger();
+	debug_pc = M68K_GETPC;
+}
+
+void activate_debugger_new_pc(uaecptr pc, int len)
+{
+	activate_debugger();
+	trace_mode = TRACE_RANGE_PC;
+	trace_param1 = pc;
+	trace_param2 = pc + len;
 }
 
 bool debug_enforcer(void)
@@ -110,6 +158,7 @@ bool debug_enforcer(void)
 	activate_debugger();
 	return true;
 }
+
 
 int firsthist = 0;
 int lasthist = 0;
@@ -146,7 +195,7 @@ static const TCHAR help[] = {
 	_T("  fo <num> <reg> <oper> <val> [<mask> <val2>] Conditional register breakpoint.\n")
 	_T("   reg=Dx,Ax,PC,USP,ISP,VBR,SR. oper:!=,==,<,>,>=,<=,-,!- (-=val to val2 range).\n")
 	_T("  f <addr1> <addr2>     Step forward until <addr1> <= PC <= <addr2>.\n")
-	_T("  e                     Dump contents of all custom registers, ea = AGA colors.\n")
+	_T("  e[x]                  Dump contents of all custom registers, ea = AGA colors.\n")
 	_T("  i [<addr>]            Dump contents of interrupt and trap vectors.\n")
 	_T("  il [<mask>]           Exception breakpoint.\n")
 	_T("  o <0-2|addr> [<lines>]View memory as Copper instructions.\n")
@@ -316,7 +365,11 @@ uae_u32 get_byte_debug (uaecptr addr)
 				v = mmu030_get_generic (addr, debug_mmu_mode, sz_byte, MMU030_SSW_SIZE_B);
 			} else {
 				if (debug_mmu_mode & 1) {
+					bool odd = (addr & 1) != 0;
+					addr &= ~1;
 					v = mmu_get_iword(addr, sz_byte);
+					if (!odd)
+						v >>= 8;
 				} else {
 					v = mmu_get_user_byte (addr, regs.s != 0, false, sz_byte, false);
 				}
@@ -670,7 +723,7 @@ static int readregx (TCHAR **c, uae_u32 *valp)
 	int i;
 	uae_u32 addr;
 	TCHAR *p = *c;
-	TCHAR tmp[10];
+	TCHAR tmp[10], *tp;
 	int extra = 0;
 
 	addr = 0;
@@ -682,30 +735,31 @@ static int readregx (TCHAR **c, uae_u32 *valp)
 		i++;
 	}
 	tmp[i] = 0;
+	tp = tmp;
 	if (_totupper (tmp[0]) == 'R') {
-		memmove (tmp, tmp + 1, sizeof (tmp) - sizeof (TCHAR));
+		tp = tmp + 1;
 		extra = 1;
 	}
-	if (!_tcsncmp (tmp, _T("USP"), 3)) {
+	if (!_tcsncmp (tp, _T("USP"), 3)) {
 		addr = regs.usp;
 		(*c) += 3;
-	} else if (!_tcsncmp (tmp, _T("VBR"), 3)) {
+	} else if (!_tcsncmp (tp, _T("VBR"), 3)) {
 		addr = regs.vbr;
 		(*c) += 3;
-	} else if (!_tcsncmp (tmp, _T("MSP"), 3)) {
+	} else if (!_tcsncmp (tp, _T("MSP"), 3)) {
 		addr = regs.msp;
 		(*c) += 3;
-	} else if (!_tcsncmp (tmp, _T("ISP"), 3)) {
+	} else if (!_tcsncmp (tp, _T("ISP"), 3)) {
 		addr = regs.isp;
 		(*c) += 3;
-	} else if (!_tcsncmp (tmp, _T("PC"), 2)) {
+	} else if (!_tcsncmp (tp, _T("PC"), 2)) {
 		addr = regs.pc;
 		(*c) += 2;
-	} else if (tmp[0] == 'A' || tmp[0] == 'D') {
+	} else if (tp[0] == 'A' || tp[0] == 'D') {
 		int reg = 0;
-		if (tmp[0] == 'A')
+		if (tp[0] == 'A')
 			reg += 8;
-		reg += tmp[1] - '0';
+		reg += tp[1] - '0';
 		if (reg < 0 || reg > 15)
 			return 0;
 		addr = regs.regs[reg];
@@ -809,9 +863,26 @@ static int checkvaltype2 (TCHAR **c, uae_u32 *val, TCHAR def)
 		if (readregx (c, val))
 			return 1;
 	}
+	TCHAR name[256];
+	name[0] = 0;
+	for (int i = 0; i < sizeof name / sizeof(TCHAR) - 1; i++) {
+		nc = (*c)[i];
+		if (nc == 0 || nc == ' ')
+			break;
+		name[i] = nc;
+		name[i + 1] = 0;
+	}
+	if (name[0]) {
+		TCHAR *np = name;
+		if (*np == '#')
+			np++;
+		if (debugmem_get_symbol_value(np, val)) {
+			(*c) += _tcslen(name);
+			return 1;
+		}
+	}
 	if (def == '!') {
 		return readintx (c, val) ? -1 : 0;
-		return -1;
 	} else if (def == '$') {
 		return readhexx (c, val) ? -1 : 0;
 	} else if (def == '%') {
@@ -1159,21 +1230,22 @@ static void dumpmem (uaecptr addr, uaecptr *nxmem, int lines)
 	*nxmem = addr;
 }
 
-static void dump_custom_regs (int aga)
+static void dump_custom_regs(bool aga, bool ext)
 {
-	int len, i, j, end;
+	int len, end;
 	uae_u8 *p1, *p2, *p3, *p4;
+	TCHAR extra1[256], extra2[256];
 
-#ifdef AGA
+	extra1[0] = 0;
+	extra2[0] = 0;
 	if (aga) {
 		dump_aga_custom();
 		return;
 	}
-#endif
 
 	p1 = p2 = save_custom (&len, 0, 1);
 	p1 += 4; // skip chipset type
-	for (i = 0; i < 4; i++) {
+	for (int i = 0; i < 4; i++) {
 		p4 = p1 + 0xa0 + i * 16;
 		p3 = save_audio (i, &len, 0);
 		p4[0] = p3[12];
@@ -1195,19 +1267,26 @@ static void dump_custom_regs (int aga)
 		end++;
 	end++;
 	end /= 2;
-	for (i = 0; i < end; i++) {
+	for (int i = 0; i < end; i++) {
 		uae_u16 v1, v2;
 		int addr1, addr2;
-		j = end + i;
+		int j = end + i;
 		addr1 = custd[i].adr & 0x1ff;
 		addr2 = custd[j].adr & 0x1ff;
 		v1 = (p1[addr1 + 0] << 8) | p1[addr1 + 1];
 		v2 = (p1[addr2 + 0] << 8) | p1[addr2 + 1];
-		console_out_f (_T("%03X %s\t%04X\t%03X %s\t%04X\n"),
-			addr1, custd[i].name, v1,
-			addr2, custd[j].name, v2);
+		if (ext) {
+			struct custom_store *cs;
+			cs = &custom_storage[addr1 >> 1];
+			_stprintf(extra1, _T("\t%04X %08X %s"), cs->value, cs->pc & ~1, (cs->pc & 1) ? _T("COP") : _T("CPU"));
+			cs = &custom_storage[addr2 >> 1];
+			_stprintf(extra2, _T("\t%04X %08X %s"), cs->value, cs->pc & ~1, (cs->pc & 1) ? _T("COP") : _T("CPU"));
+		}
+		console_out_f (_T("%03X %s\t%04X%s\t%03X %s\t%04X%s\n"),
+			addr1, custd[i].name, v1, extra1,
+			addr2, custd[j].name, v2, extra2);
 	}
-	free (p2);
+	xfree(p2);
 }
 
 static void dump_vectors (uaecptr addr)
@@ -2052,11 +2131,11 @@ void record_copper (uaecptr addr, uae_u16 word1, uae_u16 word2, int hpos, int vp
 	}
 	if (debug_copper & 2) { /* trace */
 		debug_copper &= ~2;
-		activate_debugger ();
+		activate_debugger_new();
 	}
 	if ((debug_copper & 4) && addr >= debug_copper_pc && addr <= debug_copper_pc + 3) {
 		debug_copper &= ~4;
-		activate_debugger ();
+		activate_debugger_new();
 	}
 }
 
@@ -2605,15 +2684,15 @@ static void illg_debug_do (uaecptr addr, int rwi, int size, uae_u32 val)
 			else if (rwi & 1)
 				console_out_f (_T("R: %08X    PC=%08X\n"), ad, pc);
 			if (illgdebug_break)
-				activate_debugger ();
+				activate_debugger_new();
 		} else if (!(mask & 1) && (rwi & 1)) {
 			console_out_f (_T("RO: %08X=%02X PC=%08X\n"), ad, v, pc);
 			if (illgdebug_break)
-				activate_debugger ();
+				activate_debugger_new();
 		} else if (!(mask & 2) && (rwi & 2)) {
 			console_out_f (_T("WO: %08X    PC=%08X\n"), ad, pc);
 			if (illgdebug_break)
-				activate_debugger ();
+				activate_debugger_new();
 		}
 	}
 }
@@ -2723,7 +2802,7 @@ static void smc_detector (uaecptr addr, int rwi, int size, uae_u32 *valp)
 		console_out_f (_T("SMC at %08X - %08X (%d) from %08X\n"),
 			hitaddr, hitaddr + hitcnt, hitcnt, hitpc);
 		if (smc_mode)
-			activate_debugger ();
+			activate_debugger_new();
 		if (smc_table[hitaddr].cnt >= SMC_MAXHITS)
 			console_out_f (_T("* hit count >= %d, future hits ignored\n"), SMC_MAXHITS);
 	}
@@ -2949,7 +3028,7 @@ static int memwatch_func (uaecptr addr, int rwi, int size, uae_u32 *valp, uae_u3
 					mask <<= shift;
 				}
 				*valp = (sval & mask) | ((*valp) & ~mask);
-				write_log (_T("%08x %08x %08x %08x %d\n"), addr, m->addr, *valp, mask, shift);
+				//write_log (_T("%08x %08x %08x %08x %d\n"), addr, m->addr, *valp, mask, shift);
 				return 1;
 			}
 			return 0;
@@ -2967,6 +3046,8 @@ static int memwatch_func (uaecptr addr, int rwi, int size, uae_u32 *valp, uae_u3
 			mwhit.val = val;
 		memwatch_triggered = i + 1;
 		debugging = 1;
+		debug_pc = mwhit.pc;
+		debug_cycles();
 		set_special (SPCFLAG_BRK);
 		return 1;
 	}
@@ -3017,15 +3098,6 @@ static void REGPARAM2 mmu_bput (uaecptr addr, uae_u32 v)
 	if (!mmu_hit (addr, 1, 1, &v))
 		debug_mem_banks[off]->bput (addr, v);
 }
-
-static uae_u32 REGPARAM2 debug_lget (uaecptr addr)
-{
-	uae_u32 off = debug_mem_off (&addr);
-	uae_u32 v;
-	v = debug_mem_banks[off]->lget (addr);
-	memwatch_func (addr, 1, 4, &v, MW_MASK_CPU_D_R, 0);
-	return v;
-}
 static uae_u32 REGPARAM2 mmu_lgeti (uaecptr addr)
 {
 	int off = debug_mem_off (&addr);
@@ -3043,6 +3115,14 @@ static uae_u32 REGPARAM2 mmu_wgeti (uaecptr addr)
 	return v;
 }
 
+static uae_u32 REGPARAM2 debug_lget(uaecptr addr)
+{
+	uae_u32 off = debug_mem_off(&addr);
+	uae_u32 v;
+	v = debug_mem_banks[off]->lget(addr);
+	memwatch_func(addr, 1, 4, &v, MW_MASK_CPU_D_R, 0);
+	return v;
+}
 static uae_u32 REGPARAM2 debug_wget (uaecptr addr)
 {
 	int off = debug_mem_off (&addr);
@@ -4212,6 +4292,12 @@ static void show_exec_lists (TCHAR *t)
 						get_word_debug(list + 16 + 4), get_byte_debug(list + 16 + 1),
 						get_long_debug(list + 16 + 6), rom_vector,
 						get_word_debug(list + 16 + 4), get_byte_debug(list + 16 + 1));
+					for (int i = 0; i < 16; i++) {
+						console_out_f(_T("%02x"), get_byte_debug(list + 16 + i));
+						if (i < 15)
+							console_out_f(_T("."));
+					}
+					console_out_f(_T("\n"));
 					if ((type & 0x10)) {
 						uae_u8 diagarea[256];
 						uae_u16 nameoffset;
@@ -4470,11 +4556,10 @@ int instruction_breakpoint (TCHAR **c)
 		} else if (nc == 'I') {
 			next_char (c);
 			if (more_params (c))
-				skipins = readhex (c);
+				trace_param1 = readhex (c);
 			else
-				skipins = 0x10000;
-			do_skip = 1;
-			skipaddr_doskip = 1;
+				trace_param1 = 0x10000;
+			trace_mode = TRACE_MATCH_INS;
 			return 1;
 		} else if (nc == 'D' && (*c)[1] == 0) {
 			for (i = 0; i < BREAKPOINT_TOTAL; i++)
@@ -4505,18 +4590,18 @@ int instruction_breakpoint (TCHAR **c)
 				console_out (_T("\n"));
 			return 0;
 		}
-		skipaddr_doskip = 1;
-		skipaddr_start = readhex (c);
+		trace_mode = TRACE_RANGE_PC;
+		trace_param1 = readhex (c);
 		if (more_params (c)) {
-			skipaddr_end = readhex (c);
+			trace_param2 = readhex (c);
+			return 1;
 		} else {
 			for (i = 0; i < BREAKPOINT_TOTAL; i++) {
 				bpn = &bpnodes[i];
-				if (bpn->enabled && bpn->value1 == skipaddr_start) {
+				if (bpn->enabled && bpn->value1 == trace_param1) {
 					bpn->enabled = 0;
 					console_out (_T("Breakpoint removed.\n"));
-					skipaddr_start = 0xffffffff;
-					skipaddr_doskip = 0;
+					trace_mode = 0;
 					return 0;
 				}
 			}
@@ -4524,28 +4609,18 @@ int instruction_breakpoint (TCHAR **c)
 				bpn = &bpnodes[i];
 				if (bpn->enabled)
 					continue;
-				bpn->value1 = skipaddr_start;
+				bpn->value1 = trace_param1;
 				bpn->type = BREAKPOINT_REG_PC;
 				bpn->oper = BREAKPOINT_CMP_EQUAL;
 				bpn->enabled = 1;
 				console_out (_T("Breakpoint added.\n"));
-				skipaddr_start = 0xffffffff;
-				skipaddr_doskip = 0;
+				trace_mode = 0;
 				break;
 			}
 			return 0;
 		}
 	}
-#if 0
-	if (skipaddr_start == 0xC0DEDBAD) {
-		trace_same_insn_count = 0;
-		logfile = fopen ("uae.trace", "w");
-		memcpy (trace_insn_copy, regs.pc_p, 10);
-		memcpy (&trace_prev_regs, &regs, sizeof regs);
-	}
-#endif
-	do_skip = 1;
-	skipaddr_doskip = -1;
+	trace_mode = TRACE_CHECKONLY;
 	return 1;
 }
 
@@ -4563,9 +4638,7 @@ static int process_breakpoint (TCHAR **c)
 	} else {
 		processptr = readhex (c);
 	}
-	do_skip = 1;
-	skipaddr_doskip = 1;
-	skipaddr_start = 0;
+	trace_mode = TRACE_CHECKONLY;
 	return 1;
 }
 
@@ -4770,7 +4843,7 @@ void debugtest (enum debugtest_item di, const TCHAR *format, ...)
 	va_end (parms);
 	write_log (_T("%s PC=%08X: %s\n"), debugtest_names[di], M68K_GETPC, buffer);
 	if (debugtest_modes[di] == 2)
-		activate_debugger ();
+		activate_debugger_new();
 }
 
 static void debugtest_set (TCHAR **inptr)
@@ -5062,9 +5135,9 @@ static void find_ea (TCHAR **inptr)
 		if ((addr & 1) == 0 && addr + 6 <= end) {
 			sea = 0xffffffff;
 			dea = 0xffffffff;
-			m68k_disasm_ea (addr, NULL, 1, &sea, &dea);
+			m68k_disasm_ea (addr, NULL, 1, &sea, &dea, 0xffffffff);
 			if (ea == sea || ea == dea) {
-				m68k_disasm (addr, NULL, 1);
+				m68k_disasm (addr, NULL, 0xffffffff, 1);
 				hits++;
 				if (hits > 100) {
 					console_out_f (_T("Too many hits. End addr = %08X\n"), addr);
@@ -5386,7 +5459,7 @@ static bool debug_line (TCHAR *input)
 				for (int i = 0; i < inss; i++) {
 					put_word(asmaddr + i * 2, asmout[i]);
 				}
-				m68k_disasm(asmaddr, &nxdis, 1);
+				m68k_disasm(asmaddr, &nxdis, 0xffffffff, 1);
 				asmaddr = nxdis;
 			}
 			console_out_f(_T("%08X "), asmaddr);
@@ -5435,19 +5508,32 @@ static bool debug_line (TCHAR *input)
 			}
 			break;
 		}
-		case 'e': dump_custom_regs (tolower(*inptr) == 'a'); break;
+		case 'e':
+		{
+			bool aga = tolower(*inptr) == 'a';
+			if (aga)
+				next_char(&inptr);
+			bool ext = tolower(*inptr) == 'x';
+			dump_custom_regs(aga, ext);
+		}
+		break;
 		case 'r':
-			{
-				if (*inptr == 'c') {
-					next_char(&inptr);
-					m68k_dumpcache (*inptr == 'd');
-				} else if (more_params(&inptr)) {
-					m68k_modify (&inptr);
-				} else {
-					m68k_dumpstate (&nextpc);
-				}
+		{
+			if (*inptr == 'c') {
+				next_char(&inptr);
+				m68k_dumpcache(*inptr == 'd');
+			} else if (*inptr == 's') {
+				if (*(inptr + 1) == 's')
+					debugmem_list_stackframe(true);
+				else
+					debugmem_list_stackframe(false);
+			} else if (more_params(&inptr)) {
+				m68k_modify(&inptr);
+			} else {
+				m68k_dumpstate(&nextpc, 0xffffffff);
 			}
-			break;
+		}
+		break;
 		case 'D': deepcheatsearch (&inptr); break;
 		case 'C': cheatsearch (&inptr); break;
 		case 'W': writeintomem (&inptr); break;
@@ -5455,8 +5541,20 @@ static bool debug_line (TCHAR *input)
 		case 'S': saveloadmem (&inptr, true); break;
 		case 'L': saveloadmem (&inptr, false); break;
 		case 's':
-			if (*inptr == 'c') {
-				screenshot (1, 1);
+			if (*inptr == 'e' && *(inptr + 1) == 'g') {
+				next_char(&inptr);
+				next_char(&inptr);
+				addr = 0xffffffff;
+				if (*inptr == 's') {
+					debugmem_list_segment(1, addr);
+				} else {
+					if (more_params(&inptr)) {
+						addr = readhex(&inptr);
+					}
+					debugmem_list_segment(0, addr);
+				}
+			} else if (*inptr == 'c') {
+				screenshot(-1, 1, 1);
 			} else if (*inptr == 'p') {
 				inptr++;
 				debug_sprite (&inptr);
@@ -5484,7 +5582,7 @@ static bool debug_line (TCHAR *input)
 						for (int i = 0; i < inss; i++) {
 							put_word(asmaddr + i * 2, asmout[i]);
 						}
-						m68k_disasm(asmaddr, &nxdis, 1);
+						m68k_disasm(asmaddr, &nxdis, 1, 0xffffffff);
 						asmaddr = nxdis;
 						return false;
 					}
@@ -5539,35 +5637,71 @@ static bool debug_line (TCHAR *input)
 						ppc_disasm(daddr, &nxdis, count);
 #endif
 					} else {
-						m68k_disasm (daddr, &nxdis, count);
+						m68k_disasm (daddr, &nxdis, 0xffffffff, count);
 					}
 				}
 			}
 			break;
 		case 'T':
-			if (inptr[0] == 't' || inptr[0] == 0)
+			if (inptr[0] == 'L')
+				debugger_scan_libraries();
+			else if (inptr[0] == 't' || inptr[0] == 0)
 				show_exec_tasks ();
 			else
 				show_exec_lists (&inptr[0]);
 			break;
 		case 't':
 			no_trace_exceptions = 0;
-			if (*inptr != 't') {
-				if (more_params (&inptr))
-					skipaddr_doskip = readint (&inptr);
-				if (skipaddr_doskip <= 0 || skipaddr_doskip > 10000)
-					skipaddr_doskip = 1;
-			} else {
+			debug_cycles();
+			if (*inptr == 't') {
 				no_trace_exceptions = 1;
+				inptr++;
 			}
-			set_special (SPCFLAG_BRK);
-			exception_debugging = 1;
-			return true;
+			if (*inptr == 'r') {
+				// break when PC in debugmem
+				if (debugmem_get_range(&trace_param1, &trace_param2)) {
+					trace_mode = TRACE_RANGE_PC;
+					return true;
+				}
+			} else if (*inptr == 's') {
+				if (*(inptr + 1) == 'e') {
+					debugmem_enable_stackframe(true);
+				} else if (*(inptr + 1) == 'd') {
+					debugmem_enable_stackframe(false);
+				} else if (*(inptr + 1) == 'p') {
+					if (debugmem_break_stack_pop()) {
+						debugger_active = 0;
+						return true;
+					}
+				} else {
+					if (debugmem_break_stack_pop()) {
+						debugger_active = 0;
+						return true;
+					}
+				}
+			} else if (*inptr == 'l') {
+				// skip next source line
+				if (debugmem_isactive()) {
+					trace_mode = TRACE_SKIP_LINE;
+					trace_param1 = 1;
+					trace_param2 = debugmem_get_sourceline(M68K_GETPC, NULL, 0);
+					return true;
+				}
+			} else {
+				if (more_params(&inptr))
+					trace_param1 = readint(&inptr);
+				if (trace_param1 <= 0 || trace_param1 > 10000)
+					trace_param1 = 1;
+				trace_mode = TRACE_SKIP_INS;
+				exception_debugging = 1;
+				return true;
+			}
+			break;
 		case 'z':
-			skipaddr_start = nextpc;
-			skipaddr_doskip = 1;
-			do_skip = 1;
+			trace_mode = TRACE_MATCH_PC;
+			trace_param1 = nextpc;
 			exception_debugging = 1;
+			debug_cycles();
 			return true;
 
 		case 'f':
@@ -5585,8 +5719,10 @@ static bool debug_line (TCHAR *input)
 				break_if_enforcer = break_if_enforcer ? false : true;
 				console_out_f(_T("Break when enforcer hit: %s\n"), break_if_enforcer ? _T("enabled") : _T("disabled"));
 			} else {
-				if (instruction_breakpoint (&inptr))
+				if (instruction_breakpoint(&inptr)) {
+					debug_cycles();
 					return true;
+				}
 			}
 			break;
 
@@ -5654,7 +5790,7 @@ static bool debug_line (TCHAR *input)
 					if (regs.pc == addr || addr == 0) {
 						m68k_setpc (regs.pc);
 						if (badly) {
-							m68k_dumpstate (NULL);
+							m68k_dumpstate(NULL, 0xffffffff);
 						} else {
 							if (lastvpos >= 0) {
 								dma_disasm(lastframes, lastvpos, lasthpos, history[temp].fp, history[temp].vpos, history[temp].hpos);
@@ -5663,7 +5799,7 @@ static bool debug_line (TCHAR *input)
 							lastvpos = history[temp].vpos;
 							lasthpos = history[temp].hpos;
 							console_out_f(_T("%2d "), regs.intmask ? regs.intmask : (regs.s ? -1 : 0));
-							m68k_disasm (regs.pc, NULL, 1);
+							m68k_disasm (regs.pc, NULL, 0xffffffff, 1);
 						}
 						if (addr && regs.pc == addr)
 							break;
@@ -5696,7 +5832,7 @@ static bool debug_line (TCHAR *input)
 						debug_bpl_mask = readhex (&inptr) & 0xff;
 						if (more_params (&inptr))
 							debug_bpl_mask_one = readhex (&inptr) & 0xff;
-						notice_screen_contents_lost ();
+						notice_screen_contents_lost(0);
 					}
 					console_out_f (_T("Bitplane mask: %02X (%02X)\n"), debug_bpl_mask, debug_bpl_mask_one);
 					break;
@@ -5862,6 +5998,25 @@ static bool debug_line (TCHAR *input)
 			if (staterecorder (&inptr))
 				return true;
 			break;
+		case 'u':
+			{
+				if (more_params(&inptr)) {
+					if (*inptr == 'a') {
+						debugmem_inhibit_break(1);
+						console_out(_T("All break to debugger methods inhibited.\n"));
+					} else if (*inptr == 'c') {
+						debugmem_inhibit_break(-1);
+						console_out(_T("All break to debugger methods allowed.\n"));
+					}
+				} else {
+					if (debugmem_inhibit_break(0)) {
+						console_out(_T("Current break to debugger method inhibited.\n"));
+					} else {
+						console_out(_T("Current break to debugger method allowed.\n"));
+					}
+				}
+			}
+			break;
 		case 'U':
 			if (currprefs.mmu_model && more_params (&inptr)) {
 				int i;
@@ -5915,7 +6070,8 @@ static void debug_1 (void)
 {
 	TCHAR input[MAX_LINEWIDTH];
 
-	m68k_dumpstate (&nextpc);
+	m68k_dumpstate(&nextpc, debug_pc);
+	debug_pc = 0xffffffff;
 	nxdis = nextpc; nxmem = 0;
 	debugger_active = 1;
 
@@ -5993,7 +6149,7 @@ void debug (void)
 #endif
 
 	if (!memwatch_triggered) {
-		if (do_skip) {
+		if (trace_mode) {
 			uae_u32 pc;
 			uae_u16 opcode;
 			int bp = 0;
@@ -6008,7 +6164,6 @@ void debug (void)
 				if (bpn->type == BREAKPOINT_REG_PC) {
 					if (bpn->value1 == pc) {
 						bp = 1;
-						console_out_f (_T("Breakpoint at %08X\n"), pc);
 						break;
 					}
 				} else if (bpn->type >= 0 && bpn->type < BREAKPOINT_REG_END) {
@@ -6045,8 +6200,8 @@ void debug (void)
 				}
 			}
 
-			if (skipaddr_doskip) {
-				if (skipaddr_start == pc)
+			if (trace_mode) {
+				if (trace_mode == TRACE_MATCH_PC && trace_param1 == pc)
 					bp = -1;
 				if ((processptr || processname) && notinrom()) {
 					uaecptr execbase = get_long_debug (4);
@@ -6077,20 +6232,34 @@ void debug (void)
 							}
 						}
 					}
-				} else if (skipins != 0xffffffff) {
-					if (skipins == 0x10000) {
+				} else if (trace_mode == TRACE_MATCH_INS) {
+					if (trace_param1 == 0x10000) {
 						if (opcode == 0x4e75 || opcode == 0x4e73 || opcode == 0x4e77)
 							bp = -1;
-					} else if (opcode == skipins)
+					} else if (opcode == trace_param1) {
 						bp = -1;
-				} else if (skipaddr_start == 0xffffffff && skipaddr_doskip < 0) {
-					if ((pc < 0xe00000 || pc >= 0x1000000) && opcode != 0x4ef9)
+					}
+				} else if (trace_mode == TRACE_SKIP_INS) {
+					if (trace_param1 != 0)
+						trace_param1--;
+					if (trace_param1 == 0) {
 						bp = -1;
+					}
+#if 0
 				} else if (skipaddr_start == 0xffffffff && skipaddr_doskip > 0) {
 					bp = -1;
-				} else if (skipaddr_end != 0xffffffff) {
-					if (pc >= skipaddr_start && pc < skipaddr_end)
+#endif
+				} else if (trace_mode == TRACE_RANGE_PC) {
+					if (pc >= trace_param1 && pc < trace_param2)
 						bp = -1;
+				} else if (trace_mode == TRACE_SKIP_LINE) {
+					if (trace_param1 != 0)
+						trace_param1--;
+					if (trace_param1 == 0) {
+						int line = debugmem_get_sourceline(pc, NULL, 0);
+						if (line > 0 && line != trace_param2)
+							bp = -1;
+					}
 				}
 			}
 			if (!bp) {
@@ -6099,6 +6268,7 @@ void debug (void)
 			}
 			if (bp > 0)
 				console_out_f(_T("Breakpoint %d triggered.\n"), bp - 1);
+			debug_cycles();
 		}
 	} else {
 		console_out_f (_T("Memwatch %d: break at %08X.%c %c%c%c %08X PC=%08X "), memwatch_triggered - 1, mwhit.addr,
@@ -6110,12 +6280,8 @@ void debug (void)
 				console_out_f (_T("%s (%03x)\n"), memwatch_access_masks[i].name, mwhit.reg);
 		}
 		memwatch_triggered = 0;
-	}
-	if (skipaddr_doskip > 0) {
-		skipaddr_doskip--;
-		if (skipaddr_doskip > 0) {
-			debug_continue();
-			return;
+		if (mwhit.access_mask & (MW_MASK_BLITTER_A | MW_MASK_BLITTER_B | MW_MASK_BLITTER_C | MW_MASK_BLITTER_D_N | MW_MASK_BLITTER_D_L | MW_MASK_BLITTER_D_F)) {
+			blitter_debugdump();
 		}
 	}
 
@@ -6125,13 +6291,9 @@ void debug (void)
 #endif
 	inputdevice_unacquire ();
 	pause_sound ();
-	setmouseactive (0);
+	setmouseactive(0, 0);
 	activate_console ();
-	do_skip = 0;
-	skipaddr_start = 0xffffffff;
-	skipaddr_end = 0xffffffff;
-	skipins = 0xffffffff;
-	skipaddr_doskip = 0;
+	trace_mode = 0;
 	exception_debugging = 0;
 	debug_rewind = 0;
 	processptr = 0;
@@ -6141,8 +6303,20 @@ void debug (void)
 		savestate_init ();
 	}
 #endif
+	debugmem_disable();
+
+	if (trace_cycles && last_frame >= 0) {
+		if (last_frame + 2 >= timeframes) {
+			console_out_f(_T("Cycles: %d Chip, %d CPU. (V=%d H=%d -> V=%d H=%d)\n"),
+				(last_cycles2 - last_cycles1) / CYCLE_UNIT,
+				(last_cycles2 - last_cycles1) / cpucycleunit,
+				last_vpos1, last_hpos1,
+				last_vpos2, last_hpos2);
+		}
+	}
+	trace_cycles = 0;
+
 	debug_1 ();
-#ifdef SAVESTATE
 	if (!debug_rewind && !currprefs.cachesize
 #ifdef FILESYS
 		&& nr_units () == 0
@@ -6150,12 +6324,13 @@ void debug (void)
 		) {
 			savestate_capture (1);
 	}
-#endif
-	for (i = 0; i < BREAKPOINT_TOTAL; i++) {
-		if (bpnodes[i].enabled)
-			do_skip = 1;
+	if (!trace_mode) {
+		for (i = 0; i < BREAKPOINT_TOTAL; i++) {
+			if (bpnodes[i].enabled)
+				trace_mode = TRACE_CHECKONLY;
+		}
 	}
-	if (do_skip) {
+	if (trace_mode) {
 		set_special (SPCFLAG_BRK);
 		debugging = -1;
 	}
@@ -6164,7 +6339,12 @@ void debug (void)
 #ifdef WITH_PPC
 	uae_ppc_pause(0);
 #endif
-	setmouseactive (wasactive ? 2 : 0);
+	setmouseactive(0, wasactive ? 2 : 0);
+
+	last_cycles1 = get_cycles();
+	last_vpos1 = vpos;
+	last_hpos1 = current_hpos();
+	last_frame = timeframes;
 }
 
 const TCHAR *debuginfo (int mode)
@@ -6179,8 +6359,8 @@ const TCHAR *debuginfo (int mode)
 void mmu_disasm (uaecptr pc, int lines)
 {
 	debug_mmu_mode = regs.s ? 6 : 2;
-	m68k_dumpstate (0xffffffff, NULL);
-	m68k_disasm (pc, NULL, lines);
+	m68k_dumpstate(NULL, 0xffffffff);
+	m68k_disasm (pc, NULL, 0xffffffff, lines);
 }
 
 static int mmu_logging;

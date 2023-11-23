@@ -91,11 +91,16 @@ static void fp_get_status(uae_u32 *status)
 	if (fs.float_exception_flags & float_flag_decimal)
 		*status |= FPSR_INEX1;
 }
+
 STATIC_INLINE void fp_clear_status(void)
 {
 	fs.float_exception_flags = 0;
 }
 
+static uae_u32 fp_get_support_flags(void)
+{
+	return FPU_FEATURE_EXCEPTIONS | FPU_FEATURE_DENORMALS;
+}
 
 static const TCHAR *fp_printx80(floatx80 *fx, int mode)
 {
@@ -141,6 +146,10 @@ static const TCHAR *fp_print(fpdata *fpd, int mode)
 }
 
 /* Functions for detecting float type */
+static bool fp_is_init(fpdata *fpd)
+{
+	return false;
+}
 static bool fp_is_snan(fpdata *fpd)
 {
 	return floatx80_is_signaling_nan(fpd->fpx) != 0;
@@ -148,15 +157,19 @@ static bool fp_is_snan(fpdata *fpd)
 static bool fp_unset_snan(fpdata *fpd)
 {
 	fpd->fpx.low |= LIT64(0x4000000000000000);
-	return 0;
+	return false;
 }
-static bool fp_is_nan (fpdata *fpd)
+static bool fp_is_nan(fpdata *fpd)
 {
 	return floatx80_is_any_nan(fpd->fpx) != 0;
 }
-static bool fp_is_infinity (fpdata *fpd)
+static bool fp_is_infinity(fpdata *fpd)
 {
 	return floatx80_is_infinity(fpd->fpx) != 0;
+}
+static void fp_fix_infinity(fpdata *fpd)
+{
+	fpd->fpx.low = 0;
 }
 static bool fp_is_zero(fpdata *fpd)
 {
@@ -365,15 +378,15 @@ static void fp_tst(fpdata *a, fpdata *b)
 	a->fpx = floatx80_tst(b->fpx, &fs);
 }
 
+static const uint8_t prectable[] = { 0, 32, 64, 80 };
+
 #define SETPREC \
 	uint8_t oldprec = fs.floatx80_rounding_precision; \
-	if (prec > 0) \
-		set_floatx80_rounding_precision(prec, &fs);
+	if (prec > PREC_NORMAL) \
+		set_floatx80_rounding_precision(prectable[prec], &fs);
 
 #define RESETPREC \
-	if (prec > 0) \
-		set_floatx80_rounding_precision(oldprec, &fs);
-
+	set_floatx80_rounding_precision(oldprec, &fs);
 
 /* Functions with fixed precision */
 static void fp_move(fpdata *a, fpdata *b, int prec)
@@ -509,12 +522,13 @@ static void to_native(fptype *fp, fpdata *fpd)
 
 	expon = fpd->fpx.high & 0x7fff;
 
+	fp_is_init(fpd);
 	if (fp_is_zero(fpd)) {
 		*fp = fp_is_neg(fpd) ? -0.0 : +0.0;
 		return;
 	}
 	if (fp_is_nan(fpd)) {
-#if USE_LONG_DOUBLE
+#ifdef USE_LONG_DOUBLE
 		*fp = sqrtl(-1);
 #else
 		*fp = sqrt(-1);
@@ -523,7 +537,7 @@ static void to_native(fptype *fp, fpdata *fpd)
 	}
 	if (fp_is_infinity(fpd)) {
 		double zero = 0.0;
-#if USE_LONG_DOUBLE
+#ifdef USE_LONG_DOUBLE
 		*fp = fp_is_neg(fpd) ? logl(0.0) : (1.0 / zero);
 #else
 		*fp = fp_is_neg(fpd) ? log(0.0) : (1.0 / zero);
@@ -534,7 +548,7 @@ static void to_native(fptype *fp, fpdata *fpd)
 	frac = (fptype)fpd->fpx.low / (fptype)(twoto32 * 2147483648.0);
 	if (fp_is_neg(fpd))
 		frac = -frac;
-#if USE_LONG_DOUBLE
+#ifdef USE_LONG_DOUBLE
 	*fp = ldexpl (frac, expon - 16383);
 #else
 	*fp = ldexp (frac, expon - 16383);
@@ -568,7 +582,7 @@ static void from_native(fptype fp, fpdata *fpd)
 	if (fp < 0.0)
 		fp = -fp;
 
-#if USE_LONG_DOUBLE
+#ifdef USE_LONG_DOUBLE
 	 frac = frexpl (fp, &expon);
 #else
 	 frac = frexp (fp, &expon);
@@ -722,25 +736,30 @@ static void fp_from_pack(fpdata *fp, uae_u32 *wrd, int kfactor)
 void fp_init_softfloat(void)
 {
 	float_status fsx = { 0 };
+
+	fsx.fpu_model = currprefs.fpu_model;
+	fs.fpu_model = currprefs.fpu_model;
+
 	set_floatx80_rounding_precision(80, &fsx);
 	set_float_rounding_mode(float_round_to_zero, &fsx);
 
 	fpp_print = fp_print;
-	fpp_is_snan = fp_is_snan;
 	fpp_unset_snan = fp_unset_snan;
+
+	fpp_is_init = fp_is_init;
+	fpp_is_snan = fp_is_snan;
 	fpp_is_nan = fp_is_nan;
 	fpp_is_infinity = fp_is_infinity;
 	fpp_is_zero = fp_is_zero;
 	fpp_is_neg = fp_is_neg;
 	fpp_is_denormal = fp_is_denormal;
 	fpp_is_unnormal = fp_is_unnormal;
+	fpp_fix_infinity = fp_fix_infinity;
 
 	fpp_get_status = fp_get_status;
 	fpp_clear_status = fp_clear_status;
 	fpp_set_mode = fp_set_mode;
-
-	fpp_from_native = from_native;
-	fpp_to_native = to_native;
+	fpp_get_support_flags = fp_get_support_flags;
 
 	fpp_to_int = to_int;
 	fpp_from_int = from_int;

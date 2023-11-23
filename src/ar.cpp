@@ -93,7 +93,7 @@
 * 0x400001.B WRITE
 *
 * bit 1 set: enable freeze caused by BFE001.B READ
-* bit 0 set: enable freeze caused by BFD100.B WRITE
+* bit 0 set: enable freeze caused by BFD100.B WRITE 
 *
 * 0x400002/0x400003: mirrors 0x400000/0x400001
 * 0x400006/0x400007: when written to, turns chip-ram overlay off
@@ -215,6 +215,8 @@
 #include "savestate.h"
 #include "crc32.h"
 #include "akiko.h"
+#include "xwin.h"
+#include "gfxboard.h"
 
 #define DEBUG
 #ifdef DEBUG
@@ -267,20 +269,15 @@ void check_prefs_changed_carts (int in_memory_reset);
 
 static int stored_picasso_on = -1;
 
-static void cartridge_enter (void)
+static void cartridge_enter(void)
 {
-#ifdef PICASSO96
-	stored_picasso_on = picasso_requested_on;
-	picasso_requested_on = 0;
-#endif
+	stored_picasso_on = gfxboard_set(0, false) ? 1 : 0;
 }
 static void cartridge_exit (void)
 {
-#ifdef PICASSO96
 	if (stored_picasso_on > 0)
-		picasso_requested_on = 1;
+		gfxboard_set(0, true);
 	stored_picasso_on = -1;
-#endif
 }
 
 static uae_u32 REGPARAM2 hrtmem3_bget (uaecptr addr)
@@ -507,6 +504,7 @@ static void copytoamiga (uaecptr dst, uae_u8 *src, int len)
 }
 
 int action_replay_flag = ACTION_REPLAY_INACTIVE;
+static int ar_state1 = -1, ar_state2 = -1, ar_hide;
 static int ar_rom_file_size;
 
 /* Use this for relocating AR? */
@@ -920,6 +918,7 @@ static void action_replay_unmap_banks (void)
 
 static void hide_cart (int hide)
 {
+	ar_hide = hide;
 #ifdef ACTION_REPLAY_HIDE_CARTRIDGE
 	if(hide) {
 		action_replay_unmap_banks ();
@@ -1083,6 +1082,7 @@ void check_prefs_changed_carts (int in_memory_reset)
 
 void action_replay_reset (bool hardreset, bool keyboardreset)
 {
+	stored_picasso_on = -1;
 	ar_mapped = -1;
 	if (hrtmemory) {
 		if (isrestore ()) {
@@ -1094,17 +1094,8 @@ void action_replay_reset (bool hardreset, bool keyboardreset)
 	} else {
 		if (action_replay_flag == ACTION_REPLAY_INACTIVE)
 			return;
-
-		if (isrestore ()) {
-			if (m68k_getpc () >= arrom_start && m68k_getpc () <= arrom_start + arrom_size) {
-				action_replay_flag = ACTION_REPLAY_ACTIVE;
-				hide_cart (0);
-			} else {
-				action_replay_flag = ACTION_REPLAY_IDLE;
-				hide_cart (1);
-			}
+		if (isrestore ())
 			return;
-		}
 		if (armodel == 1) {
 			/* We need to mark it as active here, because the kickstart rom jumps directly into it. */
 			action_replay_flag = ACTION_REPLAY_ACTIVE;
@@ -1513,22 +1504,6 @@ int action_replay_unload (int in_memory_reset)
 
 	write_log_debug (_T("Action Replay State:(%s)\nHrtmon State:(%s)\n"),
 		state[action_replay_flag + 3], state[hrtmon_flag + 3]);
-
-	if (armemory_rom && armodel == 1) {
-		if (is_ar_pc_in_ram() || is_ar_pc_in_rom() || action_replay_flag == ACTION_REPLAY_WAIT_PC) {
-			write_log (_T("Can't Unload Action Replay 1. It is Active.\n"));
-			return 0;
-		}
-	} else {
-		if (action_replay_flag != ACTION_REPLAY_IDLE && action_replay_flag != ACTION_REPLAY_INACTIVE) {
-			write_log (_T("Can't Unload Action Replay. It is Active.\n"));
-			return 0; /* Don't unload it whilst it's active, or it will crash the amiga if not the emulator */
-		}
-		if (hrtmon_flag != ACTION_REPLAY_IDLE && hrtmon_flag != ACTION_REPLAY_INACTIVE) {
-			write_log (_T("Can't Unload Hrtmon. It is Active.\n"));
-			return 0; /* Don't unload it whilst it's active, or it will crash the amiga if not the emulator */
-		}
-	}
 
 	unset_special (SPCFLAG_ACTION_REPLAY); /* This shouldn't be necessary here, but just in case. */
 	action_replay_flag = ACTION_REPLAY_INACTIVE;
@@ -2033,8 +2008,6 @@ void action_replay_memory_reset (void)
 		action_replay_flag = ACTION_REPLAY_ACTIVE;
 }
 
-#ifdef SAVESTATE
-
 uae_u8 *save_hrtmon (int *len, uae_u8 *dstptr)
 {
 	uae_u8 *dstbak, *dst;
@@ -2124,7 +2097,7 @@ uae_u8 *save_action_replay (int *len, uae_u8 *dstptr)
 		dstbak = dst = dstptr;
 	else
 		dstbak = dst = xmalloc (uae_u8, arram_size + sizeof ar_custom + sizeof ar_ciaa + sizeof ar_ciab + 1024);
-	save_u8 (0);
+	save_u8 (1 | ((regs.spcflags & SPCFLAG_ACTION_REPLAY) ? 2 : 0) | (ar_hide ? 4 : 0));
 	save_u8 (armodel);
 	save_u32 (get_crc32 (armemory_rom + 4, arrom_size - 4));
 	save_string (currprefs.cartfile);
@@ -2141,6 +2114,9 @@ uae_u8 *save_action_replay (int *len, uae_u8 *dstptr)
 	save_u32 (sizeof ar_ciab);
 	memcpy (dst, ar_ciab, sizeof ar_ciab);
 	dst += sizeof ar_ciab;
+	save_u8(action_replay_flag);
+	save_u8(armode_read);
+	save_u8(armode_write);
 	*len = dst - dstbak;
 	return dstbak;
 }
@@ -2148,9 +2124,10 @@ uae_u8 *save_action_replay (int *len, uae_u8 *dstptr)
 uae_u8 *restore_action_replay (uae_u8 *src)
 {
 	TCHAR *s;
+	uae_u32 flags;
 
 	action_replay_unload (1);
-	restore_u8 ();
+	flags = restore_u8 ();
 	armodel = restore_u8 ();
 	if (!armodel)
 		return src;
@@ -2174,13 +2151,43 @@ uae_u8 *restore_action_replay (uae_u8 *src)
 	src += sizeof ar_ciaa;
 	restore_u32 ();
 	src += sizeof ar_ciab;
-	action_replay_flag = ACTION_REPLAY_IDLE;
-	if (is_ar_pc_in_rom ())
-		action_replay_flag = ACTION_REPLAY_ACTIVE;
+	armode_read = armode_write = 0;
+	ar_state1 = -1;
+	ar_state2 = -1;
+	if (flags & 1) {
+		ar_state1 = restore_u8();
+		ar_state2 = 0;
+		armode_read = restore_u8();
+		armode_write = restore_u8();
+		if (flags & 2)
+			ar_state2 |= 1;
+		if (flags & 4)
+			ar_state2 |= 2;
+	} else {
+		action_replay_flag = ACTION_REPLAY_IDLE;
+		if (is_ar_pc_in_rom ())
+			action_replay_flag = ACTION_REPLAY_ACTIVE;
+	}
 	return src;
 }
 
-#endif /* SAVESTATE */
+void restore_ar_finish(void)
+{
+	if (ar_state2 < 0) {
+		if (m68k_getpc () >= arrom_start && m68k_getpc () <= arrom_start + arrom_size) {
+			action_replay_flag = ACTION_REPLAY_ACTIVE;
+			hide_cart (0);
+		} else {
+			action_replay_flag = ACTION_REPLAY_IDLE;
+			hide_cart (1);
+		}
+	} else {
+		action_replay_flag = ar_state1;
+		if (ar_state2 & 1)
+			set_special (SPCFLAG_ACTION_REPLAY);
+		hide_cart((ar_state2 & 2) ? 1 : 0);
+	}
+}
 
 #define NPSIZE 65536
 

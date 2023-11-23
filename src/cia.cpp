@@ -44,6 +44,7 @@
 #include "rommgr.h"
 #include "scsi.h"
 #include "rtc.h"
+#include "devices.h"
 
 #ifdef FSUAE // NL
 #include "uae/fs.h"
@@ -128,7 +129,7 @@ static int cia_interrupt_delay;
 
 static void ICR (uae_u32 data)
 {
-	INTREQ_0 (0x8000 | data);
+	safe_interrupt_set(IRQ_SOURCE_CIA, 0, (data & 0x2000) != 0);
 }
 
 static void ICRA (uae_u32 data)
@@ -904,13 +905,15 @@ static void led_vsync (void)
 		v = 255;
 	if (v < 0)
 		v = 0;
+	if (currprefs.power_led_dim && v < currprefs.power_led_dim)
+		v = currprefs.power_led_dim;
 	if (v > 255)
 		v = 255;
 	gui_data.powerled_brightness = v;
 	led_cycles_on = 0;
 	led_cycles_off = 0;
 	if (led_old_brightness != gui_data.powerled_brightness) {
-		gui_data.powerled = gui_data.powerled_brightness > 127;
+		gui_data.powerled = gui_data.powerled_brightness > 96;
 		gui_led (LED_POWER, gui_data.powerled, gui_data.powerled_brightness);
 		led_filter_audio ();
 	}
@@ -1398,25 +1401,33 @@ static void WriteCIAA (uae_u16 addr, uae_u8 val, uae_u32 *flags)
 		ciaaprb = val;
 		dongle_cia_write (0, reg, ciaadrb, val);
 #ifdef PARALLEL_PORT
-		if (isprinter() > 0) {
-			doprinter (val);
-			cia_parallelack ();
-		} else if (isprinter() < 0) {
-			parallel_direct_write_data (val, ciaadrb);
+		if (isprinter()) {
+			if (isprinter() > 0) {
+				doprinter(val);
 #ifdef FSUAE
 			parallel_ack();
 #else
 			cia_parallelack ();
 #endif
-#ifdef ARCADIA
-		} else if (arcadia_bios) {
-			arcadia_parport (1, ciaaprb, ciaadrb);
+			} else if (isprinter() < 0) {
+				parallel_direct_write_data(val, ciaadrb);
+#ifdef FSUAE
+			parallel_ack();
+#else
+			cia_parallelack ();
 #endif
-		} else if (parallel_port_scsi) {
-			parallel_port_scsi_write(0, ciaaprb, ciaadrb);
+			}
+		}
+#ifdef ARCADIA
+		if (!isprinter() && arcadia_bios) {
+			arcadia_parport(1, ciaaprb, ciaadrb);
 		}
 #endif
+		if (!isprinter() && parallel_port_scsi) {
+			parallel_port_scsi_write(0, ciaaprb, ciaadrb);
+		}
 		break;
+#endif
 	case 2:
 #if DONGLE_DEBUG > 0
 		if (notinrom ())

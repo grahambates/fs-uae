@@ -173,19 +173,55 @@
 
 #define CIRRUS_PNPMMIO_SIZE         0x1000
 
-#define BLTUNSAFE(s) \
-    ( \
-        ( /* check dst is within bounds */ \
-            (s)->cirrus_blt_height * ABS((s)->cirrus_blt_dstpitch) \
-                + ((s)->cirrus_blt_dstaddr & (s)->cirrus_addr_mask) > \
-                    (s)->vga.vram_size \
-        ) || \
-        ( /* check src is within bounds */ \
-            (s)->cirrus_blt_height * ABS((s)->cirrus_blt_srcpitch) \
-                + ((s)->cirrus_blt_srcaddr & (s)->cirrus_addr_mask) > \
-                    (s)->vga.vram_size \
-        ) \
-    )
+// If blit is out of bounds, reduce height.
+static void check_blit(int32_t addr, uint32_t mask, int pitch, int width, int *height, int depth, int dir)
+{
+	int h = *height;
+	int32_t off;
+	if (!h || !width)
+		return;
+	addr &= mask;
+	off = addr + pitch * (h - 1);
+	if (dir > 0) {
+		off += width * (depth / 8);
+	} else {
+		off -= width * (depth / 8);
+	}
+	if (off > mask + 1) {
+		if (pitch)
+			h -= (off - (mask + 1) + pitch - 1) / pitch;
+		else
+			h = 0;
+	} else if (off < 0) {
+		if (pitch)
+			h -= ((-off) + pitch - 1) / pitch;
+		else
+			h = 0;
+	}
+	if (h < 0)
+		h = 0;
+	*height = h;
+}
+
+#define INITBLIT \
+	dst += (dstaddr & dstmask); \
+	src += (srcaddr & srcmask);
+
+#define INITBLIT_DST \
+	dst += (dstaddr & dstmask);
+
+#define BLTCHECK_DST(skip) \
+	check_blit(dstaddr + skip, dstmask, dstpitch, bltwidth - skip, &bltheight, DEPTH, 1);
+
+#define BLTCHECK_FWD \
+	check_blit(dstaddr, dstmask, dstpitch, bltwidth, &bltheight, 8, 1); \
+	check_blit(srcaddr, srcmask, srcpitch, bltwidth, &bltheight, 8, 1); \
+	INITBLIT;
+
+#define BLTCHECK_BKWD \
+	check_blit(dstaddr, dstmask, dstpitch, bltwidth, &bltheight, 8, -1); \
+	check_blit(srcaddr, srcmask, srcpitch, bltwidth, &bltheight, 8, -1); \
+	INITBLIT;
 
 #if 0
 typedef struct PCICirrusVGAState {
@@ -223,15 +259,16 @@ static void cirrus_update_memory_access(CirrusVGAState *s);
  ***************************************/
 
 static void cirrus_bitblt_rop_nop(CirrusVGAState *s,
-                                  uint8_t *dst,const uint8_t *src,
-                                  int dstpitch,int srcpitch,
-                                  int bltwidth,int bltheight)
+								uint8_t *dst, uint32_t dstaddr, uint32_t dstmask,
+								const uint8_t *src, uint32_t srcaddr, uint32_t srcmask,
+								int dstpitch,int srcpitch,
+								int bltwidth,int bltheight)
 {
 }
 
 static void cirrus_bitblt_fill_nop(CirrusVGAState *s,
-                                   uint8_t *dst,
-                                   int dstpitch, int bltwidth,int bltheight)
+								uint8_t *dst, uint32_t dstaddr, uint32_t dstmask,
+								int dstpitch, int bltwidth,int bltheight)
 {
 }
 
@@ -578,16 +615,11 @@ static void cirrus_invalidate_region(CirrusVGAState * s, int off_begin,
 static int cirrus_bitblt_common_patterncopy(CirrusVGAState * s,
 					    const uint8_t * src)
 {
-    uint8_t *dst;
-
-    dst = s->vga.vram_ptr + (s->cirrus_blt_dstaddr & s->cirrus_addr_mask);
-
-//    if (BLTUNSAFE(s))
-//        return 0;
-
-    (*s->cirrus_rop) (s, dst, src,
-                      s->cirrus_blt_dstpitch, 0,
-                      s->cirrus_blt_width, s->cirrus_blt_height);
+    (*s->cirrus_rop) (s,
+		s->vga.vram_ptr, s->cirrus_blt_dstaddr, s->cirrus_addr_mask,
+		src, 0, s->cirrus_addr_mask,
+		s->cirrus_blt_dstpitch, 0,
+		s->cirrus_blt_width, s->cirrus_blt_height);
     cirrus_invalidate_region(s, s->cirrus_blt_dstaddr,
                              s->cirrus_blt_dstpitch, s->cirrus_blt_width,
                              s->cirrus_blt_height);
@@ -600,10 +632,8 @@ static int cirrus_bitblt_solidfill(CirrusVGAState *s, int blt_rop)
 {
     cirrus_fill_t rop_func;
 
-//    if (BLTUNSAFE(s))
-//        return 0;
     rop_func = cirrus_fill[rop_to_index[blt_rop]][s->cirrus_blt_pixelwidth - 1];
-    rop_func(s, s->vga.vram_ptr + (s->cirrus_blt_dstaddr & s->cirrus_addr_mask),
+    rop_func(s, s->vga.vram_ptr, s->cirrus_blt_dstaddr, s->cirrus_addr_mask,
              s->cirrus_blt_dstpitch,
              s->cirrus_blt_width, s->cirrus_blt_height);
     cirrus_invalidate_region(s, s->cirrus_blt_dstaddr,
@@ -677,12 +707,11 @@ static void cirrus_do_copy(CirrusVGAState *s, int dst, int src, int w, int h)
     if (notify)
         graphic_hw_update(s->vga.con);
 
-    (*s->cirrus_rop) (s, s->vga.vram_ptr +
-		      (s->cirrus_blt_dstaddr & s->cirrus_addr_mask),
-		      s->vga.vram_ptr +
-		      (s->cirrus_blt_srcaddr & s->cirrus_addr_mask),
-		      s->cirrus_blt_dstpitch, s->cirrus_blt_srcpitch,
-		      s->cirrus_blt_width, s->cirrus_blt_height);
+    (*s->cirrus_rop) (s,
+		s->vga.vram_ptr, s->cirrus_blt_dstaddr, s->cirrus_addr_mask,
+		s->vga.vram_ptr, s->cirrus_blt_srcaddr, s->cirrus_addr_mask,
+		s->cirrus_blt_dstpitch, s->cirrus_blt_srcpitch,
+		s->cirrus_blt_width, s->cirrus_blt_height);
 
     if (notify) {
         qemu_console_copy(s->vga.con,
@@ -701,9 +730,6 @@ static void cirrus_do_copy(CirrusVGAState *s, int dst, int src, int w, int h)
 
 static int cirrus_bitblt_videotovideo_copy(CirrusVGAState * s)
 {
-//    if (BLTUNSAFE(s))
-//        return 0;
-
     cirrus_do_copy(s, s->cirrus_blt_dstaddr - s->vga.start_addr,
             s->cirrus_blt_srcaddr - s->vga.start_addr,
             s->cirrus_blt_width, s->cirrus_blt_height);
@@ -731,9 +757,10 @@ static void cirrus_bitblt_cputovideo_next(CirrusVGAState * s)
         } else {
             /* at least one scan line */
             do {
-                (*s->cirrus_rop)(s, s->vga.vram_ptr +
-                                 (s->cirrus_blt_dstaddr & s->cirrus_addr_mask),
-                                  s->cirrus_bltbuf, 0, 0, s->cirrus_blt_width, 1);
+                (*s->cirrus_rop)(s,
+					s->vga.vram_ptr, s->cirrus_blt_dstaddr, s->cirrus_addr_mask,
+					s->cirrus_bltbuf, 0, 0,
+					0, 0, s->cirrus_blt_width, 1);
                 cirrus_invalidate_region(s, s->cirrus_blt_dstaddr, 0,
                                          s->cirrus_blt_width, 1);
                 s->cirrus_blt_dstaddr += s->cirrus_blt_dstpitch;
@@ -1121,11 +1148,20 @@ static void cirrus_get_resolution(VGACommonState *s, int *pwidth, int *pheight)
         ((s->cr[0x07] & 0x40) << 3);
     height = (height + 1);
     /* interlace support */
-    if (s->cr[0x1a] & 0x01)
-        height *= 2;
-	/* multiply vertical registers by two. TW. */
-	if (s->cr[0x17] & 0x04)
+	if (s->cr[0x1a] & 0x01) {
 		height *= 2;
+	}
+	/* multiply vertical registers by two. TW. */
+	if (s->cr[0x17] & 0x04) {
+		height *= 2;
+	}
+	/* keep aspect if CGX doublescan mode */
+	if (s->graphic_mode == 1 && cirrus_get_bpp(s) >= 8 && height * 9 / 10 >= width) {
+		width *= 2;
+		s->double_scan2 = 1;
+	} else {
+		s->double_scan2 = 0;
+	}
 
 	*pwidth = width;
     *pheight = height;
@@ -2257,6 +2293,7 @@ static void cirrus_cursor_draw_line(VGACommonState *s1, uint8_t *d1, int scr_y)
     unsigned int color0, color1;
     const uint8_t *palette, *src;
     uint32_t content;
+	int doublescan2 = s1->double_scan2;
 
     if (!(s->vga.sr[0x12] & CIRRUS_CURSOR_SHOW))
         return;
@@ -2291,10 +2328,10 @@ static void cirrus_cursor_draw_line(VGACommonState *s1, uint8_t *d1, int scr_y)
         return;
     w = h;
 
-    x1 = s->hw_cursor_x;
+    x1 = s->hw_cursor_x << doublescan2;
     if (x1 >= s->vga.last_scr_width)
         return;
-    x2 = s->hw_cursor_x + w;
+    x2 = x1 + (w << doublescan2);
     if (x2 > s->vga.last_scr_width)
         x2 = s->vga.last_scr_width;
     w = x2 - x1;
@@ -2311,16 +2348,16 @@ static void cirrus_cursor_draw_line(VGACommonState *s1, uint8_t *d1, int scr_y)
     default:
         break;
     case 8:
-        vga_draw_cursor_line_8(d1, src, poffset, w, color0, color1, 0xff);
+        vga_draw_cursor_line_8(d1, src, poffset, w, color0, color1, doublescan2, 0xff);
         break;
     case 15:
-        vga_draw_cursor_line_16(d1, src, poffset, w, color0, color1, 0x7fff);
+        vga_draw_cursor_line_16(d1, src, poffset, w, color0, color1, doublescan2, 0x7fff);
         break;
     case 16:
-        vga_draw_cursor_line_16(d1, src, poffset, w, color0, color1, 0xffff);
+        vga_draw_cursor_line_16(d1, src, poffset, w, color0, color1, doublescan2, 0xffff);
         break;
     case 32:
-        vga_draw_cursor_line_32(d1, src, poffset, w, color0, color1, 0xffffff);
+        vga_draw_cursor_line_32(d1, src, poffset, w, color0, color1, doublescan2, 0xffffff);
         break;
     }
 }

@@ -86,6 +86,7 @@ struct ide_hdf
 	int data_multi;
 	int direction; // 0 = read, 1 = write
 	bool intdrq;
+	bool lba;
 	bool lba48;
 	bool lba48cmd;
 	uae_u64 start_lba;
@@ -103,6 +104,7 @@ struct ide_hdf
 	int ide_drv;
 	int media_type;
 	bool mode_8bit;
+	int uae_unitnum;
 
 	bool atapi;
 	bool atapi_drdy;
