@@ -414,7 +414,7 @@ static uae_u32 thisline_changed;
 
 static struct decision thisline_decision;
 static int fetch_cycle, fetch_modulo_cycle;
-static bool aga_plf_passed_stop2;
+static int aga_plf_passed_stop2;
 static int plf_start_hpos, plf_end_hpos;
 static int ddfstop_written_hpos;
 static int bitplane_off_delay;
@@ -1065,19 +1065,19 @@ STATIC_INLINE void compute_delay_offset (void)
 }
 #endif
 
-static void record_color_change2 (int hpos, int regno, unsigned long value)
+static void record_color_change2 (int hpos, int regno, uae_u32 value)
 {
 	int pos = (hpos * 2) * 4;
 	if (regno == 0x1000 + 0x10c) {
 		pos += 4; // BPLCON4 change needs 1 lores pixel delay
+		if (value & 0xff00)
+			thisline_decision.xor_seen = true;
 	}
 	curr_color_changes[next_color_change].linepos = pos;
 	curr_color_changes[next_color_change].regno = regno;
 	curr_color_changes[next_color_change].value = value;
 	next_color_change++;
 	curr_color_changes[next_color_change].regno = -1;
-	if (value & 0xff00)
-		thisline_decision.xor_seen = true;
 }
 
 static bool isehb (uae_u16 bplcon0, uae_u16 bplcon2)
@@ -2340,7 +2340,7 @@ static void reset_bpl_vars(void)
  */
 static void maybe_finish_last_fetch (int pos, int fm)
 {
-	if (plf_state > plf_passed_stop2 || plf_state < plf_passed_stop || (fetch_state != fetch_started && fetch_state != fetch_started_first) || !dmaen (DMA_BITPLANE)) {
+	if (plf_state > plf_passed_stop2 || plf_state < plf_passed_stop || (fetch_state != fetch_started && fetch_state != fetch_started_first) || !dmaen (DMA_BITPLANE) || bitplane_maybe_start_hpos >= 0x100) {
 		finish_last_fetch (pos, fm, true);
 	} else {
 		bitplane_overrun_fetch_cycle = fetch_cycle - 1;
@@ -2440,6 +2440,10 @@ static void do_overrun_fetch(int until, int fm)
 #endif
 
 		if ((bitplane_overrun_fetch_cycle & fetchunit_mask) == fetchunit_mask) {
+			if (bitplane_overrun < 0) {
+				bitplane_overrun = 0;
+				return;
+			}
 			bitplane_overrun--;
 			if (hit && warned > 0) {
 				warned--;
@@ -2582,8 +2586,8 @@ STATIC_INLINE int one_fetch_cycle_0 (int pos, int dma, int fm)
 			// if AGA: consider plf_passed_stop2 already
 			// active when last plane has been written,
 			// even if there is still idle cycles left
-			if (plf_state == plf_passed_stop_act)
-				aga_plf_passed_stop2 = true;
+			if (!aga_plf_passed_stop2 && plf_state >= plf_passed_stop_act)
+				aga_plf_passed_stop2 = pos + ((8 << fetchmode) - cycle_start);
 			break;
 #endif
 			}
@@ -2596,8 +2600,8 @@ STATIC_INLINE int one_fetch_cycle_0 (int pos, int dma, int fm)
 			case 3: fetch (0, fm, modulo, pos); break;
 #ifdef AGA
 			default:
-			if (plf_state == plf_passed_stop_act)
-				aga_plf_passed_stop2 = true;
+			if (!aga_plf_passed_stop2 && plf_state >= plf_passed_stop_act)
+				aga_plf_passed_stop2 = pos + ((8 << fetchmode) - cycle_start);
 			break;
 #endif
 			}
@@ -2608,8 +2612,8 @@ STATIC_INLINE int one_fetch_cycle_0 (int pos, int dma, int fm)
 			case 1: fetch (0, fm, modulo, pos); break;
 #ifdef AGA
 			default:
-			if (plf_state == plf_passed_stop_act)
-				aga_plf_passed_stop2 = true;
+			if (!aga_plf_passed_stop2 && plf_state >= plf_passed_stop_act)
+				aga_plf_passed_stop2 = pos + ((8 << fetchmode) - cycle_start);
 			break;
 #endif
 			}
@@ -2910,6 +2914,14 @@ static void start_bpl_dma (int hstart)
 
 	} else {
 
+		// Bitplane DMA restart during FMODE>0 idle cycles?
+		if (aga_plf_passed_stop2) {
+			if (aga_plf_passed_stop2 > hstart)
+				aga_plf_passed_stop2 = hstart;
+			thisline_decision.plfright = aga_plf_passed_stop2;
+			aga_plf_passed_stop2 = 0;
+		}
+
 		flush_display (fetchmode);
 		// Calculate difference between last end to new start
 		int diff = (hstart - thisline_decision.plfright) << (1 + toscr_res);
@@ -2922,6 +2934,7 @@ static void start_bpl_dma (int hstart)
 		if (diff)
 			toscr_1 (diff, fetchmode);
 
+		fetch_cycle = 0;
 		cycle_diagram_shift = hstart;
 		update_denise (last_fetch_hpos);
 		update_fetch_x (hstart, fetchmode);
@@ -2984,7 +2997,7 @@ static void decide_line (int hpos)
 		}
 	}
 
-	if (fetch_state == fetch_not_started) {
+	if (fetch_state == fetch_not_started || (aga_plf_passed_stop2 && plfstrt >= last_decide_line_hpos)) {
 		bool strtpassed = false;
 		plfstate nextstate = plf_end;
 		int hstart;
@@ -3068,6 +3081,8 @@ static void decide_line (int hpos)
 						hstart = plfstop + DDF_OFFSET;
 						test = true;
 						nextstate = plf_passed_stop;
+						// inform overrun code that this won't overrun.
+						bitplane_maybe_start_hpos = 0x100;
 					}
 				}
 			}
@@ -3997,7 +4012,7 @@ static void reset_decisions (void)
 		memset (todisplay_aga, 0, sizeof todisplay_aga);
 		memset (todisplay2_aga, 0, sizeof todisplay2_aga);
 	}
-	aga_plf_passed_stop2 = false;
+	aga_plf_passed_stop2 = 0;
 #endif
 
 	if (bitplane_line_crossing) {
@@ -4997,7 +5012,7 @@ static void immediate_copper (int num)
 			pos = oldpos;
 		if (!dmaen(DMA_COPPER))
 			break;
-		if (cop_state.ip >= currprefs.chipmem_size && cop_state.ip < currprefs.z3chipmem_start && cop_state.ip >= currprefs.z3chipmem_start + currprefs.z3chipmem_size)
+		if (cop_state.ip >= currprefs.chipmem_size && (cop_state.ip < currprefs.z3chipmem_start || cop_state.ip >= currprefs.z3chipmem_start + currprefs.z3chipmem_size))
 			break;
 		pos++;
 		oldpos = pos;
@@ -5617,8 +5632,11 @@ static void BPLCON1 (int hpos, uae_u16 v)
 static void BPLCON2(int hpos, uae_u16 v)
 {
 	if (!(currprefs.chipset_mask & CSMASK_AGA))
+		v &= ~(0x100 | 0x80); // RDRAM and SOGEN
+	if (!(currprefs.chipset_mask & CSMASK_ECS_DENISE))
 		v &= 0x7f;
-	if ((bplcon2 & 0x3fff) == (v & 0x3fff))
+	v &= ~0x8000; // unused
+	if (bplcon2 == v)
 		return;
 	decide_line (hpos);
 	bplcon2 = v;
@@ -7929,7 +7947,11 @@ static void vsync_handler_pre (void)
 #if 1
 	if (currprefs.m68k_speed < 0) {
 		if (regs.stopped) {
-			cpu_stopped_lines += maxvpos - cpu_last_stop_vpos;
+			if (cpu_last_stop_vpos >= 0) {
+				cpu_stopped_lines += maxvpos - cpu_last_stop_vpos;
+			} else {
+				cpu_stopped_lines = 0;
+			}
 		}
 		int mv = 12 - currprefs.cpu_idle / 15;
 		if (mv >= 1 && mv <= 11) {
@@ -7963,7 +7985,6 @@ static void vsync_handler_pre (void)
 	if (timehack_alive > 0)
 		timehack_alive--;
 
-	devices_vsync_pre();
 #ifdef PICASSO96
 	if (isvsync_rtg () >= 0)
 		rtg_vsync ();
@@ -7998,6 +8019,9 @@ static void vsync_handler_pre (void)
 			frame_shown = show_screen_maybe (isvsync_chipset () >= 0);
 		}
 	}
+
+	// GUI check here, must be after frame rendering
+	devices_vsync_pre();
 
 	fpscounter (frameok);
 
@@ -8201,8 +8225,8 @@ static void copper_check (int n)
 
 static void hsync_scandoubler (void)
 {
-	int i, idx1;
 	struct draw_info *dip1;
+	uae_u16 odmacon = dmacon;
 	uaecptr bpltmp[8], bpltmpx[8];
 
 	if (lof_store && vpos >= maxvpos_nom - 1)
@@ -8214,18 +8238,26 @@ static void hsync_scandoubler (void)
 	debug_dma = 0;
 #endif
 
-	for (i = 0; i < 8; i++) {
+	// this is not correct
+	if (0 && lof_store && (vpos & 1) && vpos == plflastline - 1) {
+		// blank last line if it is odd line
+		dmacon &= ~DMA_BITPLANE;
+	}
+
+	for (int i = 0; i < 8; i++) {
 		int diff;
 		bpltmp[i] = bplpt[i];
 		bpltmpx[i] = bplptx[i];
-		if (prevbpl[lof_store][vpos][i] && prevbpl[1 - lof_store][vpos][i]) {
-			diff = prevbpl[lof_store][vpos][i] - prevbpl[1 - lof_store][vpos][i];
+		uaecptr pb1 = prevbpl[lof_store][vpos][i];
+		uaecptr pb2 = prevbpl[1 - lof_store][vpos][i];
+		if (pb1 && pb2) {
+			diff = pb1 - pb2;
 			if (lof_store) {
 				if (bplcon0 & 4)
-					bplpt[i] = prevbpl[lof_store][vpos][i] - diff;
+					bplpt[i] = pb1 - diff;
 			} else {
 				if (bplcon0 & 4)
-					bplpt[i] = prevbpl[lof_store][vpos][i];
+					bplpt[i] = pb1;
 				else
 					bplpt[i] = bplpt[i] - diff;
 
@@ -8239,7 +8271,7 @@ static void hsync_scandoubler (void)
 
 	// copy color changes
 	dip1 = curr_drawinfo + next_lineno - 1;
-	for (idx1 = dip1->first_color_change; idx1 < dip1->last_color_change; idx1++) {
+	for (int idx1 = dip1->first_color_change; idx1 < dip1->last_color_change; idx1++) {
 		struct color_change *cs2 = &curr_color_changes[idx1];
 		int regno = cs2->regno;
 		int hpos = cs2->linepos / 4;
@@ -8265,7 +8297,9 @@ static void hsync_scandoubler (void)
 	hardware_line_completed (next_lineno);
 	scandoubled_line = 0;
 
-	for (i = 0; i < 8; i++) {
+	dmacon = odmacon;
+
+	for (int i = 0; i < 8; i++) {
 		bplpt[i] = bpltmp[i];
 		bplptx[i] = bpltmpx[i];
 	}
@@ -8924,7 +8958,8 @@ void custom_prepare (void)
 
 void custom_reset (bool hardreset, bool keyboardreset)
 {
-	int i;
+	if (hardreset)
+		board_prefs_changed(-1, -1);
 
 	target_reset ();
 	reset_all_systems ();
@@ -8953,14 +8988,14 @@ void custom_reset (bool hardreset, bool keyboardreset)
 		if (hardreset) {
 			if (!aga_mode) {
 				uae_u16 c = (((currprefs.chipset_mask & CSMASK_ECS_DENISE) && !(currprefs.chipset_mask & CSMASK_AGA)) || currprefs.cs_denisenoehb) ? 0xfff : 0x000;
-				for (i = 0; i < 32; i++) {
+				for (int i = 0; i < 32; i++) {
 					current_colors.color_regs_ecs[i] = c;
 					current_colors.acolors[i] = getxcolor (c);
 				}
 	#ifdef AGA
 			} else {
 				uae_u32 c = 0;
-				for (i = 0; i < 256; i++) {
+				for (int i = 0; i < 256; i++) {
 					current_colors.color_regs_aga[i] = c;
 					current_colors.acolors[i] = getxcolor (c);
 				}
@@ -9053,6 +9088,9 @@ void custom_reset (bool hardreset, bool keyboardreset)
 	reset_decisions ();
 
 	bogusframe = 1;
+	vsync_rendered = false;
+	frame_shown = false;
+	frame_rendered = false;
 
 	if (isrestore ()) {
 		uae_u16 v;
@@ -9067,7 +9105,7 @@ void custom_reset (bool hardreset, bool keyboardreset)
 		BPLCON0 (0, v);
 		FMODE (0, fmode);
 		if (!(currprefs.chipset_mask & CSMASK_AGA)) {
-			for(i = 0 ; i < 32 ; i++)  {
+			for(int i = 0 ; i < 32 ; i++)  {
 				vv = current_colors.color_regs_ecs[i];
 				current_colors.color_regs_ecs[i] = -1;
 				record_color_change (0, i, vv);
@@ -9077,7 +9115,7 @@ void custom_reset (bool hardreset, bool keyboardreset)
 			}
 #ifdef AGA
 		} else {
-			for(i = 0 ; i < 256 ; i++)  {
+			for(int i = 0 ; i < 256 ; i++)  {
 				vv = current_colors.color_regs_aga[i];
 				current_colors.color_regs_aga[i] = -1;
 				record_color_change (0, i, vv);
@@ -9093,7 +9131,7 @@ void custom_reset (bool hardreset, bool keyboardreset)
 		v = serper;
 		serper = 0;
 		SERPER(v);
-		for (i = 0; i < 8; i++) {
+		for (int i = 0; i < 8; i++) {
 			SPRxCTLPOS (i);
 			nr_armed += spr[i].armed != 0;
 		}
@@ -9154,8 +9192,7 @@ void dumpcustom (void)
 
 static void gen_custom_tables (void)
 {
-	int i;
-	for (i = 0; i < 256; i++) {
+	for (int i = 0; i < 256; i++) {
 		sprtaba[i] = ((((i >> 7) & 1) << 0)
 			| (((i >> 6) & 1) << 2)
 			| (((i >> 5) & 1) << 4)
@@ -9168,7 +9205,7 @@ static void gen_custom_tables (void)
 		sprite_ab_merge[i] = (((i & 15) ? 1 : 0)
 			| ((i & 240) ? 2 : 0));
 	}
-	for (i = 0; i < 16; i++) {
+	for (int i = 0; i < 16; i++) {
 		clxmask[i] = (((i & 1) ? 0xF : 0x3)
 			| ((i & 2) ? 0xF0 : 0x30)
 			| ((i & 4) ? 0xF00 : 0x300)
@@ -10059,13 +10096,12 @@ uae_u8 *restore_custom_agacolors (uae_u8 *src)
 uae_u8 *save_custom_agacolors (int *len, uae_u8 *dstptr)
 {
 	uae_u8 *dstbak, *dst;
-	int i;
 
 	if (dstptr)
 		dstbak = dst = dstptr;
 	else
 		dstbak = dst = xmalloc (uae_u8, 256 * 4);
-	for (i = 0; i < 256; i++)
+	for (int i = 0; i < 256; i++)
 #ifdef AGA
 		SL (current_colors.color_regs_aga[i] | (color_regs_genlock[i] ? 0x80000000 : 0));
 #else
@@ -10167,6 +10203,13 @@ uae_u8 *restore_custom_extra (uae_u8 *src)
 	currprefs.cs_resetwarning = changed_prefs.cs_resetwarning = RBB;
 	currprefs.cs_z3autoconfig = changed_prefs.cs_z3autoconfig = RBB;
 	currprefs.cs_1mchipjumper = changed_prefs.cs_1mchipjumper = RBB;
+	currprefs.cs_bytecustomwritebug = changed_prefs.cs_bytecustomwritebug = RBB;
+	currprefs.cs_color_burst = changed_prefs.cs_color_burst = RBB;
+	currprefs.cs_toshibagary = changed_prefs.cs_toshibagary = RBB;
+	currprefs.cs_romisslow = changed_prefs.cs_romisslow = RBB;
+
+	currprefs.cs_ciatype[0] = changed_prefs.cs_ciatype[0] = RBB;
+	currprefs.cs_ciatype[1] = changed_prefs.cs_ciatype[1] = RBB;
 
 	return src;
 }
@@ -10220,6 +10263,13 @@ uae_u8 *save_custom_extra (int *len, uae_u8 *dstptr)
 	SB (currprefs.cs_resetwarning ? 1 : 0);
 	SB (currprefs.cs_z3autoconfig ? 1 : 0);
 	SB (currprefs.cs_1mchipjumper ? 1 : 0);
+
+	SB(currprefs.cs_bytecustomwritebug ? 1 : 0);
+	SB(currprefs.cs_color_burst ? 1 : 0);
+	SB(currprefs.cs_toshibagary ? 1 : 0);
+	SB(currprefs.cs_romisslow ? 1 : 0);
+	SB(currprefs.cs_ciatype[0]);
+	SB(currprefs.cs_ciatype[1]);
 
 	*len = dst - dstbak;
 	return dstbak;
@@ -10350,6 +10400,13 @@ void check_prefs_changed_custom (void)
 	currprefs.cs_dipagnus = changed_prefs.cs_dipagnus;
 	currprefs.cs_denisenoehb = changed_prefs.cs_denisenoehb;
 	currprefs.cs_z3autoconfig = changed_prefs.cs_z3autoconfig;
+	currprefs.cs_bytecustomwritebug = changed_prefs.cs_bytecustomwritebug;
+	currprefs.cs_color_burst = changed_prefs.cs_color_burst;
+	currprefs.cs_romisslow = changed_prefs.cs_romisslow;
+	currprefs.cs_toshibagary = changed_prefs.cs_toshibagary;
+	currprefs.cs_unmapped_space = changed_prefs.cs_unmapped_space;
+	currprefs.cs_ciatype[0] = changed_prefs.cs_ciatype[0];
+	currprefs.cs_ciatype[1] = changed_prefs.cs_ciatype[1];
 
 	if (currprefs.chipset_mask != changed_prefs.chipset_mask ||
 		currprefs.picasso96_nocustom != changed_prefs.picasso96_nocustom ||

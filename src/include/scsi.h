@@ -24,6 +24,9 @@ struct scsi_data_tape
 	bool wp;
 	bool nomedia;
 	bool unloaded;
+	bool init_loaded;
+	bool pending_filemark;
+	bool last_filemark;
 };
 
 struct scsi_data
@@ -88,6 +91,7 @@ int add_scsi_hd (struct scsi_data **sd, int ch, struct hd_hardfiledata *hfd, str
 int add_scsi_cd (struct scsi_data **sd, int ch, int unitnum);
 int add_scsi_tape (struct scsi_data **sd, int ch, const TCHAR *tape_directory, bool readonly);
 void free_scsi (struct scsi_data *sd);
+bool tape_can_write(const TCHAR *tape_directory);
 
 void scsi_freenative(struct scsi_data **sd, int max);
 void scsi_addnative(struct scsi_data **sd);
@@ -243,6 +247,7 @@ void alf1_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig 
 bool promigos_init(struct autoconfig_info *aci);
 void promigos_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
 
+bool system2000_preinit(struct autoconfig_info *aci);
 bool system2000_init(struct autoconfig_info *aci);
 void system2000_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
 
@@ -266,6 +271,28 @@ void hardframe_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romco
 
 bool malibu_init(struct autoconfig_info*);
 void malibu_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
+
+bool addhard_init(struct autoconfig_info*);
+void addhard_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
+
+bool inmate_init(struct autoconfig_info*);
+void inmate_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
+
+bool emplant_init(struct autoconfig_info*);
+void emplant_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
+
+bool hd3000_init(struct autoconfig_info *aci);
+void hd3000_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
+
+bool wedge_preinit(struct autoconfig_info *aci);
+bool wedge_init(struct autoconfig_info *aci);
+void wedge_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
+
+bool eveshamref_init(struct autoconfig_info *aci);
+void eveshamref_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
+
+bool profex_init(struct autoconfig_info *aci);
+void profex_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc);
 
 uae_u8 idescsi_scsi_get(uaecptr addr);
 void idescsi_scsi_put(uaecptr addr, uae_u8 v);

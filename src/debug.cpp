@@ -48,6 +48,7 @@
 #include "uae/ppc.h"
 #endif
 #include "drawing.h"
+#include "devices.h"
 
 #ifdef FSUAE // NL
 #include "uae/fs.h"
@@ -125,7 +126,9 @@ static const TCHAR help[] = {
 	_T("  c                     Dump state of the CIA, disk drives and custom registers.\n")
 	_T("  r                     Dump state of the CPU.\n")
 	_T("  r <reg> <value>       Modify CPU registers (Dx,Ax,USP,ISP,VBR,...).\n")
+	_T("  rc[d]                 Show CPU instruction or data cache contents.\n")
 	_T("  m <address> [<lines>] Memory dump starting at <address>.\n")
+	_T("  a <address>           Assembler.\n")
 	_T("  d <address> [<lines>] Disassembly starting at <address>.\n")
 	_T("  t [instructions]      Step one or more instructions.\n")
 	_T("  z                     Step through one instruction - useful for JSR, DBRA etc.\n")
@@ -155,17 +158,20 @@ static const TCHAR help[] = {
 	_T("  Cl                    List currently found trainer addresses.\n")
 	_T("  D[idxzs <[max diff]>] Deep trainer. i=new value must be larger, d=smaller,\n")
 	_T("                        x = must be same, z = must be different, s = restart.\n")
-	_T("  W <address> <values[.x] separated by space> Write into Amiga memory.\n")
-	_T("  W <address> 'string' Write into Amiga memory.\n")
+	_T("  W <addr> <values[.x] separated by space> Write into Amiga memory.\n")
+	_T("  W <addr> 'string'     Write into Amiga memory.\n")
+	_T("  Wf <addr> <endaddr> <bytes or string like above>, fill memory.\n")
+	_T("  Wc <addr> <endaddr> <destaddr>, copy memory.\n")
 	_T("  w <num> <address> <length> <R/W/I/F/C> [<value>[.x]] (read/write/opcode/freeze/mustchange).\n")
 	_T("                        Add/remove memory watchpoints.\n")
 	_T("  wd [<0-1>]            Enable illegal access logger. 1 = enable break.\n")
+	_T("  L <file> <addr> [<n>] Load a block of Amiga memory.\n")
 	_T("  S <file> <addr> <n>   Save a block of Amiga memory.\n")
 	_T("  s \"<string>\"/<values> [<addr>] [<length>]\n")
 	_T("                        Search for string/bytes.\n")
 	_T("  T or Tt               Show exec tasks and their PCs.\n")
-	_T("  Td,Tl,Tr,Tp,Ts,TS,Ti,TO,TM Show devs, libs, resources, ports, semaphores,\n")
-	_T("                        residents, interrupts, doslist and memorylist.\n")
+	_T("  Td,Tl,Tr,Tp,Ts,TS,Ti,TO,TM,Tf Show devs, libs, resources, ports, semaphores,\n")
+	_T("                        residents, interrupts, doslist, memorylist, fsres.\n")
 	_T("  b                     Step to previous state capture position.\n")
 	_T("  M<a/b/s> <val>        Enable or disable audio channels, bitplanes or sprites.\n")
 	_T("  sp <addr> [<addr2][<size>] Dump sprite information.\n")
@@ -189,6 +195,7 @@ static const TCHAR help[] = {
 #endif /* WITH_SEGTRACKER */
 	_T("  ?<value>              Hex ($ and 0x)/Bin (%)/Dec (!) converter.\n")
 	_T("  vh [<ratio> <lines>]  \"Heat map\"\n")
+	_T("  I <custom event>      Send custom event string\n")
 	_T("  ?<value>              Hex ($ and 0x)/Bin (%)/Dec (!) converter and calculator.\n")
 #ifdef _WIN32
 	_T("  x                     Close debugger.\n")
@@ -306,9 +313,13 @@ uae_u32 get_byte_debug (uaecptr addr)
 		regs.s = (debug_mmu_mode & 4) != 0;
 		TRY(p) {
 			if (currprefs.mmu_model == 68030) {
-				v = mmu030_get_generic (addr, debug_mmu_mode, sz_byte, sz_byte, 0);
+				v = mmu030_get_generic (addr, debug_mmu_mode, sz_byte, MMU030_SSW_SIZE_B);
 			} else {
-				v = mmu_get_user_byte (addr, regs.s != 0, (debug_mmu_mode & 1) ? true : false, false, sz_byte);
+				if (debug_mmu_mode & 1) {
+					v = mmu_get_iword(addr, sz_byte);
+				} else {
+					v = mmu_get_user_byte (addr, regs.s != 0, false, sz_byte, false);
+				}
 			}
 		} CATCH(p) {
 		} ENDTRY
@@ -326,9 +337,13 @@ uae_u32 get_word_debug (uaecptr addr)
 		regs.s = (debug_mmu_mode & 4) != 0;
 		TRY(p) {
 			if (currprefs.mmu_model == 68030) {
-				v = mmu030_get_generic (addr, debug_mmu_mode, sz_word, sz_word, 0);
+				v = mmu030_get_generic (addr, debug_mmu_mode, sz_word, MMU030_SSW_SIZE_W);
 			} else {
-				v = mmu_get_user_word (addr, regs.s != 0, (debug_mmu_mode & 1) ? true : false, false, sz_word);
+				if (debug_mmu_mode & 1) {
+					v = mmu_get_iword(addr, sz_word);
+				} else {
+					v = mmu_get_user_word (addr, regs.s != 0, false, sz_word, false);
+				}
 			}
 		} CATCH(p) {
 		} ENDTRY
@@ -346,9 +361,13 @@ uae_u32 get_long_debug (uaecptr addr)
 		regs.s = (debug_mmu_mode & 4) != 0;
 		TRY(p) {
 			if (currprefs.mmu_model == 68030) {
-				v = mmu030_get_generic (addr, debug_mmu_mode, sz_long, sz_long, 0);
+				v = mmu030_get_generic (addr, debug_mmu_mode, sz_long, MMU030_SSW_SIZE_L);
 			} else {
-				v = mmu_get_user_long (addr, regs.s != 0, (debug_mmu_mode & 1) ? true : false, false, sz_long);
+				if (debug_mmu_mode & 1) {
+					v = mmu_get_ilong(addr, sz_long);
+				} else {
+					v = mmu_get_user_long (addr, regs.s != 0, false, sz_long, false);
+				}
 			}
 		} CATCH(p) {
 		} ENDTRY
@@ -378,15 +397,29 @@ uae_u32 get_ilong_debug (uaecptr addr)
 		return 0xffffffff;
 	}
 }
+uae_u8 *get_real_address_debug(uaecptr addr)
+{
+	if (debug_mmu_mode) {
+		flagtype olds = regs.s;
+		TRY(p) {
+			if (currprefs.mmu_model >= 68040)
+				addr = mmu_translate(addr, 0, regs.s != 0, (debug_mmu_mode & 1), false, 0);
+			else
+				addr = mmu030_translate(addr, regs.s != 0, (debug_mmu_mode & 1), false);
+		} CATCH(p) {
+		} ENDTRY
+	}
+	return get_real_address(addr);
+}
 
-static int safe_addr (uaecptr addr, int size)
+int debug_safe_addr (uaecptr addr, int size)
 {
 	if (debug_mmu_mode) {
 		flagtype olds = regs.s;
 		regs.s = (debug_mmu_mode & 4) != 0;
 		TRY(p) {
 			if (currprefs.mmu_model >= 68040)
-				addr = mmu_translate (addr, regs.s != 0, (debug_mmu_mode & 1), false);
+				addr = mmu_translate (addr, 0, regs.s != 0, (debug_mmu_mode & 1), false, size);
 			else
 				addr = mmu030_translate (addr, regs.s != 0, (debug_mmu_mode & 1), false);
 		} CATCH(p) {
@@ -1090,7 +1123,7 @@ uaecptr dumpmem2 (uaecptr addr, TCHAR *out, int osize)
 	for (i = 0; i < cols; i++) {
 		uae_u8 b1, b2;
 		b1 = b2 = 0;
-		if (safe_addr (addr, 1)) {
+		if (debug_safe_addr (addr, 1)) {
 			b1 = get_byte_debug (addr + 0);
 			b2 = get_byte_debug (addr + 1);
 			_stprintf (out + 9 + i * 5, _T("%02X%02X "), b1, b2);
@@ -2454,7 +2487,16 @@ struct breakpoint_node bpnodes[BREAKPOINT_TOTAL];
 static addrbank **debug_mem_banks;
 static addrbank *debug_mem_area;
 struct memwatch_node mwnodes[MEMWATCH_TOTAL];
+static int mwnodes_cnt;
 static struct memwatch_node mwhit;
+
+#define MUNGWALL_SLOTS 16
+struct mungwall_data
+{
+	int slots;
+	uae_u32 start[MUNGWALL_SLOTS], end[MUNGWALL_SLOTS];
+};
+static struct mungwall_data **mungwall;
 
 static uae_u8 *illgdebug, *illghdebug;
 static int illgdebug_break;
@@ -2586,8 +2628,12 @@ static int debug_mem_off (uaecptr *addrp)
 	ba = debug_mem_banks[offset];
 	if (!ba)
 		return offset;
-	if (ba->mask || ba->startmask)
-		addr = (addr & ba->mask) | ba->startmask;
+	if (ba->mask || ba->startmask) {
+		uae_u32 start = ba->startmask ? ba->startmask : ba->start;
+		addr -= start;
+		addr &= ba->mask;
+		addr += start;
+	}
 	*addrp = addr;
 	return offset;
 }
@@ -2768,10 +2814,27 @@ void restore_debug_memwatch_finish (void)
 	}
 }
 
+static void mungwall_memwatch(uaecptr addr, int rwi, int size, uae_u32 valp)
+{
+	struct mungwall_data *mwd = mungwall[addr >> 16];
+	if (!mwd)
+		return;
+	for (int i = 0; i < mwd->slots; i++) {
+		if (!mwd->end[i])
+			continue;
+		if (addr + size > mwd->start[i] && addr < mwd->end[i]) {
+
+		}
+	}
+}
+
 static int memwatch_func (uaecptr addr, int rwi, int size, uae_u32 *valp, uae_u32 accessmask, uae_u32 reg)
 {
 	int i, brk;
 	uae_u32 val = *valp;
+
+	if (mungwall)
+		mungwall_memwatch(addr, rwi, size, val);
 
 	if (illgdebug)
 		illg_debug_do (addr, rwi, size, val);
@@ -2782,7 +2845,7 @@ static int memwatch_func (uaecptr addr, int rwi, int size, uae_u32 *valp, uae_u3
 	addr = munge24 (addr);
 	if (smc_table && (rwi >= 2))
 		smc_detector (addr, rwi, size, valp);
-	for (i = 0; i < MEMWATCH_TOTAL; i++) {
+	for (i = 0; i < mwnodes_cnt; i++) {
 		struct memwatch_node *m = &mwnodes[i];
 		uaecptr addr2 = m->addr;
 		uaecptr addr3 = addr2 + m->size;
@@ -3206,11 +3269,13 @@ static void memwatch_remap (uaecptr addr)
 static void memwatch_setup (void)
 {
 	memwatch_reset ();
+	mwnodes_cnt = 0;
 	for (int i = 0; i < MEMWATCH_TOTAL; i++) {
 		struct memwatch_node *m = &mwnodes[i];
 		uae_u32 size = 0;
 		if (!m->size)
 			continue;
+		mwnodes_cnt++;
 		while (size < m->size) {
 			memwatch_remap (m->addr + size);
 			size += 65536;
@@ -3512,58 +3577,130 @@ static void memwatch (TCHAR **c)
 	memwatch_dump (num);
 }
 
-static void writeintomem (TCHAR **c)
+static void copymem(TCHAR **c)
 {
-	uae_u32 addr = 0;
-	uae_u32 val = 0;
-	TCHAR cc;
-	int len = 1;
+	uae_u32 addr = 0, eaddr = 0, dst = 0;
 
 	ignore_ws(c);
+	if (!more_params (c))
+		return;
 	addr = readhex (c);
-
 	ignore_ws (c);
 	if (!more_params (c))
 		return;
-	cc = peekchar (c);
-	if (cc == '\'' || cc == '\"') {
-		next_char (c);
-		while (more_params (c)) {
-			TCHAR str[2];
-			char *astr;
-			cc = next_char (c);
-			if (cc == '\'' || cc == '\"')
-				break;
-			str[0] = cc;
-			str[1] = 0;
-			astr = ua (str);
-			put_byte (addr, astr[0]);
-			xfree (astr);
+	eaddr = readhex (c);
+	ignore_ws (c);
+	if (!more_params (c))
+		return;
+	dst = readhex (c);
+
+	if (addr >= eaddr)
+		return;
+	uae_u32 addrb = addr;
+	uae_u32 dstb = dst;
+	uae_u32 len = eaddr - addr;
+	if (dst <= addr) {
+		while (addr < eaddr) {
+			put_byte(dst, get_byte(addr));
 			addr++;
+			dst++;
 		}
 	} else {
-		for (;;) {
-			ignore_ws (c);
-			if (!more_params (c))
-				break;
-			val = readhex (c, &len);
-
-			if (len == 4) {
-				put_long (addr, val);
-				cc = 'L';
-			} else if (len == 2) {
-				put_word (addr, val);
-				cc = 'W';
-			} else if (len == 1) {
-				put_byte (addr, val);
-				cc = 'B';
-			} else {
-				break;
-			}
-			console_out_f (_T("Wrote %X (%u) at %08X.%c\n"), val, val, addr, cc);
-			addr += len;
+		dst += eaddr - addr;
+		while (addr < eaddr) {
+			dst--;
+			eaddr--;
+			put_byte(dst, get_byte(eaddr));
 		}
 	}
+	console_out_f(_T("Copied from %08x - %08x to %08x - %08x\n"), addrb, addrb + len - 1, dstb, dstb + len - 1);
+}
+
+static void writeintomem (TCHAR **c)
+{
+	uae_u32 addr = 0;
+	uae_u32 eaddr = 0xffffffff;
+	uae_u32 val = 0;
+	TCHAR cc;
+	int len = 1;
+	bool fillmode = false;
+
+	if (**c == 'f') {
+		fillmode = true;
+		(*c)++;
+	} else if (**c == 'c') {
+		(*c)++;
+		copymem(c);
+		return;
+	}
+
+	ignore_ws(c);
+	addr = readhex (c);
+	ignore_ws (c);
+
+	if (fillmode) {
+		if (!more_params (c))
+			return;
+		eaddr = readhex(c);
+		ignore_ws (c);
+	}
+
+	if (!more_params (c))
+		return;
+	TCHAR *cb = *c;
+	cc = peekchar (c);
+	uae_u32 addrc = addr;
+	for(;;) {
+		uae_u32 addrb = addr;
+		*c = cb;
+		if (cc == '\'' || cc == '\"') {
+			next_char (c);
+			while (more_params (c)) {
+				TCHAR str[2];
+				char *astr;
+				cc = next_char (c);
+				if (cc == '\'' || cc == '\"')
+					break;
+				str[0] = cc;
+				str[1] = 0;
+				astr = ua (str);
+				put_byte (addr, astr[0]);
+				xfree (astr);
+				addr++;
+				if (addr >= eaddr)
+					break;
+			}
+		} else {
+			for (;;) {
+				ignore_ws (c);
+				if (!more_params (c))
+					break;
+				val = readhex (c, &len);
+
+				if (len == 4) {
+					put_long (addr, val);
+					cc = 'L';
+				} else if (len == 2) {
+					put_word (addr, val);
+					cc = 'W';
+				} else if (len == 1) {
+					put_byte (addr, val);
+					cc = 'B';
+				} else {
+					break;
+				}
+				if (!fillmode)
+					console_out_f (_T("Wrote %X (%u) at %08X.%c\n"), val, val, addr, cc);
+				addr += len;
+				if (addr >= eaddr)
+					break;
+			}
+		}
+		if (eaddr == 0xffffffff || addr <= addrb || addr >= eaddr)
+			break;
+	}
+	if (eaddr != 0xffffffff)
+		console_out_f(_T("Wrote data to %08x - %08x\n"), addrc, addr);
 }
 
 static uae_u8 *dump_xlate (uae_u32 addr)
@@ -3595,6 +3732,8 @@ typedef struct UaeMemoryMap {
 	int num_regions;
 } UaeMemoryMap;
 #endif
+
+static const TCHAR *bankmodes[] = { _T("F32"), _T("C16"), _T("C32"), _T("CIA"), _T("F16"), _T("F16X") };
 
 static void memory_map_dump_3(UaeMemoryMap *map, int log)
 {
@@ -3683,10 +3822,12 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 					size_out /= 1024;
 					size_ext = 'M';
 				}
-#if 1
-				_stprintf (txt, _T("%08X %7d%c/%d = %7d%c %s"), (j << 16) | bankoffset, size_out, size_ext,
-					mirrored, mirrored ? size_out / mirrored : size_out, size_ext, name);
-#endif
+				_stprintf (txt, _T("%08X %7d%c/%d = %7d%c %s%s %s %s"), (j << 16) | bankoffset, size_out, size_ext,
+					mirrored, mirrored ? size_out / mirrored : size_out, size_ext,
+					(a1->flags & ABFLAG_CACHE_ENABLE_INS) ? _T("I") : _T("-"),
+					(a1->flags & ABFLAG_CACHE_ENABLE_DATA) ? _T("D") : _T("-"),
+					bankmodes[ce_banktype[j]],
+					name);
 				tmp[0] = 0;
 				if ((a1->flags & ABFLAG_ROM) && mirrored) {
 					TCHAR *p = txt + _tcslen (txt);
@@ -3704,6 +3845,8 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 
 				if (a1 != &dummy_bank) {
 					for (int m = 0; m < mirrored2; m++) {
+						if (map->num_regions >= UAE_MEMORY_REGIONS_MAX)
+							break;
 						UaeMemoryRegion *r = &map->regions[map->num_regions];
 						r->start = (j << 16) + bankoffset + region_size * m;
 						r->size = region_size;
@@ -3723,7 +3866,6 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 						map->num_regions += 1;
 					}
 				}
-#if 1
 				_tcscat (txt, _T("\n"));
 				if (log > 0)
 					write_log (_T("%s"), txt);
@@ -3735,7 +3877,6 @@ static void memory_map_dump_3(UaeMemoryMap *map, int log)
 					else if (log == 0)
 						console_out (tmp);
 				}
-#endif
 				if (!sb)
 					break;
 				bankoffset = bankoffset2;
@@ -3809,14 +3950,14 @@ static void print_task_info (uaecptr node, bool nonactive)
 	int process = get_byte_debug (node + 8) == 13 ? 1 : 0;
 
 	console_out_f (_T("%08X: "), node);
-	s = au ((char*)get_real_address (get_long_debug (node + 10)));
+	s = au ((char*)get_real_address_debug(get_long_debug (node + 10)));
 	console_out_f (process ? _T("PROCESS '%s'\n") : _T("TASK    '%s'\n"), s);
 	xfree (s);
 	if (process) {
 		uaecptr cli = BPTR2APTR (get_long_debug (node + 172));
 		int tasknum = get_long_debug (node + 140);
 		if (cli && tasknum) {
-			uae_u8 *command_bstr = get_real_address (BPTR2APTR (get_long_debug (cli + 16)));
+			uae_u8 *command_bstr = get_real_address_debug(BPTR2APTR (get_long_debug (cli + 16)));
 			TCHAR *command = BSTR2CSTR (command_bstr);
 			console_out_f (_T(" [%d, '%s']\n"), tasknum, command);
 			xfree (command);
@@ -3943,8 +4084,9 @@ static void show_exec_lists (TCHAR *t)
 			while (doslist) {
 				int type = get_long_debug (doslist + 4);
 				uaecptr msgport = get_long_debug (doslist + 8);
+				uaecptr lock = get_long_debug(doslist + 12);
 				TCHAR *name = getfrombstr(get_long_debug(doslist + 40));
-				console_out_f(_T("%08x: %d %08x '%s'\n"), doslist, type, msgport, name);
+				console_out_f(_T("%08x: Type=%d Port=%08x Lock=%08x '%s'\n"), doslist, type, msgport, lock, name);
 				if (type == 0) {
 					uaecptr fssm = get_long_debug(doslist + 28) << 2;
 					console_out_f (_T(" - H=%08x Stack=%5d Pri=%2d Start=%08x Seg=%08x GV=%08x\n"),
@@ -3976,6 +4118,11 @@ static void show_exec_lists (TCHAR *t)
 						}
 						xfree(unitname);
 					}
+				} else if (type == 2) {
+					console_out_f(_T(" - VolumeDate=%08x %08x %08x LockList=%08x DiskType=%08x\n"),
+						get_long_debug(doslist + 16), get_long_debug(doslist + 20), get_long_debug(doslist + 24),
+						get_long_debug(doslist + 28),
+						get_long_debug(doslist + 32));
 				}
 				xfree (name);
 				doslist = get_long_debug (doslist) << 2;
@@ -3994,7 +4141,7 @@ static void show_exec_lists (TCHAR *t)
 				console_out_f (_T("  [H] %08X\n"), get_long_debug (list));
 				node = get_long_debug (list + 8);
 				if (node) {
-					uae_u8 *addr = get_real_address (get_long_debug (node + 10));
+					uae_u8 *addr = get_real_address_debug(get_long_debug (node + 10));
 					TCHAR *name = addr ? au ((char*)addr) : au("<null>");
 					console_out_f (_T("      %08X (C=%08X D=%08X) '%s'\n"), node, get_long_debug (list + 4), get_long_debug (list), name);
 					xfree (name);
@@ -4004,7 +4151,7 @@ static void show_exec_lists (TCHAR *t)
 				node = get_long_debug (list);
 				node = get_long_debug (node);
 				while (get_long_debug (node)) {
-					uae_u8 *addr = get_real_address (get_long_debug (node + 10));
+					uae_u8 *addr = get_real_address_debug(get_long_debug (node + 10));
 					TCHAR *name = addr ? au ((char*)addr) : au("<null>");
 					uae_s8 pri = get_byte_debug(node + 9);
 					console_out_f (_T("  [S] %08x %+03d (C=%08x D=%08X) '%s'\n"), node, pri, get_long_debug (node + 18), get_long_debug (node + 14), name);
@@ -4016,7 +4163,7 @@ static void show_exec_lists (TCHAR *t)
 								uaecptr ciap = get_long_debug (cia);
 								console_out_f (_T("        %5s: %08x"), ciai[j], ciap);
 								if (ciap) {
-									uae_u8 *addr2 = get_real_address (get_long_debug (ciap + 10));
+									uae_u8 *addr2 = get_real_address_debug(get_long_debug (ciap + 10));
 									TCHAR *name2 = addr ? au ((char*)addr2) : au("<null>");
 									console_out_f (_T(" (C=%08x D=%08X) '%s'"), get_long_debug (ciap + 18), get_long_debug (ciap + 14), name2);
 									xfree (name2);
@@ -4039,41 +4186,57 @@ static void show_exec_lists (TCHAR *t)
 	} else if (c == 'e') { // expansion
 		uaecptr expbase = get_base("expansion.library", 378);
 		if (expbase) {
-			list = get_long_debug(expbase + 60);
-			while (list && get_long_debug(list)) {
-				uae_u32 addr = get_long_debug(list + 32);
-				uae_u16 rom_vector = get_word_debug(list + 16 + 10);
-				uae_u8 type = get_byte_debug(list + 16 + 0);
-				console_out_f(_T("%02x %02x %08x %08x %04x %02x %08x %04x (%u/%u)\n"),
-					type, get_byte_debug(list + 16 + 2),
-					addr, get_long_debug(list + 36),
-					get_word_debug(list + 16 + 4), get_byte_debug(list + 16 + 1),
-					get_long_debug(list + 16 + 6), rom_vector,
-					get_word_debug(list + 16 + 4), get_byte_debug(list + 16 + 1));
-				if ((type & 0x10)) {
-					uae_u8 diagarea[256];
-					uae_u16 nameoffset;
-					uaecptr rom = addr + rom_vector;
-					uae_u8 config = get_byte_debug(rom);
-					copyromdata(config, rom, 0, diagarea, 16);
-					nameoffset = (diagarea[8] << 8) | diagarea[9];
-					console_out_f(_T(" %02x %02x Size %04x Diag %04x Boot %04x Name %04x %04x %04x\n"),
-						diagarea[0], diagarea[1],
-						(diagarea[2] << 8) | diagarea[3],
-						(diagarea[4] << 8) | diagarea[5],
-						(diagarea[6] << 8) | diagarea[7],
-						nameoffset,
-						(diagarea[10] << 8) | diagarea[11],
-						(diagarea[12] << 8) | diagarea[13]);
-					if (nameoffset != 0 && nameoffset != 0xffff) {
-						copyromdata(config, rom, nameoffset, diagarea, 256);
-						diagarea[sizeof diagarea - 1] = 0;
-						TCHAR *str = au((char*)diagarea);
-						console_out_f(_T(" '%s'\n"), str);
-						xfree(str);
-					}
+			if (t[1] == 'm') {
+				uaecptr list = get_long_debug(expbase + 74);
+				while (list && get_long_debug(list)) {
+					uaecptr name = get_long(list + 10);
+					uae_s8 pri = get_byte(list + 9);
+					uae_u16 flags = get_word_debug(list + 14);
+					uae_u32 dn = get_long_debug(list + 16);
+					uae_u8 *addr = get_real_address_debug(name);
+					TCHAR *name1 = addr ? au((char*)addr) : au("<null>");
+					my_trim(name1);
+					console_out_f(_T("%08x %04x %08x %d %s\n"), list, flags, dn, pri, name1);
+					xfree(name1);
+					list = get_long_debug(list);
 				}
-				list = get_long_debug(list);
+			} else {
+				list = get_long_debug(expbase + 60);
+				while (list && get_long_debug(list)) {
+					uae_u32 addr = get_long_debug(list + 32);
+					uae_u16 rom_vector = get_word_debug(list + 16 + 10);
+					uae_u8 type = get_byte_debug(list + 16 + 0);
+					console_out_f(_T("%02x %02x %08x %08x %04x %02x %08x %04x (%u/%u)\n"),
+						type, get_byte_debug(list + 16 + 2),
+						addr, get_long_debug(list + 36),
+						get_word_debug(list + 16 + 4), get_byte_debug(list + 16 + 1),
+						get_long_debug(list + 16 + 6), rom_vector,
+						get_word_debug(list + 16 + 4), get_byte_debug(list + 16 + 1));
+					if ((type & 0x10)) {
+						uae_u8 diagarea[256];
+						uae_u16 nameoffset;
+						uaecptr rom = addr + rom_vector;
+						uae_u8 config = get_byte_debug(rom);
+						copyromdata(config, rom, 0, diagarea, 16);
+						nameoffset = (diagarea[8] << 8) | diagarea[9];
+						console_out_f(_T(" %02x %02x Size %04x Diag %04x Boot %04x Name %04x %04x %04x\n"),
+							diagarea[0], diagarea[1],
+							(diagarea[2] << 8) | diagarea[3],
+							(diagarea[4] << 8) | diagarea[5],
+							(diagarea[6] << 8) | diagarea[7],
+							nameoffset,
+							(diagarea[10] << 8) | diagarea[11],
+							(diagarea[12] << 8) | diagarea[13]);
+						if (nameoffset != 0 && nameoffset != 0xffff) {
+							copyromdata(config, rom, nameoffset, diagarea, 256);
+							diagarea[sizeof diagarea - 1] = 0;
+							TCHAR *str = au((char*)diagarea);
+							console_out_f(_T(" '%s'\n"), str);
+							xfree(str);
+						}
+					}
+					list = get_long_debug(list);
+				}
 			}
 		}
 		return;
@@ -4089,10 +4252,10 @@ static void show_exec_lists (TCHAR *t)
 				continue;
 			}
 			uae_u8 *addr;
-			addr = get_real_address (get_long_debug (resident + 14));
+			addr = get_real_address_debug(get_long_debug (resident + 14));
 			TCHAR *name1 = addr ? au ((char*)addr) : au("<null>");
 			my_trim (name1);
-			addr = get_real_address (get_long_debug (resident + 18));
+			addr = get_real_address_debug(get_long_debug (resident + 18));
 			TCHAR *name2 = addr ? au ((char*)addr) : au("<null>");
 			my_trim (name2);
 			console_out_f (_T("%08X %08X: %02X %3d %02X %+3.3d '%s' ('%s')\n"),
@@ -4123,14 +4286,14 @@ static void show_exec_lists (TCHAR *t)
 				_T("GlobalVec"),
 				NULL
 			};
-			uae_u8 *addr = get_real_address (get_long_debug (fs + 14));
+			uae_u8 *addr = get_real_address_debug(get_long_debug (fs + 14));
 			TCHAR *name = addr ? au ((char*)addr) : au ("<null>");
 			my_trim (name);
 			console_out_f (_T("%08x: '%s'\n"), fs, name);
 			xfree (name);
 			node = get_long_debug (fs + 18);
 			while (get_long_debug (node)) {
-				TCHAR *name = au ((char*)get_real_address (get_long_debug (node + 10)));
+				TCHAR *name = au ((char*)get_real_address_debug(get_long_debug (node + 10)));
 				my_trim (name);
 				console_out_f (_T("%08x: '%s'\n"), node, name);
 				xfree (name);
@@ -4150,7 +4313,7 @@ static void show_exec_lists (TCHAR *t)
 		list = execbase + 322;
 		node = get_long_debug (list);
 		while (get_long_debug (node)) {
-			TCHAR *name = au ((char*)get_real_address (get_long_debug (node + 10)));
+			TCHAR *name = au ((char*)get_real_address_debug(get_long_debug (node + 10)));
 			uae_u16 v = get_word_debug (node + 8);
 			console_out_f (_T("%08x %d %d %s\n"), node, (int)((v >> 8) & 0xff), (uae_s8)(v & 0xff), name);
 			xfree (name);
@@ -4195,7 +4358,7 @@ static void show_exec_lists (TCHAR *t)
 		return;
 	node = get_long_debug (list);
 	while (get_long_debug (node)) {
-		TCHAR *name = au ((char*)get_real_address (get_long_debug (node + 10)));
+		TCHAR *name = au ((char*)get_real_address_debug(get_long_debug (node + 10)));
 		uae_u16 v = get_word_debug (node + 8);
 		console_out_f (_T("%08x %d %d"), node, (int)((v >> 8) & 0xff), (uae_s8)(v & 0xff));
 		if (full) {
@@ -4209,7 +4372,7 @@ static void show_exec_lists (TCHAR *t)
 		if (full) {
 			uaecptr idstring = get_long_debug(node + 24);
 			if (idstring) {
-				name = au((char*)get_real_address(idstring));
+				name = au((char*)get_real_address_debug(idstring));
 				console_out_f(_T(" (%s)"), name);
 				xfree(name);
 			}
@@ -4234,17 +4397,21 @@ static int cycle_breakpoint(TCHAR **c)
 		int count = readint(c);
 		if (nc == 's') {
 			if (more_params(c)) {
+				int mvp = maxvpos + lof_store;
 				int hp = readint(c);
-				if (count >= vpos) {
-					count = vpos - count;
+				int chp = current_hpos();
+				if (count == vpos && chp < hp) {
+					count += mvp - vpos;
+				} else if (count >= vpos) {
+					count = count - vpos;
 				} else {
-					count += maxvpos - vpos;
+					count += mvp - vpos;
 				}
 				count *= maxhpos;
-				if (hp >= current_hpos()) {
-					count += hp - current_hpos();
+				if (hp >= chp) {
+					count += hp - chp;
 				} else {
-					count += maxhpos - current_hpos();
+					count += maxhpos - chp;
 				}
 			} else {
 				count *= maxhpos;
@@ -4402,10 +4569,11 @@ static int process_breakpoint (TCHAR **c)
 	return 1;
 }
 
-static void savemem (TCHAR **cc)
+static void saveloadmem (TCHAR **cc, bool save)
 {
 	uae_u8 b;
-	uae_u32 src, src2, len, len2;
+	uae_u32 src, src2;
+	int len, len2;
 	TCHAR *name;
 	FILE *fp;
 
@@ -4423,30 +4591,55 @@ static void savemem (TCHAR **cc)
 	if (!more_params (cc))
 		goto S_argh;
 	src2 = src = readhex (cc);
-	if (!more_params (cc))
-		goto S_argh;
-	len2 = len = readhex (cc);
-	fp = uae_tfopen (name, _T("wb"));
+	if (save) {
+		if (!more_params(cc))
+			goto S_argh;
+	}
+	len2 = len = -1;
+	if (more_params(cc)) {
+		len2 = len = readhex (cc);
+	}
+	fp = uae_tfopen (name, save ? _T("wb") : _T("rb"));
 	if (fp == NULL) {
-		console_out_f (_T("Couldn't open file '%s'\n"), name);
+		console_out_f (_T("Couldn't open file '%s'.\n"), name);
 		return;
 	}
-	while (len > 0) {
-		b = get_byte_debug (src);
-		src++;
-		len--;
-		if (fwrite (&b, 1, 1, fp) != 1) {
-			console_out (_T("Error writing file\n"));
-			break;
+	if (save) {
+		while (len > 0) {
+			b = get_byte_debug (src);
+			src++;
+			len--;
+			if (fwrite (&b, 1, 1, fp) != 1) {
+				console_out (_T("Error writing file.\n"));
+				break;
+			}
 		}
+		if (len == 0)
+			console_out_f (_T("Wrote %08X - %08X (%d bytes) to '%s'.\n"),
+				src2, src2 + len2, len2, name);
+	} else {
+		len2 = 0;
+		while (len != 0) {
+			if (fread(&b, 1, 1, fp) != 1) {
+				if (len > 0)
+					console_out (_T("Unexpected end of file.\n"));
+				len = 0;
+				break;
+			}
+			put_byte (src, b);
+			src++;
+			if (len > 0)
+				len--;
+			len2++;
+		}
+		if (len == 0)
+			console_out_f (_T("Read %08X - %08X (%d bytes) to '%s'.\n"),
+				src2, src2 + len2, len2, name);
 	}
 	fclose (fp);
-	if (len == 0)
-		console_out_f (_T("Wrote %08X - %08X (%d bytes) to '%s'\n"),
-		src2, src2 + len2, len2, name);
 	return;
 S_argh:
-	console_out (_T("S-command needs more arguments!\n"));
+	console_out (_T("Command needs more arguments!\n"));
 }
 
 static void searchmem (TCHAR **cc)
@@ -5171,8 +5364,8 @@ static void dma_disasm(int frames, int vp, int hp, int frames_end, int vp_end, i
 	}
 }
 
-static uaecptr nxdis, nxmem;
-static bool ppcmode;
+static uaecptr nxdis, nxmem, asmaddr;
+static bool ppcmode, asmmode;
 
 static bool debug_line (TCHAR *input)
 {
@@ -5180,10 +5373,45 @@ static bool debug_line (TCHAR *input)
 	uaecptr addr;
 
 	inptr = input;
+
+	if (asmmode) {
+		if (more_params(&inptr)) {
+			if (!_tcsicmp(inptr, _T("x"))) {
+				asmmode = false;
+				return false;
+			}
+			uae_u16 asmout[16];
+			int inss = m68k_asm(inptr, asmout, asmaddr);
+			if (inss > 0) {
+				for (int i = 0; i < inss; i++) {
+					put_word(asmaddr + i * 2, asmout[i]);
+				}
+				m68k_disasm(asmaddr, &nxdis, 1);
+				asmaddr = nxdis;
+			}
+			console_out_f(_T("%08X "), asmaddr);
+			return false;
+		} else {
+			asmmode = false;
+			return false;
+		}
+	}
+
 	cmd = next_char (&inptr);
 
 	switch (cmd)
 	{
+		case 'I':
+		if (more_params (&inptr)) {
+			static int recursive;
+			if (!recursive) {
+				recursive++;
+				handle_custom_event(inptr, 0);
+				device_check_config();
+				recursive--;
+			}
+		}
+		break;
 		case 'c': dumpcia (); dumpdisk (_T("DEBUG")); dumpcustom (); break;
 		case 'i':
 		{
@@ -5210,19 +5438,22 @@ static bool debug_line (TCHAR *input)
 		case 'e': dump_custom_regs (tolower(*inptr) == 'a'); break;
 		case 'r':
 			{
-				if (*inptr == 'c')
-					m68k_dumpcache ();
-				else if (more_params(&inptr))
+				if (*inptr == 'c') {
+					next_char(&inptr);
+					m68k_dumpcache (*inptr == 'd');
+				} else if (more_params(&inptr)) {
 					m68k_modify (&inptr);
-				else
+				} else {
 					m68k_dumpstate (&nextpc);
+				}
 			}
 			break;
 		case 'D': deepcheatsearch (&inptr); break;
 		case 'C': cheatsearch (&inptr); break;
 		case 'W': writeintomem (&inptr); break;
 		case 'w': memwatch (&inptr); break;
-		case 'S': savemem (&inptr); break;
+		case 'S': saveloadmem (&inptr, true); break;
+		case 'L': saveloadmem (&inptr, false); break;
 		case 's':
 			if (*inptr == 'c') {
 				screenshot (1, 1);
@@ -5242,6 +5473,26 @@ static bool debug_line (TCHAR *input)
 				searchmem (&inptr);
 			}
 			break;
+		case 'a':
+			asmaddr = nxdis;
+			if (more_params(&inptr)) {
+				asmaddr = readhex(&inptr);
+				if (more_params(&inptr)) {
+					uae_u16 asmout[16];
+					int inss = m68k_asm(inptr, asmout, asmaddr);
+					if (inss > 0) {
+						for (int i = 0; i < inss; i++) {
+							put_word(asmaddr + i * 2, asmout[i]);
+						}
+						m68k_disasm(asmaddr, &nxdis, 1);
+						asmaddr = nxdis;
+						return false;
+					}
+				}
+			}
+			asmmode = true;
+			console_out_f(_T("%08X "), asmaddr);
+		break;
 		case 'd':
 			{
 				if (*inptr == 'i') {
@@ -5466,13 +5717,18 @@ static bool debug_line (TCHAR *input)
 				}
 #endif
 				if (*inptr == 'm' && inptr[1] == 'u') {
-					if (currprefs.mmu_model) {
-						inptr += 2;
-						if (more_params (&inptr))
-							debug_mmu_mode = readint (&inptr);
-						else
-							debug_mmu_mode = 0;
-						console_out_f (_T("MMU translation function code = %d\n"), debug_mmu_mode);
+					inptr += 2;
+					if (inptr[0] == 'd') {
+						if (currprefs.mmu_model >= 68040)
+							mmu_dump_tables();
+					} else {
+						if (currprefs.mmu_model) {
+							if (more_params (&inptr))
+								debug_mmu_mode = readint (&inptr);
+							else
+								debug_mmu_mode = 0;
+							console_out_f (_T("MMU translation function code = %d\n"), debug_mmu_mode);
+						}
 					}
 					break;
 				}
@@ -5618,13 +5874,13 @@ static bool debug_line (TCHAR *input)
 					console_out_f (_T("S%dD%d="), super, data);
 					TRY(prb) {
 						if (currprefs.mmu_model >= 68040)
-							addrp = mmu_translate (addrl, super, data, false);
+							addrp = mmu_translate (addrl, 0, super, data, false, sz_long);
 						else
 							addrp = mmu030_translate (addrl, super, data, false);
 						console_out_f (_T("%08X"), addrp);
 						TRY(prb2) {
 							if (currprefs.mmu_model >= 68040)
-								addrp = mmu_translate (addrl, super, data, true);
+								addrp = mmu_translate (addrl, 0, super, data, true, sz_long);
 							else
 								addrp = mmu030_translate (addrl, super, data, true);
 							console_out_f (_T(" RW"));
@@ -5796,7 +6052,7 @@ void debug (void)
 					uaecptr execbase = get_long_debug (4);
 					uaecptr activetask = get_long_debug (execbase + 276);
 					int process = get_byte_debug (activetask + 8) == 13 ? 1 : 0;
-					char *name = (char*)get_real_address (get_long_debug (activetask + 10));
+					char *name = (char*)get_real_address_debug(get_long_debug (activetask + 10));
 					if (process) {
 						uaecptr cli = BPTR2APTR(get_long_debug (activetask + 172));
 						uaecptr seglist = 0;
@@ -5804,7 +6060,7 @@ void debug (void)
 						uae_char *command = NULL;
 						if (cli) {
 							if (processname)
-								command = (char*)get_real_address (BPTR2APTR(get_long_debug (cli + 16)));
+								command = (char*)get_real_address_debug(BPTR2APTR(get_long_debug (cli + 16)));
 							seglist = BPTR2APTR(get_long_debug (cli + 60));
 						} else {
 							seglist = BPTR2APTR(get_long_debug (activetask + 128));

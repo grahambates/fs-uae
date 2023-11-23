@@ -11,7 +11,7 @@
 
 #include "uae/types.h"
 
-typedef enum { DRV_NONE = -1, DRV_35_DD = 0, DRV_35_HD, DRV_525_SD, DRV_35_DD_ESCOM, DRV_PC_ONLY_40, DRV_PC_ONLY_80 } drive_type;
+typedef enum { DRV_NONE = -1, DRV_35_DD = 0, DRV_35_HD, DRV_525_SD, DRV_35_DD_ESCOM, DRV_PC_ONLY_40, DRV_PC_ONLY_80, DRV_525_DD } drive_type;
 
 #define HISTORY_FLOPPY 0
 #define HISTORY_CD 1
@@ -19,7 +19,8 @@ typedef enum { DRV_NONE = -1, DRV_35_DD = 0, DRV_35_HD, DRV_525_SD, DRV_35_DD_ES
 #define HISTORY_HDF 3
 #define HISTORY_FS 4
 #define HISTORY_TAPE 5
-#define HISTORY_MAX 6
+#define HISTORY_GEO 8
+#define HISTORY_MAX 9
 
 struct diskinfo
 {

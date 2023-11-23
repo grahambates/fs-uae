@@ -180,6 +180,12 @@ void fixup_prefs_dimensions (struct uae_prefs *prefs)
 		struct apmode *ap = &prefs->gfx_apmode[i];
 		ap->gfx_vflip = 0;
 		ap->gfx_strobo = false;
+#if 0
+		if (currprefs.gfx_api > 1 && ap->gfx_vsyncmode) {
+			ap->gfx_vsyncmode = false;
+			error_log(_T("Low latency vsync is not yet supported in Direct3D11 mode."));
+		}
+#endif
 		if (ap->gfx_vsync < 0) {
 			// adaptive sync
 			ap->gfx_vsyncmode = 0;
@@ -199,9 +205,11 @@ void fixup_prefs_dimensions (struct uae_prefs *prefs)
 				if (prefs->gfx_api && ap->gfx_backbuffers < 1)
 					ap->gfx_backbuffers = 1;
 				if (ap->gfx_vflip)
-					ap->gfx_strobo = prefs->lightboost_strobo;;
+					ap->gfx_strobo = prefs->lightboost_strobo;
 			}
 		} else {
+			if (ap->gfx_backbuffers > 0 && prefs->gfx_api > 1)
+				ap->gfx_strobo = prefs->lightboost_strobo;
 			// no vsync: wait if triple bufferirng
 			if (ap->gfx_backbuffers >= 2)
 				ap->gfx_vflip = -1;
@@ -336,6 +344,15 @@ void fixup_cpu (struct uae_prefs *p)
 	if (p->cpu_memory_cycle_exact && p->produce_sound == 0) {
 		p->produce_sound = 1;
 		error_log(_T("Cycle-exact mode requires at least Disabled but emulated sound setting."));
+	}
+
+	if (p->cpu_data_cache && (!p->cpu_compatible || p->cachesize || p->cpu_model < 68030)) {
+		p->cpu_data_cache = false;
+		error_log(_T("Data cache emulation requires More compatible, is not JIT compatible, 68030+ only."));
+	}
+	if (p->cpu_data_cache && (p->uaeboard != 3 && need_uae_boot_rom(p))) {
+		p->cpu_data_cache = false;
+		error_log(_T("Data cache emulation requires Indirect UAE Boot ROM."));
 	}
 
 #if 0

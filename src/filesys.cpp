@@ -142,7 +142,7 @@ static void aino_test_init (a_inode *aino)
 
 #define UAEFS_VERSION "UAEfs 0.5"
 
-uaecptr filesys_initcode, filesys_initcode_ptr;
+uaecptr filesys_initcode, filesys_initcode_ptr, filesys_initcode_real;
 static uaecptr bootrom_start;
 static uae_u32 fsdevname, fshandlername, filesys_configdev;
 static uae_u32 cdfs_devname, cdfs_handlername;
@@ -186,8 +186,6 @@ typedef struct {
 	bool unknown_media; /* ID_UNREADABLE_DISK */
 	int bootpri; /* boot priority. -128 = no autoboot, -129 = no mount */
 	int devno;
-	int controller_type;
-	int controller_unit;
 	bool wasisempty; /* if true, this unit was created empty */
 	bool canremove; /* if true, this unit can be safely ejected and remounted */
 	bool configureddrive; /* if true, this is drive that was manually configured */
@@ -230,8 +228,8 @@ static struct uaedev_mount_info mountinfo;
 
 int nr_units (void)
 {
-	int i, cnt = 0;
-	for (i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
+	int cnt = 0;
+	for (int i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
 		if (mountinfo.ui[i].open > 0)
 			cnt++;
 	}
@@ -240,15 +238,15 @@ int nr_units (void)
 
 int nr_directory_units (struct uae_prefs *p)
 {
-	int i, cnt = 0;
+	int cnt = 0;
 	if (p) {
-		for (i = 0; i < p->mountitems; i++) {
+		for (int i = 0; i < p->mountitems; i++) {
 			if (p->mountconfig[i].ci.controller_type == HD_CONTROLLER_TYPE_UAE)
 				cnt++;
 		}
 	} else {
-		for (i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
-			if (mountinfo.ui[i].open > 0 && mountinfo.ui[i].controller_type == HD_CONTROLLER_TYPE_UAE)
+		for (int i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
+			if (mountinfo.ui[i].open > 0 && mountinfo.ui[i].hf.ci.controller_type == HD_CONTROLLER_TYPE_UAE)
 				cnt++;
 		}
 	}
@@ -390,7 +388,7 @@ int get_filesys_unitconfig (struct uae_prefs *p, int index, struct mountedinfo *
 #endif
 		}
 	} else if (uci->ci.type != UAEDEV_TAPE) {
-		if (ui->controller_type == HD_CONTROLLER_TYPE_UAE) { // what is this? || (ui->controller && p->cs_ide)) {
+		if (ui->hf.ci.controller_type == HD_CONTROLLER_TYPE_UAE) { // what is this? || (ui->controller && p->cs_ide)) {
 			mi->ismounted = 1;
 			if (uci->ci.type == UAEDEV_HDF)
 				mi->ismedia = ui->hf.drive_empty ? false : true;
@@ -451,10 +449,9 @@ static void stripsemicolon (TCHAR *s)
 }
 static void stripspace (TCHAR *s)
 {
-	int i;
 	if (!s)
 		return;
-	for (i = 0; i < _tcslen (s); i++) {
+	for (int i = 0; i < _tcslen (s); i++) {
 		if (s[i] == ' ')
 			s[i] = '_';
 	}
@@ -646,9 +643,31 @@ static int set_filesys_unit_1 (int nr, struct uaedev_config_info *ci)
 			return -1;
 		}
 	}
+	for (;;) {
+		bool retry = false;
+		for (i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
+			int hf = is_hardfile(i);
+			if (nr == i || !mountinfo.ui[i].open || mountinfo.ui[i].rootdir == NULL)
+				continue;
+			if (hf != FILESYS_HARDDRIVE && hf != FILESYS_HARDFILE && hf != FILESYS_HARDFILE_RDB)
+				continue;
+			if (mountinfo.ui[i].hf.ci.controller_unit == c.controller_unit) {
+				c.controller_unit++;
+				if (c.controller_unit >= MAX_FILESYSTEM_UNITS) {
+					error_log (_T("directory/hardfile '%s' invalid unit number."), c.rootdir);
+					return -1;
+				}
+				retry = true;
+			}
+		}
+		if (!retry)
+			break;
+	}
+
 
 	ui = &mountinfo.ui[nr];
 	memset (ui, 0, sizeof (UnitInfo));
+	memcpy(&ui->hf.ci, &c, sizeof c);
 
 	if (iscd) {
 		ui->unit_type = UNIT_CDFS;
@@ -666,7 +685,6 @@ static int set_filesys_unit_1 (int nr, struct uaedev_config_info *ci)
 		ui->volflags = flags;
 	} else {
 		ui->unit_type = UNIT_FILESYSTEM;
-		memcpy (&ui->hf.ci, &c, sizeof (struct uaedev_config_info));
 		ui->hf.unitnum = nr;
 		ui->volname = 0;
 		if (ui->hf.ci.rootdir[0]) {
@@ -1045,11 +1063,22 @@ static void free_mountinfo (void)
 	gayle_free_units ();
 }
 
+struct hardfiledata *get_hardfile_data_controller(int nr)
+{
+	UnitInfo *uip = mountinfo.ui;
+	for (int i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
+		if (uip[i].open == 0 || is_virtual(i))
+			continue;
+		if (uip[i].hf.ci.controller_unit == nr)
+			return &uip[i].hf;
+	}
+	return NULL;
+}
 struct hardfiledata *get_hardfile_data (int nr)
 {
 	UnitInfo *uip = mountinfo.ui;
 	if (nr < 0 || nr >= MAX_FILESYSTEM_UNITS || uip[nr].open == 0 || is_virtual (nr))
-		return 0;
+		return NULL;
 	return &uip[nr].hf;
 }
 
@@ -2541,7 +2570,7 @@ static TCHAR *get_nname (Unit *unit, a_inode *base, TCHAR *rel, TCHAR **modified
 		return 0;
 	/* A file called "." (or whatever else is invalid on this filesystem)
 	* does not exist, as far as the Amiga side is concerned.  */
-	if (fsdb_name_invalid_dir (rel))
+	if (fsdb_name_invalid_dir (base, rel))
 		return 0;
 
 	/* See if we have a file that has the same name as the aname we are
@@ -2565,7 +2594,7 @@ static TCHAR *create_nname (Unit *unit, a_inode *base, TCHAR *rel)
 
 	/* If the name is used otherwise in the directory (or globally), we
 	* need a new unique nname.  */
-	if (fsdb_name_invalid (rel) || fsdb_used_as_nname (base, rel)) {
+	if (fsdb_name_invalid (base, rel) || fsdb_used_as_nname (base, rel)) {
 #if 0
 oh_dear:
 #endif
@@ -4514,7 +4543,7 @@ static int action_examine_all_do(TrapContext *ctx, Unit *unit, uaecptr lock, ExA
 		if (!eak->fn) {
 			do {
 				ok = filesys_readdir(d, fn, &uniq);
-			} while (ok && d->fstype == FS_DIRECTORY && (filesys_name_invalid (fn) || fsdb_name_invalid_dir (fn)));
+			} while (ok && d->fstype == FS_DIRECTORY && (filesys_name_invalid (fn) || fsdb_name_invalid_dir (NULL, fn)));
 			if (!ok)
 				return 0;
 		} else {
@@ -4844,7 +4873,7 @@ static void populate_directory (Unit *unit, a_inode *base)
 		like "..", "." etc.  */
 		do {
 			ok = filesys_readdir(d, fn, &uniq);
-		} while (ok && d->fstype == FS_DIRECTORY && (filesys_name_invalid (fn) || fsdb_name_invalid_dir (fn)));
+		} while (ok && d->fstype == FS_DIRECTORY && (filesys_name_invalid (fn) || fsdb_name_invalid_dir (NULL, fn)));
 		if (!ok)
 			break;
 		/* This calls init_child_aino, which will notice that the parent is
@@ -5320,7 +5349,6 @@ static void	action_read(TrapContext *ctx, Unit *unit, dpacket *packet)
 				k->file_pos += actual;
 			}
 			xfree (buf);
-			flush_dcache (addr, size);
 			size = 0;
 		}
 	}
@@ -5372,7 +5400,6 @@ static void	action_read(TrapContext *ctx, Unit *unit, dpacket *packet)
 			PUT_PCK_RES1 (packet, actual);
 			k->file_pos += actual;
 		}
-		flush_dcache (addr, size);
 	}
 
 	TRACE((_T("=%d\n"), actual));
@@ -6875,6 +6902,8 @@ end:
 
 static int handle_packet(TrapContext *ctx, Unit *unit, dpacket *pck, uae_u32 msg, int isvolume)
 {
+	bool noidle = false;
+	int ret = 1;
 	uae_s32 type = GET_PCK_TYPE (pck);
 	PUT_PCK_RES2 (pck, 0);
 
@@ -6909,13 +6938,13 @@ static int handle_packet(TrapContext *ctx, Unit *unit, dpacket *pck, uae_u32 msg
 	case ACTION_DISK_INFO: action_disk_info (ctx, unit, pck); break;
 	case ACTION_INFO: action_info (ctx, unit, pck); break;
 	case ACTION_EXAMINE_OBJECT: action_examine_object (ctx, unit, pck); break;
-	case ACTION_EXAMINE_NEXT: action_examine_next (ctx, unit, pck, false); break;
+	case ACTION_EXAMINE_NEXT: noidle = true; action_examine_next (ctx, unit, pck, false); break;
 	case ACTION_FIND_INPUT: action_find_input (ctx, unit, pck); break;
 	case ACTION_FIND_WRITE: action_find_write (ctx, unit, pck); break;
 	case ACTION_FIND_OUTPUT: action_find_output (ctx, unit, pck); break;
 	case ACTION_END: action_end (ctx, unit, pck); break;
-	case ACTION_READ: action_read (ctx, unit, pck); break;
-	case ACTION_WRITE: action_write (ctx, unit, pck); break;
+	case ACTION_READ: noidle = true; action_read(ctx, unit, pck); break;
+	case ACTION_WRITE: noidle = true; action_write (ctx, unit, pck); break;
 	case ACTION_SEEK: action_seek (ctx, unit, pck); break;
 	case ACTION_SET_PROTECT: action_set_protect (ctx, unit, pck); break;
 	case ACTION_SET_COMMENT: action_set_comment (ctx, unit, pck); break;
@@ -6942,9 +6971,9 @@ static int handle_packet(TrapContext *ctx, Unit *unit, dpacket *pck, uae_u32 msg
 	case ACTION_PARENT_FH: action_parent_fh (ctx, unit, pck); break;
 	case ACTION_ADD_NOTIFY: action_add_notify (ctx, unit, pck); break;
 	case ACTION_REMOVE_NOTIFY: action_remove_notify (ctx, unit, pck); break;
-	case ACTION_EXAMINE_ALL: return action_examine_all (ctx, unit, pck);
-	case ACTION_EXAMINE_ALL_END: return action_examine_all_end (ctx, unit, pck);
-	case ACTION_LOCK_RECORD: return action_lock_record (ctx, unit, pck, msg); break;
+	case ACTION_EXAMINE_ALL: noidle = true; ret = action_examine_all(ctx, unit, pck); break;
+	case ACTION_EXAMINE_ALL_END: ret = action_examine_all_end(ctx, unit, pck); break;
+	case ACTION_LOCK_RECORD: ret = action_lock_record (ctx, unit, pck, msg); break;
 	case ACTION_FREE_RECORD: action_free_record (ctx, unit, pck); break;
 	case ACTION_READ_LINK: action_read_link (ctx, unit, pck); break;
 	case ACTION_MAKE_LINK: action_make_link (ctx, unit, pck); break;
@@ -6960,9 +6989,9 @@ static int handle_packet(TrapContext *ctx, Unit *unit, dpacket *pck, uae_u32 msg
 	case ACTION_SEEK64: action_seek64(ctx, unit, pck); break;
 	case ACTION_SET_FILE_SIZE64: action_set_file_size64(ctx, unit, pck); break;
 	case ACTION_EXAMINE_OBJECT64: action_examine_object64(ctx, unit, pck); break;
-	case ACTION_EXAMINE_NEXT64: action_examine_next(ctx, unit, pck, true); break;
+	case ACTION_EXAMINE_NEXT64: noidle = true; action_examine_next(ctx, unit, pck, true); break;
 	case ACTION_EXAMINE_FH64: action_examine_fh(ctx, unit, pck, true); break;
-	case ACTION_LOCK_RECORD64: return action_lock_record64(ctx, unit, pck, msg); break;
+	case ACTION_LOCK_RECORD64: ret = action_lock_record64(ctx, unit, pck, msg); break;
 	case ACTION_FREE_RECORD64: action_free_record64(ctx, unit, pck); break;
 
 		/* unsupported packets */
@@ -7670,6 +7699,12 @@ static uae_u32 REGPARAM2 filesys_diagentry (TrapContext *ctx)
 		put_word_host(baseaddr + 0x2112, 1 | 2 | 8 | 16);
 
 		resaddr = resaddr_tmp;
+	} else {
+		// undo possible KS 1.2 hack
+		uaecptr temp = here();
+		org(filesys_initcode_ptr);
+		dl(filesys_initcode_real);
+		org(temp);
 	}
 
 	trap_set_areg(ctx, 0, last_resident);
@@ -7713,6 +7748,45 @@ static uae_u32 REGPARAM2 filesys_diagentry (TrapContext *ctx)
 	return 1;
 }
 
+#define FS_TEST_HACK 0
+#if FS_TEST_HACK
+static uae_u32 REGPARAM2 ks13patchstartup(TrapContext *ctx)
+{
+	uaecptr startup = trap_get_areg(ctx, 0);
+	uaecptr doslib = 0x00c06230;
+	uaecptr root = get_long(doslib + 34);
+	uaecptr node = (get_long(root + 24) << 2) + 4;
+	uaecptr dp_arg2 = get_long(startup + 24);
+	for (;;) {
+		node = get_long(node) << 2;
+		if (!node)
+			break;
+		if (get_long(node + 4) != 0)
+			continue;
+		if (get_long(node + 28) != dp_arg2)
+			continue;
+		put_long(startup + 20, get_long(node + 40)); // dp_Arg1 = dol_Node
+		put_long(startup + 28, node >> 2); // dp_Arg3 = dl
+		activate_debugger();
+		return dp_arg2 << 2;
+	}
+	return 0;
+}
+
+static void patchhackfs(uaecptr seg)
+{
+	int o = rtarea_base + 0xFEFA;
+	put_long(seg + 9806, 0x70ff70ff);
+	seg += 9632;
+	put_word(seg, 0x4eb9);
+	put_long(seg + 2, o);
+	put_word(seg + 6, 0x2440); // move.l d0,a2
+	org(o);
+	calltrap(deftrap2(ks13patchstartup, 0, _T("ks13patchstartup")));
+	dw(RTS);
+}
+#endif
+
 static uae_u32 REGPARAM2 filesys_dev_bootfilesys (TrapContext *ctx)
 {
 	uaecptr devicenode = trap_get_areg(ctx, 3);
@@ -7740,6 +7814,7 @@ static uae_u32 REGPARAM2 filesys_dev_bootfilesys (TrapContext *ctx)
 		return 0;
 	}
 
+	dostype = trap_get_long(ctx, parmpacket + 80);
 	if (trap_get_long(ctx, parmpacket + PP_FSPTR) && !trap_get_long(ctx, parmpacket + PP_ADDTOFSRES)) {
 		uaecptr fsptr = trap_get_long(ctx, parmpacket + PP_FSPTR);
 		uip->filesysseg = fsptr;
@@ -7755,9 +7830,9 @@ static uae_u32 REGPARAM2 filesys_dev_bootfilesys (TrapContext *ctx)
 			seglist = (trap_get_long(ctx, rtarea_base + bootrom_header + 4 + 6 * 4) + rtarea_base + bootrom_header) >> 2;
 		}
 		trap_put_long(ctx, devicenode + 4 + 7 * 4, seglist);
+		write_log(_T("Filesys %08x entry=%08x\n"), dostype, fsptr);
 		return 1;
 	}
-	dostype = trap_get_long(ctx, parmpacket + 80);
 	fsnode = trap_get_long(ctx, fsres + 18);
 	while (trap_get_long(ctx, fsnode)) {
 		dostype2 = trap_get_long(ctx, fsnode + 14);
@@ -7766,10 +7841,16 @@ static uae_u32 REGPARAM2 filesys_dev_bootfilesys (TrapContext *ctx)
 			for (int i = 0; i < 32; i++) {
 				if (pf & (1 << i)) {
 					uae_u32 data = trap_get_long(ctx, fsnode + 22 + 4 + i * 4);
-					if (i == 7 && bcplonlydos()) { // seglist
-						// point seglist to bcpl wrapper and put original seglist in dn_Handler
-						trap_put_long(ctx, devicenode + 4 + 3 * 4, trap_get_long(ctx, fsnode + 22 + 4 + 7 * 4));
-						data = (trap_get_long(ctx, rtarea_base + bootrom_header + 4 + 6 * 4) + rtarea_base + bootrom_header) >> 2;
+					if (i == 7) {
+						if (bcplonlydos()) { // seglist
+							// point seglist to bcpl wrapper and put original seglist in dn_Handler
+							trap_put_long(ctx, devicenode + 4 + 3 * 4, trap_get_long(ctx, fsnode + 22 + 4 + 7 * 4));
+							data = (trap_get_long(ctx, rtarea_base + bootrom_header + 4 + 6 * 4) + rtarea_base + bootrom_header) >> 2;
+						}
+						write_log(_T("Filesys %08x entry=%08x\n"), dostype, data << 2);
+#if FS_TEST_HACK
+						patchhackfs(data << 2);
+#endif
 					}
 					trap_put_long(ctx, devicenode + 4 + i * 4, data);
 				}
@@ -7905,6 +7986,10 @@ static int legalrdbblock (UnitInfo *uip, int block)
 static uae_u32 rl (uae_u8 *p)
 {
 	return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | (p[3]);
+}
+static uae_u16 rw (uae_u8 *p)
+{
+	return (p[0] << 8) | (p[1]);
 }
 
 static int rdb_checksum (const uae_char *id, uae_u8 *p, int block)
@@ -8119,15 +8204,122 @@ static void dump_rdb (UnitInfo *uip, struct hardfiledata *hfd, uae_u8 *bufrdb, u
 	}
 }
 
-#define rdbmnt write_log (_T("Mounting uaehf.device %d (%d) (size=%llu):\n"), unit_no, partnum, hfd->virtsize);
-
-static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacket)
+static void get_new_device (TrapContext *ctx, int type, uaecptr parmpacket, TCHAR **devname, uaecptr *devname_amiga, int unit_no)
 {
-	int lastblock = 63, blocksize, readblocksize, badblock, driveinitblock;
+	TCHAR buffer[80];
+	uaecptr expbase = trap_get_long(ctx, parmpacket + PP_EXPLIB);
+
+	if (*devname == 0 || _tcslen (*devname) == 0) {
+		int un = unit_no;
+		for (;;) {
+			_stprintf (buffer, type == FILESYS_CD ? _T("CD%d") : _T("DH%d"), un++);
+			if (type == FILESYS_CD)
+				*devname = my_strdup (buffer);
+			if (!device_isdup(ctx, expbase, buffer))
+				break;
+		}
+	} else {
+		_tcscpy (buffer, *devname);
+	}
+	*devname_amiga = ds (device_dupfix(ctx, expbase, buffer));
+	if (type == FILESYS_CD)
+		write_log (_T("FS: mounted CD unit %s\n"), buffer);
+	else if (type == FILESYS_VIRTUAL)
+		write_log (_T("FS: mounted virtual unit %s (%s)\n"), buffer, mountinfo.ui[unit_no].rootdir);
+	else
+		write_log (_T("FS: mounted HDF unit %s (%04x-%08x, %s)\n"), buffer,
+		(uae_u32)(mountinfo.ui[unit_no].hf.virtsize >> 32),
+		(uae_u32)(mountinfo.ui[unit_no].hf.virtsize),
+		mountinfo.ui[unit_no].rootdir);
+}
+
+#define rdbmnt write_log (_T("Mounting uaehf.device %d (%d) (size=%llu):\n"), unit_no, partnum, hfd->virtsize)
+
+static int pt_babe(TrapContext *ctx, uae_u8 *bufrdb, UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacket)
+{
+	uae_u8 bufrdb2[FILESYS_MAX_BLOCKSIZE] = { 0 };
+	struct hardfiledata *hfd = &uip->hf;
+	struct uaedev_config_info *ci = &uip[unit_no].hf.ci;
+	uae_u32 bad;
+
+	uae_u32 bs = (bufrdb[0x20] << 24) | (bufrdb[0x21] << 16) | (bufrdb[0x22] << 8) | (bufrdb[0x23] << 0);
+	int bscnt;
+	for (bscnt = 512; bscnt <= 32768; bscnt <<= 1) {
+		if (bs == (bscnt >> 2))
+			break;
+	}
+	if (bscnt > 32768)
+		return 0;
+
+	bad = rl(bufrdb + 4);
+	if (bad) {
+		hdf_read_rdb(hfd, bufrdb2, bad * hfd->ci.blocksize, hfd->ci.blocksize);
+		if (bufrdb2[0] != 0xBA || bufrdb2[1] != 0xD1)
+			return 0;
+	}
+
+	if (partnum > 0)
+		return -2;
+
+	if (uip->bootpri <= -129) {
+		return -1;
+	}
+
+	if (bad) {
+		uae_u16 badnum = (bufrdb2[2] << 8) | bufrdb2[3];
+		if (badnum) {
+			write_log(_T("A2090 partition table: bad block table is not empty, bad blocks not yet supported!\n"));
+		}
+	}
+
+	hfd->rdbcylinders = rl(bufrdb + 0x08);
+	hfd->rdbsectors = rw(bufrdb + 0x18);
+	hfd->rdbheads = rw(bufrdb + 0x1a);
+
+	write_log (_T("Mounting uaehf.device:%d %d (%d):\n"), uip->hf.ci.controller_unit, unit_no, partnum);
+	get_new_device(ctx, FILESYS_HARDFILE_RDB, parmpacket, &uip->devname, &uip->rdb_devname_amiga[partnum], unit_no);
+	trap_put_long(ctx, parmpacket, uip->rdb_devname_amiga[partnum]);
+	trap_put_long(ctx, parmpacket + 4, ROM_hardfile_resname);
+	trap_put_long(ctx, parmpacket + 8, uip->devno);
+	trap_put_long(ctx, parmpacket + 12, 0); /* Device flags */
+	for (int i = 0; i < 12 * 4; i++)
+		trap_put_byte(ctx, parmpacket + 16 + i, bufrdb[0x1c + i]);
+
+	uae_u32 dostype = 0x444f5300;
+	if (ci->dostype) // forced dostype?
+		dostype = ci->dostype;
+
+	// A2090 Environment Table Size is only 11
+	int ts = trap_get_long(ctx, parmpacket + 16 + 0 * 4);
+	while (ts < 16) {
+		ts++;
+		if (ts == 12) // BufMem Type
+			trap_put_long(ctx, parmpacket + 16 + 12 * 4, 1);
+		if (ts == 13) // Max Transfer
+			trap_put_long(ctx, parmpacket + 16 + 13 * 4, 0x7fffffff);
+		if (ts == 14) // Mask
+			trap_put_long(ctx, parmpacket + 16 + 14 * 4, 0xfffffffe);
+		if (ts == 15) // BootPri
+			trap_put_long(ctx, parmpacket + 16 + 15 * 4, uip->bootpri);
+		if (ts == 16) // DosType
+			trap_put_long(ctx, parmpacket + 16 + 16 * 4, dostype);
+	}
+	trap_put_long(ctx, parmpacket + 16 + 0 * 4, ts);
+
+	uip->rdb_dostype = dostype;
+
+	if (uip->bootpri <= -128) /* not bootable */
+		trap_set_dreg(ctx, 7, trap_get_dreg(ctx, 7) & ~1);
+
+	return 2;
+}
+
+static int pt_rdsk (TrapContext *ctx, uae_u8 *bufrdb, int rdblock, UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacket)
+{
+	int blocksize, readblocksize, badblock, driveinitblock;
 	TCHAR dt[32];
-	uae_u8 bufrdb[FILESYS_MAX_BLOCKSIZE], *buf = 0;
-	uae_u8 *fsmem = 0;
-	int rdblock, partblock, fileblock, lsegblock, i;
+	uae_u8 *fsmem = 0, *buf = 0;
+	int partblock, fileblock, lsegblock;
 	uae_u32 flags;
 	struct hardfiledata *hfd = &uip->hf;
 	uae_u32 dostype;
@@ -8138,46 +8330,6 @@ static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum,
 	TCHAR *s;
 	bool showdebug = partnum == 0;
 
-	write_log (_T("%s:\n"), uip->rootdir);
-	if (hfd->drive_empty) {
-		rdbmnt
-		write_log (_T("ignored, drive is empty\n"));
-		return -2;
-	}
-	if (hfd->ci.blocksize == 0) {
-		rdbmnt
-		write_log (_T("failed, blocksize == 0\n"));
-		return -1;
-	}
-	if (lastblock * hfd->ci.blocksize > hfd->virtsize) {
-		rdbmnt
-		write_log (_T("failed, too small (%d*%d > %llu)\n"), lastblock, hfd->ci.blocksize, hfd->virtsize);
-		return -2;
-	}
-	for (rdblock = 0; rdblock < lastblock; rdblock++) {
-		hdf_read_rdb (hfd, bufrdb, rdblock * hfd->ci.blocksize, hfd->ci.blocksize);
-		if (rdb_checksum ("RDSK", bufrdb, rdblock))
-			break;
-		if (rdb_checksum ("CDSK", bufrdb, rdblock))
-			break;
-		hdf_read_rdb (hfd, bufrdb, rdblock * hfd->ci.blocksize, hfd->ci.blocksize);
-		if (!memcmp ("RDSK", bufrdb, 4)) {
-			bufrdb[0xdc] = 0;
-			bufrdb[0xdd] = 0;
-			bufrdb[0xde] = 0;
-			bufrdb[0xdf] = 0;
-			if (rdb_checksum ("RDSK", bufrdb, rdblock)) {
-				write_log (_T("Windows 95/98/ME trashed RDB detected, fixing..\n"));
-				hdf_write (hfd, bufrdb, rdblock * hfd->ci.blocksize, hfd->ci.blocksize);
-				break;
-			}
-		}
-	}
-	if (rdblock == lastblock) {
-		rdbmnt
-		write_log (_T("failed, no RDB detected\n"));
-		return -2;
-	}
 	blocksize = rl (bufrdb + 16);
 	readblocksize = blocksize > hfd->ci.blocksize ? blocksize : hfd->ci.blocksize;
 
@@ -8210,6 +8362,7 @@ static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum,
 	fileblock = rl (bufrdb + 32);
 
 	buf = xmalloc (uae_u8, readblocksize);
+	int cnt = 0;
 
 	if (showdebug) {
 		if ((uae_u64)hfd->rdbcylinders * hfd->rdbsectors * hfd->rdbheads * blocksize > hfd->virtsize)
@@ -8222,7 +8375,7 @@ static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum,
 		write_log (_T("RDSK dump end\n"));
 	}
 
-	for (i = 0; i <= partnum; i++) {
+	for (int i = 0; i <= partnum; i++) {
 		if (i == 0)
 			partblock = rl (bufrdb + 28);
 		else
@@ -8241,7 +8394,7 @@ static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum,
 		}
 	}
 
-	rdbmnt
+	rdbmnt;
 	flags = rl (buf + 20);
 	if ((flags & 2) || uip->bootpri <= -129) { /* do not mount */
 		err = -1;
@@ -8260,7 +8413,7 @@ static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum,
 	trap_put_long(ctx, parmpacket + 4, ROM_hardfile_resname);
 	trap_put_long(ctx, parmpacket + 8, uip->devno);
 	trap_put_long(ctx, parmpacket + 12, 0); /* Device flags */
-	for (i = 0; i < PP_MAXSIZE; i++)
+	for (int i = 0; i < (17 + 15) * 4; i++)
 		trap_put_byte(ctx, parmpacket + 16 + i, buf[128 + i]);
 	dostype = trap_get_long(ctx, parmpacket + 80);
 	uip->rdb_dostype = dostype;
@@ -8333,13 +8486,12 @@ static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum,
 		goto error;
 	}
 
-	for (i = 0; i < 140; i++)
+	for (int i = 0; i < 140; i++)
 		trap_put_byte(ctx, parmpacket + PP_FSHDSTART + i, buf[32 + i]);
 	trap_put_long(ctx, parmpacket + PP_FSHDSTART, dostype);
 	/* we found required FSHD block */
 	fsmem = xmalloc (uae_u8, 262144);
 	lsegblock = rl (buf + 72);
-	i = 0;
 	for (;;) {
 		int pb = lsegblock;
 		if (!legalrdbblock (uip, lsegblock))
@@ -8354,18 +8506,18 @@ static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum,
 		lsegblock = rl (buf + 16);
 		if (lsegblock == pb)
 			goto error;
-		if ((i + 1) * (blocksize - 20) >= 262144)
+		if ((cnt + 1) * (blocksize - 20) >= 262144)
 			goto error;
-		memcpy (fsmem + i * (blocksize - 20), buf + 20, blocksize - 20);
-		i++;
+		memcpy (fsmem + cnt * (blocksize - 20), buf + 20, blocksize - 20);
+		cnt++;
 		if (lsegblock == -1)
 			break;
 	}
-	write_log (_T("RDB: Filesystem loaded, %d bytes\n"), i * (blocksize - 20));
-	trap_put_long(ctx, parmpacket + PP_FSSIZE, i * (blocksize - 20)); /* RDB filesystem size hack */
+	write_log (_T("RDB: Filesystem loaded, %d bytes\n"), cnt * (blocksize - 20));
+	trap_put_long(ctx, parmpacket + PP_FSSIZE, cnt * (blocksize - 20)); /* RDB filesystem size hack */
 	trap_put_long(ctx, parmpacket + PP_ADDTOFSRES, -1);
 	uip->rdb_filesysstore = fsmem;
-	uip->rdb_filesyssize = i * (blocksize - 20);
+	uip->rdb_filesyssize = cnt * (blocksize - 20);
 	xfree (buf);
 	return 2;
 error:
@@ -8374,13 +8526,66 @@ error:
 	return err;
 }
 
+static int rdb_mount (TrapContext *ctx, UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacket)
+{
+	struct hardfiledata *hfd = &uip->hf;
+	int lastblock = 63, rdblock;
+	uae_u8 bufrdb[FILESYS_MAX_BLOCKSIZE];
+
+	write_log (_T("%s:\n"), uip->rootdir);
+	if (hfd->drive_empty) {
+		rdbmnt;
+		write_log (_T("ignored, drive is empty\n"));
+		return -2;
+	}
+	if (hfd->ci.blocksize == 0) {
+		rdbmnt;
+		write_log (_T("failed, blocksize == 0\n"));
+		return -1;
+	}
+	if (lastblock * hfd->ci.blocksize > hfd->virtsize) {
+		rdbmnt;
+		write_log (_T("failed, too small (%d*%d > %llu)\n"), lastblock, hfd->ci.blocksize, hfd->virtsize);
+		return -2;
+	}
+
+	for (rdblock = 0; rdblock < lastblock; rdblock++) {
+		hdf_read_rdb (hfd, bufrdb, rdblock * hfd->ci.blocksize, hfd->ci.blocksize);
+		if (rdblock == 0 && bufrdb[0] == 0xBA && bufrdb[1] == 0xBE) {
+				// A2090 "BABE" partition table?
+				int v = pt_babe(ctx, bufrdb, uip, unit_no, partnum, parmpacket);
+				if (v)
+					return v;
+				continue;
+		}
+		if (rdb_checksum ("RDSK", bufrdb, rdblock) || rdb_checksum ("CDSK", bufrdb, rdblock)) {
+			return pt_rdsk(ctx, bufrdb, rdblock, uip, unit_no, partnum, parmpacket);
+		}
+		if (!memcmp ("RDSK", bufrdb, 4)) {
+			bufrdb[0xdc] = 0;
+			bufrdb[0xdd] = 0;
+			bufrdb[0xde] = 0;
+			bufrdb[0xdf] = 0;
+			if (rdb_checksum ("RDSK", bufrdb, rdblock)) {
+				write_log (_T("Windows 95/98/ME trashed RDB detected, fixing..\n"));
+				hdf_write (hfd, bufrdb, rdblock * hfd->ci.blocksize, hfd->ci.blocksize);
+				return pt_rdsk(ctx, bufrdb, rdblock, uip, unit_no, partnum, parmpacket);
+			}
+		}
+	}
+
+	rdbmnt;
+	write_log (_T("failed, no supported partition tables detected\n"));
+	return -2;
+}
+
+
 static void addfakefilesys (TrapContext *ctx, uaecptr parmpacket, uae_u32 dostype, int ver, int rev, struct uaedev_config_info *ci)
 {
-	int i;
 	uae_u32 flags;
 
 	flags = 0x180;
-	for (i = 0; i < 140; i++)
+	for (int i = 0; i < 140; i++)
 		trap_put_byte(ctx, parmpacket + PP_FSHDSTART + i, 0);
 	if (dostype) {
 		trap_put_long(ctx, parmpacket + 80, dostype);
@@ -8421,7 +8626,7 @@ static uaecptr getfakefilesysseg (UnitInfo *uip)
 
 static int dofakefilesys (TrapContext *ctx, UnitInfo *uip, uaecptr parmpacket, struct uaedev_config_info *ci)
 {
-	int i, size;
+	int size;
 	TCHAR tmp[MAX_DPATH];
 	TCHAR dt[32];
 	uae_u8 buf[512];
@@ -8438,7 +8643,7 @@ static int dofakefilesys (TrapContext *ctx, UnitInfo *uip, uaecptr parmpacket, s
 			trap_put_long(ctx, parmpacket + PP_FSSIZE, 0);
 			trap_put_long(ctx, parmpacket + PP_FSPTR, seg);
 			trap_put_long(ctx, parmpacket + PP_ADDTOFSRES, 0);
-			write_log (_T("RDB: faked RDB filesystem '%s' reused\n"), uip->filesysdir);
+			write_log (_T("RDB: faked RDB filesystem '%s' reused, entry=%08x\n"), uip->filesysdir, seg << 2);
 			return FILESYS_HARDFILE;
 		}
 	}
@@ -8464,7 +8669,7 @@ static int dofakefilesys (TrapContext *ctx, UnitInfo *uip, uaecptr parmpacket, s
 		_tcscpy (tmp, uip->filesysdir);
 	} else if ((dostype & 0xffffff00) == DISK_TYPE_DOS) {
 		_tcscpy (tmp, currprefs.romfile);
-		i = _tcslen (tmp);
+		int i = _tcslen (tmp);
 		while (i > 0 && tmp[i - 1] != '/' && tmp[i - 1] != '\\')
 			i--;
 		_tcscpy (tmp + i, _T("FastFileSystem"));
@@ -8515,7 +8720,7 @@ static int dofakefilesys (TrapContext *ctx, UnitInfo *uip, uaecptr parmpacket, s
 		zfile_fseek (zf, 0, SEEK_SET);
 		uip->rdb_filesysstore = xmalloc (uae_u8, size);
 		zfile_fread (uip->rdb_filesysstore, size, 1, zf);
-		for (i = 0; i < size - 6; i++) {
+		for (int i = 0; i < size - 6; i++) {
 			uae_u8 *p = uip->rdb_filesysstore + i;
 			if (p[0] == 'V' && p[1] == 'E' && p[2] == 'R' && p[3] == ':' && p[4] == ' ') {
 				uae_u8 *p2;
@@ -8563,35 +8768,6 @@ static int dofakefilesys (TrapContext *ctx, UnitInfo *uip, uaecptr parmpacket, s
 	addfakefilesys(ctx, parmpacket, dostype, ver, rev, ci);
 	write_log (_T("RDB: faked RDB filesystem %08X (%s %d.%d) loaded. ADD2FS=%d\n"), dostype, dostypes (dt, dostype), ver, rev, oldversion < 0 ? 1 : 0);
 	return FILESYS_HARDFILE;
-}
-
-static void get_new_device (TrapContext *ctx, int type, uaecptr parmpacket, TCHAR **devname, uaecptr *devname_amiga, int unit_no)
-{
-	TCHAR buffer[80];
-	uaecptr expbase = trap_get_long(ctx, parmpacket + PP_EXPLIB);
-
-	if (*devname == 0 || _tcslen (*devname) == 0) {
-		int un = unit_no;
-		for (;;) {
-			_stprintf (buffer, type == FILESYS_CD ? _T("CD%d") : _T("DH%d"), un++);
-			if (type == FILESYS_CD)
-				*devname = my_strdup (buffer);
-			if (!device_isdup(ctx, expbase, buffer))
-				break;
-		}
-	} else {
-		_tcscpy (buffer, *devname);
-	}
-	*devname_amiga = ds (device_dupfix(ctx, expbase, buffer));
-	if (type == FILESYS_CD)
-		write_log (_T("FS: mounted CD unit %s\n"), buffer);
-	else if (type == FILESYS_VIRTUAL)
-		write_log (_T("FS: mounted virtual unit %s (%s)\n"), buffer, mountinfo.ui[unit_no].rootdir);
-	else
-		write_log (_T("FS: mounted HDF unit %s (%04x-%08x, %s)\n"), buffer,
-		(uae_u32)(mountinfo.ui[unit_no].hf.virtsize >> 32),
-		(uae_u32)(mountinfo.ui[unit_no].hf.virtsize),
-		mountinfo.ui[unit_no].rootdir);
 }
 
 /* Fill in per-unit fields of a parampacket */
@@ -8663,14 +8839,14 @@ static uae_u32 REGPARAM2 filesys_dev_storeinfo (TrapContext *ctx)
 		type = is_hardfile (unit_no);
 		if (type == FILESYS_HARDFILE_RDB || type == FILESYS_HARDDRIVE) {
 			/* RDB hardfile */
-			uip[unit_no].devno = unit_no;
+			uip[unit_no].devno = uip[unit_no].hf.ci.controller_unit;
 			return rdb_mount(ctx, &uip[unit_no], unit_no, sub_no, parmpacket);
 		}
 		if (sub_no)
 			return -2;
-		write_log (_T("Mounting uaehf.device %d (%d):\n"), unit_no, sub_no);
+		write_log (_T("Mounting uaehf.device:%d %d (%d):\n"), uip->hf.ci.controller_unit, unit_no, sub_no);
 		get_new_device(ctx, type, parmpacket, &uip[unit_no].devname, &uip[unit_no].devname_amiga, unit_no);
-		uip[unit_no].devno = unit_no;
+		uip[unit_no].devno = uip[unit_no].hf.ci.controller_unit;
 		trap_put_long(ctx, parmpacket, uip[unit_no].devname_amiga);
 		trap_put_long(ctx, parmpacket + 8, uip[unit_no].devno);
 		trap_put_long(ctx, parmpacket + 12, 0); /* Device flags */
@@ -9064,6 +9240,8 @@ void filesys_install (void)
 	dw(RTS);
 
 	org (loop);
+
+	create_ks12_boot();
 }
 
 uaecptr filesys_get_entry(int index)
@@ -9227,13 +9405,12 @@ static TCHAR *makenativepath (UnitInfo *ui, TCHAR *apath)
 #ifdef FSUAE
     return fsdb_native_path(ui->rootdir, apath);
 #else
-	int i;
 	TCHAR *pn;
 	/* create native path. FIXME: handle 'illegal' characters */
 	pn = xcalloc (TCHAR, _tcslen (apath) + 1 + _tcslen (ui->rootdir) + 1);
 	_stprintf (pn, _T("%s/%s"), ui->rootdir, apath);
 	if (FSDB_DIR_SEPARATOR != '/') {
-		for (i = 0; i < _tcslen (pn); i++) {
+		for (int i = 0; i < _tcslen (pn); i++) {
 			if (pn[i] == '/')
 				pn[i] = FSDB_DIR_SEPARATOR;
 		}

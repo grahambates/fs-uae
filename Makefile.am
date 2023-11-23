@@ -327,6 +327,7 @@ libuae_a_SOURCES = \
 	src/hardfile.cpp \
 	src/hrtmon.rom.cpp \
 	src/ide.cpp \
+	src/ini.cpp \
 	src/idecontrollers.cpp \
 	src/identify.cpp \
 	src/include/a2065.h \
@@ -387,6 +388,7 @@ libuae_a_SOURCES = \
 	src/include/ide.h \
 	src/include/idecontrollers.h \
 	src/include/identify.h \
+	src/include/ini.h \
 	src/include/inputdevice.h \
 	src/include/inputrecord.h \
 	src/include/isofs.h \
@@ -664,6 +666,8 @@ nodist_libcpuemu_a_SOURCES = \
         gen/cpuemu_31.cpp \
         gen/cpuemu_32.cpp \
         gen/cpuemu_33.cpp \
+        gen/cpuemu_34.cpp \
+        gen/cpuemu_35.cpp \
         gen/cpuemu_40.cpp \
         gen/cpuemu_50.cpp
 BUILT_SOURCES += $(nodist_libcpuemu_a_SOURCES)
@@ -1289,6 +1293,10 @@ gen/cpuemu_31.cpp: gen/cpuemu_0.cpp
 gen/cpuemu_32.cpp: gen/cpuemu_0.cpp
 
 gen/cpuemu_33.cpp: gen/cpuemu_0.cpp
+
+gen/cpuemu_34.cpp: gen/cpuemu_0.cpp
+
+gen/cpuemu_35.cpp: gen/cpuemu_0.cpp
 
 gen/cpuemu_40.cpp: gen/cpuemu_0.cpp
 

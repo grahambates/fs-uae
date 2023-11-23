@@ -130,8 +130,8 @@ void uae_line_update(int line, int update) {
 }
 #endif
 
-void frame_drawn(void) {
-
+bool frame_drawn(void) {
+	return false;
 }
 
 void flush_screen (struct vidbuffer *buffer, int first_line, int last_line) {

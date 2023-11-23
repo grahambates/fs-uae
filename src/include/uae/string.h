@@ -44,6 +44,7 @@
 #define _tcstod strtod
 #define _tcstok strtok
 #define _tcstol strtol
+#define _tcstoul strtoul 
 #define _totlower tolower
 #define _totupper toupper
 #define _tprintf printf
@@ -53,6 +54,7 @@
 #define _tstol atol
 #define _vsnprintf vsnprintf
 #define _vsntprintf vsnprintf
+#define _stscanf sscanf
 #endif
 
 static inline size_t uae_tcslcpy(TCHAR *dst, const TCHAR *src, size_t size)

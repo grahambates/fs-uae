@@ -42,6 +42,7 @@
 
 #define USE_HARDWARESPRITE 1
 #define P96TRACING_ENABLED 0
+#define P96TRACING_LEVEL 0
 #define P96TRACING_SETUP_ENABLED 0
 #define P96SPRTRACING_ENABLED 0
 
@@ -136,7 +137,7 @@ void mman_ResetWatch (PVOID lpBaseAddress, SIZE_T dwRegionSize);
 int p96refresh_active;
 bool have_done_picasso = 1; /* For the JIT compiler */
 static int p96syncrate;
-int p96hsync_counter, full_refresh;
+static int p96hsync_counter, full_refresh;
 
 
 #define PICASSO_STATE_SETDISPLAY 1
@@ -2567,6 +2568,11 @@ Fields & DM_BITSPERPEL)) {
 				i++;
 				continue;
 			}
+			// Not even 256 color mode fits in VRAM? Ignore it completely.
+			if (DisplayModes[i].res.width * DisplayModes[i].res.height > gfxmem_bank.allocated_size - 256) {
+				i++;
+				continue;
+			}
 			j = i;
 			size += PSSO_LibResolution_sizeof;
 			while (missmodes[misscnt * 2] == 0)
@@ -2711,7 +2717,7 @@ static void inituaegfx(TrapContext *ctx, uaecptr ABI)
 #if FSUAE
 	if (currprefs.gfx_api && USE_HARDWARESPRITE && currprefs.rtg_hardwaresprite) {
 #else
-	if (currprefs.gfx_api && D3D_goodenough () > 0 && USE_HARDWARESPRITE && currprefs.rtg_hardwaresprite) {
+	if (currprefs.gfx_api && D3D_goodenough () > 0 && D3D_setcursor(-1, -1, -1, -1, false, false) && USE_HARDWARESPRITE && currprefs.rtg_hardwaresprite) {
 #endif
 		hwsprite = 1;
 		flags |= BIF_HARDWARESPRITE;
@@ -2744,9 +2750,10 @@ static void inituaegfx(TrapContext *ctx, uaecptr ABI)
 	inituaegfxfuncs(ctx, uaegfx_rom, ABI);
 }
 
-static void addmode(TrapContext *ctx, uaecptr AmigaBoardInfo, uaecptr *amem, struct LibResolution *res, int w, int h, const TCHAR *name, int display, int *unkcnt)
+static bool addmode(TrapContext *ctx, uaecptr AmigaBoardInfo, uaecptr *amem, struct LibResolution *res, int w, int h, const TCHAR *name, int display, int *unkcnt)
 {
 	int depth;
+	bool added = false;
 
 	if (display > 0) {
 		res->DisplayID = 0x51000000 + display * 0x100000;
@@ -2769,11 +2776,13 @@ static void addmode(TrapContext *ctx, uaecptr AmigaBoardInfo, uaecptr *amem, str
 	for (depth = 8; depth <= 32; depth++) {
 		if (!p96depth (depth))
 			continue;
-		if(gfxmem_bank.allocated_size >= w * h * (depth + 7) / 8) {
+		if(gfxmem_bank.allocated_size >= w * h * ((depth + 7) / 8)) {
 			FillBoardInfo(ctx, *amem, res, w, h, depth);
 			*amem += PSSO_ModeInfo_sizeof;
+			added = true;
 		}
 	}
+	return added;
 }
 
 /****************************************
@@ -2785,7 +2794,7 @@ static void addmode(TrapContext *ctx, uaecptr AmigaBoardInfo, uaecptr *amem, str
 static uae_u32 REGPARAM2 picasso_InitCard (TrapContext *ctx)
 {
 	int LibResolutionStructureCount = 0;
-	int i, j, unkcnt, cnt;
+	int i, unkcnt, cnt;
 	uaecptr amem;
 	uaecptr AmigaBoardInfo = trap_get_areg(ctx, 0);
 
@@ -2801,24 +2810,28 @@ static uae_u32 REGPARAM2 picasso_InitCard (TrapContext *ctx)
 	unkcnt = cnt = 0;
 	while (newmodes[i].depth >= 0) {
 		struct LibResolution res = { 0 };
-		TCHAR *s;
-		j = i;
-		addmode(ctx, AmigaBoardInfo, &amem, &res, newmodes[i].res.width, newmodes[i].res.height, NULL, 0, &unkcnt);
-		s = au (res.Name);
-		write_log (_T("%2d: %08X %4dx%4d %s\n"), ++cnt, res.DisplayID, res.Width, res.Height, s);
-		xfree (s);
-		while (newmodes[i].depth >= 0
-			&& newmodes[i].res.width == newmodes[j].res.width
-			&& newmodes[i].res.height == newmodes[j].res.height)
-			i++;
+		int j = i;
+		if (addmode(ctx, AmigaBoardInfo, &amem, &res, newmodes[i].res.width, newmodes[i].res.height, NULL, 0, &unkcnt)) {
+			TCHAR *s;
+			s = au (res.Name);
+			write_log (_T("%2d: %08X %4dx%4d %s\n"), ++cnt, res.DisplayID, res.Width, res.Height, s);
+			xfree (s);
+			while (newmodes[i].depth >= 0
+				&& newmodes[i].res.width == newmodes[j].res.width
+				&& newmodes[i].res.height == newmodes[j].res.height)
+				i++;
 
-		LibResolutionStructureCount++;
-		CopyLibResolutionStructureU2A(ctx, &res, amem);
+			LibResolutionStructureCount++;
+			CopyLibResolutionStructureU2A(ctx, &res, amem);
 #if P96TRACING_ENABLED && P96TRACING_LEVEL > 1
-		DumpLibResolutionStructurectx, (amem);
+			DumpLibResolutionStructure(ctx, amem);
 #endif
-		AmigaListAddTail(ctx, AmigaBoardInfo + PSSO_BoardInfo_ResolutionsList, amem);
-		amem += PSSO_LibResolution_sizeof;
+			AmigaListAddTail(ctx, AmigaBoardInfo + PSSO_BoardInfo_ResolutionsList, amem);
+			amem += PSSO_LibResolution_sizeof;
+		} else {
+			write_log (_T("--: %08X %4dx%4d Not enough VRAM\n"), res.DisplayID, res.Width, res.Height);
+			i++;
+		}
 	}
 #if MULTIDISPLAY
 	for (i = 0; Displays[i].name; i++) {
@@ -3009,7 +3022,7 @@ static void init_picasso_screen (void)
 * This function is called whenever another ModeInfo has to be set. This
 * function simply sets up the CRTC and TS registers to generate the
 * timing used for that screen mode. You should not set the DAC, clocks
-* or linear start adress. They will be set when appropriate by their
+* or linear start address. They will be set when appropriate by their
 * own functions.
 */
 static uae_u32 REGPARAM2 picasso_SetGC (TrapContext *ctx)

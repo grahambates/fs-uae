@@ -39,6 +39,7 @@
 #include "cpuboard.h"
 #include "uae/ppc.h"
 #include "devices.h"
+#include "inputdevice.h"
 
 #ifdef FSUAE // NL
 #undef _WIN32
@@ -304,6 +305,15 @@ void dummy_put (uaecptr addr, int size, uae_u32 val)
 	}
 }
 
+static uae_u32 nonexistingdata(void)
+{
+	if (currprefs.cs_unmapped_space == 1)
+		return 0x00000000;
+	if (currprefs.cs_unmapped_space == 2)
+		return 0xffffffff;
+	return NONEXISTINGDATA;
+}
+
 uae_u32 dummy_get_safe(uaecptr addr, int size, bool inst, uae_u32 defvalue)
 {
 	uae_u32 v = defvalue;
@@ -316,9 +326,11 @@ uae_u32 dummy_get_safe(uaecptr addr, int size, bool inst, uae_u32 defvalue)
 		addr &= 0x00ffffff;
 	if (addr >= 0x10000000)
 		return v & mask;
-	// CD32 returns zeros from all unmapped addresses
-	if (currprefs.cs_cd32cd)
+	// CD32 and B2000
+	if (currprefs.cs_unmapped_space == 1)
 		return 0;
+	if (currprefs.cs_unmapped_space == 2)
+		return 0xffffffff & mask;
 	if ((currprefs.cpu_model <= 68010) || (currprefs.cpu_model == 68020 && (currprefs.chipset_mask & CSMASK_AGA) && currprefs.address_space_24)) {
 		if (size == 4) {
 			v = regs.db & 0xffff;
@@ -392,33 +404,33 @@ static uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
 {
 	if (currprefs.illegal_mem)
 		dummylog (0, addr, 4, 0, 0);
-	return dummy_get (addr, 4, false, NONEXISTINGDATA);
+	return dummy_get (addr, 4, false, nonexistingdata());
 }
 uae_u32 REGPARAM2 dummy_lgeti (uaecptr addr)
 {
 	if (currprefs.illegal_mem)
 		dummylog (0, addr, 4, 0, 1);
-	return dummy_get (addr, 4, true, NONEXISTINGDATA);
+	return dummy_get (addr, 4, true, nonexistingdata());
 }
 
 static uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
 {
 	if (currprefs.illegal_mem)
 		dummylog (0, addr, 2, 0, 0);
-	return dummy_get (addr, 2, false, NONEXISTINGDATA);
+	return dummy_get (addr, 2, false, nonexistingdata());
 }
 uae_u32 REGPARAM2 dummy_wgeti (uaecptr addr)
 {
 	if (currprefs.illegal_mem)
 		dummylog (0, addr, 2, 0, 1);
-	return dummy_get (addr, 2, true, NONEXISTINGDATA);
+	return dummy_get (addr, 2, true, nonexistingdata());
 }
 
 static uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
 {
 	if (currprefs.illegal_mem)
 		dummylog (0, addr, 1, 0, 0);
-	return dummy_get (addr, 1, false, NONEXISTINGDATA);
+	return dummy_get (addr, 1, false, nonexistingdata());
 }
 
 static void REGPARAM2 dummy_lput (uaecptr addr, uae_u32 l)
@@ -1185,7 +1197,7 @@ addrbank chipmem_bank = {
 	chipmem_lput, chipmem_wput, chipmem_bput,
 	chipmem_xlate, chipmem_check, NULL, _T("chip"), _T("Chip memory"),
 	chipmem_lget, chipmem_wget,
-	ABFLAG_RAM | ABFLAG_THREADSAFE | ABFLAG_CHIPRAM, 0, 0
+	ABFLAG_RAM | ABFLAG_THREADSAFE | ABFLAG_CHIPRAM | ABFLAG_CACHE_ENABLE_BOTH, 0, 0
 };
 
 addrbank chipmem_dummy_bank = {
@@ -1203,7 +1215,7 @@ addrbank chipmem_bank_ce2 = {
 	chipmem_lput_ce2, chipmem_wput_ce2, chipmem_bput_ce2,
 	chipmem_xlate, chipmem_check, NULL, NULL, _T("Chip memory (68020 'ce')"),
 	chipmem_lget_ce2, chipmem_wget_ce2,
-	ABFLAG_RAM | ABFLAG_CHIPRAM, S_READ, S_WRITE
+	ABFLAG_RAM | ABFLAG_CHIPRAM | ABFLAG_CACHE_ENABLE_BOTH, S_READ, S_WRITE
 };
 #endif
 
@@ -1212,7 +1224,7 @@ addrbank bogomem_bank = {
 	bogomem_lput, bogomem_wput, bogomem_bput,
 	bogomem_xlate, bogomem_check, NULL, _T("bogo"), _T("Slow memory"),
 	bogomem_lget, bogomem_wget,
-	ABFLAG_RAM | ABFLAG_THREADSAFE, 0, 0
+	ABFLAG_RAM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_BOTH, 0, 0
 };
 
 addrbank cardmem_bank = {
@@ -1228,7 +1240,7 @@ addrbank mem25bit_bank = {
 	mem25bit_lput, mem25bit_wput, mem25bit_bput,
 	mem25bit_xlate, mem25bit_check, NULL, _T("25bitmem"), _T("25bit memory"),
 	mem25bit_lget, mem25bit_wget,
-	ABFLAG_RAM | ABFLAG_THREADSAFE, 0, 0
+	ABFLAG_RAM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_ALL, 0, 0
 };
 
 addrbank a3000lmem_bank = {
@@ -1236,7 +1248,7 @@ addrbank a3000lmem_bank = {
 	a3000lmem_lput, a3000lmem_wput, a3000lmem_bput,
 	a3000lmem_xlate, a3000lmem_check, NULL, _T("ramsey_low"), _T("RAMSEY memory (low)"),
 	a3000lmem_lget, a3000lmem_wget,
-	ABFLAG_RAM | ABFLAG_THREADSAFE, 0, 0
+	ABFLAG_RAM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_ALL, 0, 0
 };
 
 addrbank a3000hmem_bank = {
@@ -1244,7 +1256,7 @@ addrbank a3000hmem_bank = {
 	a3000hmem_lput, a3000hmem_wput, a3000hmem_bput,
 	a3000hmem_xlate, a3000hmem_check, NULL, _T("ramsey_high"), _T("RAMSEY memory (high)"),
 	a3000hmem_lget, a3000hmem_wget,
-	ABFLAG_RAM | ABFLAG_THREADSAFE, 0, 0
+	ABFLAG_RAM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_ALL, 0, 0
 };
 
 addrbank kickmem_bank = {
@@ -1252,7 +1264,7 @@ addrbank kickmem_bank = {
 	kickmem_lput, kickmem_wput, kickmem_bput,
 	kickmem_xlate, kickmem_check, NULL, _T("kick"), _T("Kickstart ROM"),
 	kickmem_lget, kickmem_wget,
-	ABFLAG_ROM | ABFLAG_THREADSAFE, 0, S_WRITE
+	ABFLAG_ROM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_ALL, 0, S_WRITE
 };
 
 addrbank kickram_bank = {
@@ -1260,7 +1272,7 @@ addrbank kickram_bank = {
 	kickmem2_lput, kickmem2_wput, kickmem2_bput,
 	kickmem_xlate, kickmem_check, NULL, NULL, _T("Kickstart Shadow RAM"),
 	kickmem_lget, kickmem_wget,
-	ABFLAG_UNK | ABFLAG_SAFE, 0, S_WRITE
+	ABFLAG_UNK | ABFLAG_SAFE | ABFLAG_CACHE_ENABLE_ALL, 0, S_WRITE
 };
 
 addrbank extendedkickmem_bank = {
@@ -1268,14 +1280,14 @@ addrbank extendedkickmem_bank = {
 	extendedkickmem_lput, extendedkickmem_wput, extendedkickmem_bput,
 	extendedkickmem_xlate, extendedkickmem_check, NULL, NULL, _T("Extended Kickstart ROM"),
 	extendedkickmem_lget, extendedkickmem_wget,
-	ABFLAG_ROM | ABFLAG_THREADSAFE, 0, S_WRITE
+	ABFLAG_ROM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_ALL, 0, S_WRITE
 };
 addrbank extendedkickmem2_bank = {
 	extendedkickmem2_lget, extendedkickmem2_wget, extendedkickmem2_bget,
 	extendedkickmem2_lput, extendedkickmem2_wput, extendedkickmem2_bput,
 	extendedkickmem2_xlate, extendedkickmem2_check, NULL, _T("rom_a8"), _T("Extended 2nd Kickstart ROM"),
 	extendedkickmem2_lget, extendedkickmem2_wget,
-	ABFLAG_ROM | ABFLAG_THREADSAFE, 0, S_WRITE
+	ABFLAG_ROM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_ALL, 0, S_WRITE
 };
 addrbank fakeuaebootrom_bank = {
 	fakeuaebootrom_lget, fakeuaebootrom_wget, mem25bit_bget,
@@ -1293,14 +1305,14 @@ addrbank custmem1_bank = {
 	custmem1_lput, custmem1_wput, custmem1_bput,
 	custmem1_xlate, custmem1_check, NULL, _T("custmem1"), _T("Non-autoconfig RAM #1"),
 	custmem1_lget, custmem1_wget,
-	ABFLAG_RAM | ABFLAG_THREADSAFE, 0, 0
+	ABFLAG_RAM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_ALL, 0, 0
 };
 addrbank custmem2_bank = {
 	custmem2_lget, custmem2_wget, custmem2_bget,
 	custmem2_lput, custmem2_wput, custmem2_bput,
 	custmem2_xlate, custmem2_check, NULL, _T("custmem2"), _T("Non-autoconfig RAM #2"),
 	custmem2_lget, custmem2_wget,
-	ABFLAG_RAM | ABFLAG_THREADSAFE, 0, 0
+	ABFLAG_RAM | ABFLAG_THREADSAFE | ABFLAG_CACHE_ENABLE_ALL, 0, 0
 };
 
 #define fkickmem_size ROM_SIZE_512
@@ -1584,7 +1596,7 @@ static int patch_shapeshifter (uae_u8 *kickmemory)
 {
 	/* Patch Kickstart ROM for ShapeShifter - from Christian Bauer.
 	* Changes 'lea $400,a0' and 'lea $1000,a0' to 'lea $3000,a0' for
-	* ShapeShifter compatability.
+	* ShapeShifter compatibility.
 	*/
 	int i, patched = 0;
 	uae_u8 kickshift1[] = { 0x41, 0xf8, 0x04, 0x00 };
@@ -1977,7 +1989,7 @@ static void add_shmmaps (uae_u32 start, addrbank *what)
 	y = xmalloc (shmpiece, 1);
 	*y = *x;
 	base = ((uae_u8 *) NATMEM_OFFSET) + start;
-	y->native_address = (uae_u8*)uae_shmat (what, y->id, base, 0);
+	y->native_address = (uae_u8*)uae_shmat (what, y->id, base, 0, NULL);
 	if (y->native_address == (void *) -1) {
 		write_log (_T("NATMEM: Failure to map existing at %08x (%p)\n"), start, base);
 		dumplist ();
@@ -2038,7 +2050,7 @@ bool mapped_malloc (addrbank *ab)
 	if (!md.directsupport || (ab->flags & ABFLAG_ALLOCINDIRECT)) {
 		if (!(ab->flags & ABFLAG_ALLOCINDIRECT)) {
 			if (canbang) {
-				write_log(_T("JIT direct switched off: %s\n"), ab->name);
+				error_log(_T("JIT direct switched off: %s\n"), ab->name);
 			}
 			nocanbang();
 		}
@@ -2073,7 +2085,7 @@ bool mapped_malloc (addrbank *ab)
 		return ab->baseaddr != NULL;
 	}
 	if (!(ab->flags & ABFLAG_NOALLOC)) {
-		answer = uae_shmat (ab, id, 0, 0);
+		answer = uae_shmat (ab, id, NULL, 0, &md);
 		uae_shmctl (id, UAE_IPC_RMID, NULL);
 	} else {
 		write_log(_T("MMAN: mapped_malloc using existing baseaddr %p\n"), ab->baseaddr);
@@ -2390,18 +2402,6 @@ static void fill_ce_banks (void)
 	} else {
 		memset (ce_banktype, CE_MEMBANK_FAST32, sizeof ce_banktype);
 	}
-	// data cachable regions (2 = burst supported)
-	memset(ce_cachable, 0, sizeof ce_cachable);
-	memset(ce_cachable + (0x00c00000 >> 16), 1, currprefs.bogomem_size >> 16);
-	for (int i = 0; i < MAX_RAM_BOARDS; i++) {
-		if (fastmem_bank[i].start != 0xffffffff)
-			memset(ce_cachable + (fastmem_bank[i].start >> 16), 1 | 2, currprefs.fastmem[i].size >> 16);
-		if (z3fastmem_bank[i].start != 0xffffffff)
-			memset(ce_cachable + (z3fastmem_bank[i].start >> 16), 1 | 2, currprefs.z3fastmem[i].size >> 16);
-	}
-	memset(ce_cachable + (a3000hmem_bank.start >> 16), 1 | 2, currprefs.mbresmem_high_size >> 16);
-	memset(ce_cachable + (a3000lmem_bank.start >> 16), 1 | 2, currprefs.mbresmem_low_size >> 16);
-	memset(ce_cachable + (mem25bit_bank.start >> 16), 1 | 2, currprefs.mem25bit_size >> 16);
 
 	addrbank *ab = &get_mem_bank(0);
 	if (ab && (ab->flags & ABFLAG_CHIPRAM)) {
@@ -2415,15 +2415,15 @@ static void fill_ce_banks (void)
 		for (i = (bogomem_bank.start >> 16); i < ((bogomem_bank.start + bogomem_bank.allocated_size) >> 16); i++)
 			ce_banktype[i] = ce_banktype[0];
 	}
-	for (i = (0xd00000 >> 16); i < (0xe00000 >> 16); i++)
+	for (i = (0xd00000 >> 16); i < (0xe00000 >> 16); i++) {
 		ce_banktype[i] = CE_MEMBANK_CHIP16;
+	}
 	for (i = (0xa00000 >> 16); i < (0xc00000 >> 16); i++) {
 		addrbank *b;
 		ce_banktype[i] = CE_MEMBANK_CIA;
 		b = &get_mem_bank (i << 16);
 		if (b && !(b->flags & ABFLAG_CIA)) {
 			ce_banktype[i] = CE_MEMBANK_FAST32;
-			ce_cachable[i] = 1;
 		}
 	}
 	// CD32 ROM is 16-bit
@@ -2439,9 +2439,21 @@ static void fill_ce_banks (void)
 		ce_banktype[0xdd0000 >> 16] = CE_MEMBANK_FAST32;
 	}
 
+	if (currprefs.cs_toshibagary) {
+		for (i = (0xe80000 >> 16); i < (0xf80000 >> 16); i++)
+			ce_banktype[i] = CE_MEMBANK_CHIP16;
+	}
+
+	if (currprefs.cs_romisslow) {
+		for (i = (0xe00000 >> 16); i < (0xe80000 >> 16); i++)
+			ce_banktype[i] = CE_MEMBANK_CHIP16;
+		for (i = (0xf80000 >> 16); i < (0x100000 >> 16); i++)
+			ce_banktype[i] = CE_MEMBANK_CHIP16;
+	}
+
 	if (currprefs.address_space_24) {
 		for (i = 1; i < 256; i++)
-			memcpy (&ce_banktype[i * 256], &ce_banktype[0], 256);
+			memcpy(&ce_banktype[i * 256], &ce_banktype[0], 256);
 	}
 }
 
@@ -2616,7 +2628,7 @@ bool read_kickstart_version(struct uae_prefs *p)
 		if (kickstart_version > 33)
 			kickstart_version = 0;
 	}
-	write_log(_T("KS ver = %04x\n"), kickstart_version);
+	write_log(_T("KS ver = %d (0x%02x)\n"), kickstart_version & 255, kickstart_version);
 	return true;
 }
 
@@ -2649,6 +2661,8 @@ void memory_reset (void)
 	if (mem_hardreset > 2)
 		memory_init ();
 
+	memset(ce_cachable, CACHE_ENABLE_INS, sizeof ce_cachable);
+
 	be_cnt = be_recursive = 0;
 	currprefs.chipmem_size = changed_prefs.chipmem_size;
 	currprefs.bogomem_size = changed_prefs.bogomem_size;
@@ -2663,6 +2677,7 @@ void memory_reset (void)
 	currprefs.cs_ide = changed_prefs.cs_ide;
 	currprefs.cs_fatgaryrev = changed_prefs.cs_fatgaryrev;
 	currprefs.cs_ramseyrev = changed_prefs.cs_ramseyrev;
+	currprefs.cs_unmapped_space = changed_prefs.cs_unmapped_space;
 	cpuboard_reset();
 
 	gayleorfatgary = ((currprefs.chipset_mask & CSMASK_AGA) || currprefs.cs_pcmcia || currprefs.cs_ide > 0 || currprefs.cs_mbdmac) && !currprefs.cs_cd32cd;
@@ -2812,7 +2827,7 @@ void memory_reset (void)
 	}
 
 #ifdef AUTOCONFIG
-	if (need_uae_boot_rom (&currprefs) && currprefs.uaeboard < 2)
+	if ((need_uae_boot_rom (&currprefs) && currprefs.uaeboard == 0) || currprefs.uaeboard == 1)
 		map_banks_set(&rtarea_bank, rtarea_base >> 16, 1, 0);
 #endif
 
@@ -3125,6 +3140,7 @@ static void map_banks2 (addrbank *bank, int start, int size, int realsize, int q
 #endif
 			}
 			put_mem_bank (bnr << 16, bank, realstart << 16);
+			ce_cachable[bnr] = bank->flags >> ABFLAG_CACHE_SHIFT;
 #ifdef WITH_THREADED_CPU
 			if (currprefs.cpu_thread) {
 				if (orig_bank)
@@ -3156,6 +3172,7 @@ static void map_banks2 (addrbank *bank, int start, int size, int realsize, int q
 #endif
 			}
 			put_mem_bank ((bnr + hioffs) << 16, bank, realstart << 16);
+			ce_cachable[bnr + hioffs] = bank->flags >> ABFLAG_CACHE_SHIFT;
 #ifdef WITH_THREADED_CPU
 			if (currprefs.cpu_thread) {
 				if (orig_bank)

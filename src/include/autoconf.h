@@ -67,7 +67,9 @@ extern uae_u32 addr (int);
 extern void db (uae_u8);
 extern void dw (uae_u16);
 extern void dl (uae_u32);
-extern uae_u32 ds_ansi (const uae_char*);
+extern void df(uae_u8 b, int len);
+extern uae_u32 dsf(uae_u8, int);
+extern uae_u32 ds_ansi(const uae_char*);
 extern uae_u32 ds (const TCHAR*);
 extern uae_u32 ds_bstr_ansi (const uae_char*);
 extern uae_u8 dbg (uaecptr);
@@ -96,7 +98,7 @@ extern uaecptr ROM_filesys_resname, ROM_filesys_resid;
 extern uaecptr ROM_filesys_diagentry;
 extern uaecptr ROM_hardfile_resname, ROM_hardfile_resid;
 extern uaecptr ROM_hardfile_init;
-extern uaecptr filesys_initcode, filesys_initcode_ptr;
+extern uaecptr filesys_initcode, filesys_initcode_ptr, filesys_initcode_real;
 
 extern int is_hardfile(int unit_no);
 extern int nr_units(void);
@@ -141,6 +143,7 @@ extern void filesys_hsync (void);
 
 extern void filesys_install (void);
 extern void filesys_install_code (void);
+extern void create_ks12_boot(void);
 extern uaecptr filesys_get_entry(int);
 extern void filesys_store_devinfo (uae_u8 *);
 extern void hardfile_install (void);
@@ -219,7 +222,7 @@ struct expansionromtype
 	const TCHAR *name;
 	const TCHAR *friendlyname;
 	const TCHAR *friendlymanufacturer;
-	DEVICE_INIT init, init2;
+	DEVICE_INIT preinit, init, init2;
 	DEVICE_ADD add;
 	uae_u32 romtype;
 	uae_u32 romtype_extra;

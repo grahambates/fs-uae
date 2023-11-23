@@ -24,9 +24,11 @@ static int ethernet_paused;
 
 #define HAVE_REMOTE
 #define WPCAP
+#define PCAP_DONT_INCLUDE_PCAP_BPF_H
 #include "pcap.h"
-
 #include "packet32.h"
+#include "pcap/dlt.h"
+
 #include "ntddndis.h"
 
 #include "options.h"
@@ -36,6 +38,7 @@ static int ethernet_paused;
 #include "win32_uaenet.h"
 #include "win32.h"
 
+int log_ethernet;
 static struct netdriverdata tds[MAX_TOTAL_NET_DEVICES];
 static int enumerated;
 static int ethernet_paused;
@@ -218,6 +221,16 @@ static void *uaenet_trap_threadw (void *arg)
 		int towrite = sd->mtu;
 		uae_sem_wait (&sd->change_sem);
 		if (sd->getfunc ((struct s2devstruct*)sd->user, sd->writebuffer, &towrite)) {
+			if (log_ethernet & 1) {
+				TCHAR out[1600 * 2], *p;
+				p = out;
+				for (int i = 0; i < towrite && i < 1600; i++) {
+					_stprintf(p, _T("%02x"), sd->writebuffer[i]);
+					p += 2;
+					*p = 0;
+				}
+				write_log(_T("OUT %4d: %s\n"), towrite, out);
+			}
 			ppcap_sendpacket(sd->fp, sd->writebuffer, towrite);
 			donotwait = 1;
 		}
@@ -360,22 +373,35 @@ struct netdriverdata *uaenet_enumerate (const TCHAR *name)
 	int val;
 	TCHAR *ss;
 	bool npcap = true;
+	TCHAR sname[MAX_DPATH];
+	int isdll;
 
 	if (enumerated) {
 		return enumit (name);
 	}
 	tcp = tds;
-	wpcap = LoadLibrary(_T("npcap\\wpcap.dll"));
+
+	int len = GetSystemDirectory(sname, MAX_DPATH);
+	if (len) {
+		_tcscat(sname, _T("\\Npcap"));
+		SetDllDirectory(sname);
+	}
+	wpcap = LoadLibrary(_T("wpcap.dll"));
+	packet = LoadLibrary(_T("packet.dll"));
+	isdll = isdllversion(_T("wpcap.dll"), 4, 0, 0, 0);
+	SetDllDirectory(_T(""));
 	if (wpcap == NULL) {
+		FreeLibrary(packet);
 		int err = GetLastError();
 		wpcap = LoadLibrary (_T("wpcap.dll"));
+		packet = LoadLibrary(_T("packet.dll"));
+		isdll = isdllversion(_T("wpcap.dll"), 4, 0, 0, 0);
 		if (wpcap == NULL) {
 			write_log (_T("uaenet: npcap/winpcap not installed (wpcap.dll)\n"));
 			return NULL;
 		}
 		npcap = false;
 	}
-	packet = LoadLibrary (npcap ? _T("npcap\\packet.dll") : _T("packet.dll"));
 	if (packet == NULL) {
 		write_log (_T("uaenet: npcap/winpcap not installed (packet.dll)\n"));
 		FreeLibrary(wpcap);
@@ -383,7 +409,7 @@ struct netdriverdata *uaenet_enumerate (const TCHAR *name)
 		return NULL;
 	}
 
-	if (!isdllversion (npcap ? _T("npcap\\wpcap.dll") : _T("wpcap.dll"), 4, 0, 0, 0)) {
+	if (!isdll) {
 		write_log (_T("uaenet: too old npcap/winpcap, v4 or newer required\n"));
 		return NULL;
 	}

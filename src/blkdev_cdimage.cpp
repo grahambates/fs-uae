@@ -466,7 +466,7 @@ static void next_cd_audio_buffer_callback(int bufnum)
 	uae_sem_post(&play_sem);
 }
 
-static void *cdda_play_func (void *v)
+static bool cdda_play_func2 (struct cdunit *cdu, int *outpos)
 {
 	int cdda_pos;
 	int bufnum;
@@ -474,9 +474,9 @@ static void *cdda_play_func (void *v)
 	int idleframes = 0;
 	int silentframes = 0;
 	bool foundsub;
-	struct cdunit *cdu = (struct cdunit*)v;
 	int oldtrack = -1;
 	int mode = currprefs.sound_cdaudio;
+	bool restart = false;
 
 	cdu->thread_active = true;
 
@@ -559,13 +559,18 @@ static void *cdda_play_func (void *v)
 			}
 			cdda_pos -= idleframes;
 
+			if (*outpos < 0) {
 #ifdef HAVE_SYS_TIMEB_H
-			_ftime (&tb2);
-			diff = (tb2.time * (uae_s64)1000 + tb2.millitm) - (tb1.time * (uae_s64)1000 + tb1.millitm);
-			diff -= cdu->cdda_delay;
+				_ftime (&tb2);
+				diff = (tb2.time * (uae_s64)1000 + tb2.millitm) - (tb1.time * (uae_s64)1000 + tb1.millitm);
+				diff -= cdu->cdda_delay;
 #else
-			diff = 0;
+				diff = 0;
 #endif
+				if (idleframes >= 0 && diff < 0 && cdu->cdda_play > 0)
+					sleep_millis(-diff);
+				setstate (cdu, AUDIO_STATUS_IN_PROGRESS, cdda_pos);
+			}
 			if (idleframes >= 0 && diff < 0 && cdu->cdda_play > 0)
 				sleep_millis(-diff);
 			setstate (cdu, AUDIO_STATUS_IN_PROGRESS, cdda_pos);
@@ -586,8 +591,13 @@ static void *cdda_play_func (void *v)
 		}
 
 		if (mode) {
-			while (cda_bufon[bufnum] && cdu->cdda_play > 0)
+			while (cda_bufon[bufnum] && cdu->cdda_play > 0) {
+				if (cd_audio_mode_changed) {
+					restart = true;
+					goto end;
+				}
 				sleep_millis(10);
+			}
 		} else {
 			cda->wait(bufnum);
 		}
@@ -720,12 +730,20 @@ static void *cdda_play_func (void *v)
 				sleep_millis(10);
 		}
 
+		if (cd_audio_mode_changed) {
+			restart = true;
+			goto end;
+		}
+
 		bufnum = 1 - bufnum;
 	}
 
 end:
+	*outpos = cdda_pos;
 	if (mode) {
 		next_cd_audio_buffer_callback(-1);
+		if (restart)
+			audio_cda_new_buffer(NULL, -1, -1, NULL);
 	} else {
 		cda->wait (0);
 		cda->wait (1);
@@ -736,12 +754,33 @@ end:
 
 	delete cda;
 
-	cdu->cdda_play = 0;
-	write_log (_T("IMAGE CDDA: thread killed\n"));
+	write_log (_T("IMAGE CDDA: thread killed (%s)\n"), restart ? _T("restart") : _T("play end"));
+	cd_audio_mode_changed = false;
+	return restart;
+}
+
+static void *cdda_play_func (void *v)
+{
+	int outpos = -1;
+	struct cdunit *cdu = (struct cdunit*)v;
+	cd_audio_mode_changed = false;
+	for (;;) {
+		if (!cdda_play_func2(cdu, &outpos)) {
+			cdu->cdda_play = 0;
+			break;
+		}
+		cdu->cdda_start = outpos;
+		if (cdu->cdda_start + 150 >= cdu->cdda_end) {
+			if (cdu->cdda_play >= 0)
+				setstate (cdu, AUDIO_STATUS_PLAY_COMPLETE, cdu->cdda_end + 1);
+			cdu->cdda_play = -1;
+			break;
+		}
+		cdu->cdda_play = 1;
+	}
 	cdu->thread_active = false;
 	return NULL;
 }
-
 
 static void cdda_stop (struct cdunit *cdu)
 {
@@ -894,23 +933,36 @@ static int command_rawread (int unitnum, uae_u8 *data, int sector, int size, int
 	ssize = t->size + t->skipsize;
 	cdda_stop (cdu);
 	if (sectorsize > 0) {
-		if (sectorsize == 2352 && t->size == 2336) {
+		if ((sectorsize == 2352 || sectorsize == 2368 || sectorsize == 2448) && t->size == 2336) {
 			// 2336 -> 2352
 			while (size-- > 0) {
 				int address = asector + 150;
-				data[0] = 0x00;
-				memset(data + 1, 0xff, 11);
-				data[12] = tobcd((uae_u8)(address / (60 * 75)));
-				data[13] = tobcd((uae_u8)((address / 75) % 60));
-				data[14] = tobcd((uae_u8)(address % 75));
-				data[15] = 2; /* MODE2 */
-				do_read(cdu, t, data + 16, sector, 0, t->size, false);
+				if (isaudiotrack(&cdu->di.toc, sector)) {
+					do_read(cdu, t, data, sector, 0, t->size, true);
+				} else {
+					data[0] = 0x00;
+					memset(data + 1, 0xff, 11);
+					data[12] = tobcd((uae_u8)(address / (60 * 75)));
+					data[13] = tobcd((uae_u8)((address / 75) % 60));
+					data[14] = tobcd((uae_u8)(address % 75));
+					data[15] = 2; /* MODE2 */
+					do_read(cdu, t, data + 16, sector, 0, t->size, false);
+				}
 				sector++;
 				asector++;
 				data += sectorsize;
 				ret += sectorsize;
+				if (sectorsize == 2448) {
+					// all subs
+					getsub_deinterleaved(data - SUB_CHANNEL_SIZE, cdu, t, sector);
+				} else if (sectorsize == 2368) {
+					// sub q only
+					uae_u8 subs[SUB_CHANNEL_SIZE];
+					getsub_deinterleaved(subs, cdu, t, sector);
+					memcpy(data - SUBQ_SIZE, subs + SUBQ_SIZE, SUBQ_SIZE);
+}
 			}
-		} else if (sectorsize == 2352 && t->size == 2048) {
+		} else if ((sectorsize == 2352 || sectorsize == 2368 || sectorsize == 2448) && t->size == 2048) {
 			// 2048 -> 2352
 			while (size-- > 0) {
 				memset (data, 0, 16);
@@ -920,6 +972,15 @@ static int command_rawread (int unitnum, uae_u8 *data, int sector, int size, int
 				asector++;
 				data += sectorsize;
 				ret += sectorsize;
+				if (sectorsize == 2448) {
+					// all subs
+					getsub_deinterleaved(data - SUB_CHANNEL_SIZE, cdu, t, sector);
+				} else if (sectorsize == 2368) {
+					// sub q only
+					uae_u8 subs[SUB_CHANNEL_SIZE];
+					getsub_deinterleaved(subs, cdu, t, sector);
+					memcpy(data - SUBQ_SIZE, subs + SUBQ_SIZE, SUBQ_SIZE);
+				}
 			}
 		} else if (sectorsize == 2048 && t->size == 2352) {
 			// 2352 -> 2048
@@ -948,11 +1009,23 @@ static int command_rawread (int unitnum, uae_u8 *data, int sector, int size, int
 		} else if (sectorsize == t->size) {
 			// no change
 			while (size -- > 0) {
-				do_read (cdu, t, data, sector, 0, sectorsize, false);
+				if (sectorsize == 2352 && isaudiotrack(&cdu->di.toc, sector)) {
+					do_read(cdu, t, data, sector, 0, sectorsize, true);
+				} else {
+					do_read(cdu, t, data, sector, 0, sectorsize, false);
+				}
 				sector++;
 				asector++;
 				data += sectorsize;
 				ret++;
+			}
+		} else if (sectorsize == 96) {
+			// subchannels only
+			while (size-- > 0) {
+				getsub_deinterleaved(data, cdu, t, sector);
+				data += SUB_CHANNEL_SIZE;
+				ret += SUB_CHANNEL_SIZE;
+				sector++;
 			}
 		}
 		cdu->cd_last_pos = asector;

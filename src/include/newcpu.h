@@ -133,14 +133,17 @@ struct cache030
 	uae_u32 data[4];
 	bool valid[4];
 	uae_u32 tag;
+	uae_u8 fc;
 };
 
 #define CACHESETS040 64
+#define CACHESETS060 128
 #define CACHELINES040 4
 struct cache040
 {
 	uae_u32 data[CACHELINES040][4];
 	bool dirty[CACHELINES040][4];
+	bool gdirty[CACHELINES040];
 	bool valid[CACHELINES040];
 	uae_u32 tag[CACHELINES040];
 };
@@ -223,13 +226,18 @@ struct regstruct
 	uae_u32 pcr;
 	uae_u32 address_space_mask;
 
-	uae_u32 prefetch020[CPU_PIPELINE_MAX];
+	uae_u16 prefetch020[CPU_PIPELINE_MAX];
+	uae_u8 prefetch020_valid[CPU_PIPELINE_MAX];
 	uae_u32 prefetch020addr;
 	uae_u32 cacheholdingdata020;
 	uae_u32 cacheholdingaddr020;
+	uae_u8 cacheholdingdata_valid;
 	int pipeline_pos;
 	int pipeline_r8[2];
 	int pipeline_stop;
+	uae_u8 fc030;
+
+	uae_u32 prefetch040[CPU_PIPELINE_MAX];
 
 	int ce020endcycle;
 	int ce020startcycle;
@@ -261,11 +269,15 @@ struct cputracestruct
 
 	uae_u32 msp, vbr;
 	uae_u32 cacr, caar;
-	uae_u32 prefetch020[CPU_PIPELINE_MAX];
+	uae_u16 prefetch020[CPU_PIPELINE_MAX];
+	uae_u8 prefetch020_valid[CPU_PIPELINE_MAX];
 	uae_u32 prefetch020addr;
 	uae_u32 cacheholdingdata020;
 	uae_u32 cacheholdingaddr020;
 	struct cache020 caches020[CACHELINES020];
+	int pipeline_pos;
+	int pipeline_r8[2];
+	int pipeline_stop;
 
 	uae_u32 startcycles;
 	int needendcycles;
@@ -324,6 +336,23 @@ extern void(*x_cp_put_word)(uaecptr addr, uae_u32 v);
 extern void(*x_cp_put_long)(uaecptr addr, uae_u32 v);
 extern uae_u32(*x_cp_next_iword)(void);
 extern uae_u32(*x_cp_next_ilong)(void);
+
+void mem_access_delay_long_write_ce020 (uaecptr addr, uae_u32 v);
+void mem_access_delay_word_write_ce020 (uaecptr addr, uae_u32 v);
+void mem_access_delay_byte_write_ce020 (uaecptr addr, uae_u32 v);
+uae_u32 mem_access_delay_byte_read_ce020 (uaecptr addr);
+uae_u32 mem_access_delay_word_read_ce020 (uaecptr addr);
+uae_u32 mem_access_delay_long_read_ce020 (uaecptr addr);
+uae_u32 mem_access_delay_longi_read_ce020 (uaecptr addr);
+uae_u32 mem_access_delay_wordi_read_ce020 (uaecptr addr);
+
+void mem_access_delay_long_write_c040 (uaecptr addr, uae_u32 v);
+void mem_access_delay_word_write_c040 (uaecptr addr, uae_u32 v);
+void mem_access_delay_byte_write_c040 (uaecptr addr, uae_u32 v);
+uae_u32 mem_access_delay_byte_read_c040 (uaecptr addr);
+uae_u32 mem_access_delay_word_read_c040 (uaecptr addr);
+uae_u32 mem_access_delay_long_read_c040 (uaecptr addr);
+uae_u32 mem_access_delay_longi_read_c040 (uaecptr addr);
 
 extern uae_u32(REGPARAM3 *x_cp_get_disp_ea_020)(uae_u32 base, int idx) REGPARAM;
 
@@ -448,12 +477,12 @@ STATIC_INLINE uae_u32 next_iilongi (void)
 STATIC_INLINE void m68k_do_bsri(uaecptr oldpc, uae_s32 offset)
 {
 	m68k_areg(regs, 7) -= 4;
-	put_long(m68k_areg(regs, 7), oldpc);
+	x_put_long(m68k_areg(regs, 7), oldpc);
 	m68k_incpci(offset);
 }
 STATIC_INLINE void m68k_do_rtsi(void)
 {
-	uae_u32 newpc = get_long(m68k_areg(regs, 7));
+	uae_u32 newpc = x_get_long(m68k_areg(regs, 7));
 	m68k_setpci(newpc);
 	m68k_areg(regs, 7) += 4;
 }
@@ -517,9 +546,39 @@ STATIC_INLINE void m68k_setpc_normal(uaecptr pc)
 	}
 }
 
+extern void cpu_invalidate_cache(uaecptr, int);
+
+extern uae_u32(*read_data_030_bget)(uaecptr);
+extern uae_u32(*read_data_030_wget)(uaecptr);
+extern uae_u32(*read_data_030_lget)(uaecptr);
+extern void(*write_data_030_bput)(uaecptr,uae_u32);
+extern void(*write_data_030_wput)(uaecptr,uae_u32);
+extern void(*write_data_030_lput)(uaecptr,uae_u32);
+
+extern uae_u32(*read_data_030_fc_bget)(uaecptr, uae_u32);
+extern uae_u32(*read_data_030_fc_wget)(uaecptr, uae_u32);
+extern uae_u32(*read_data_030_fc_lget)(uaecptr, uae_u32);
+extern void(*write_data_030_fc_bput)(uaecptr, uae_u32, uae_u32);
+extern void(*write_data_030_fc_wput)(uaecptr, uae_u32, uae_u32);
+extern void(*write_data_030_fc_lput)(uaecptr, uae_u32, uae_u32);
+
+extern void write_dcache030_bput(uaecptr, uae_u32, uae_u32);
+extern void write_dcache030_wput(uaecptr, uae_u32, uae_u32);
+extern void write_dcache030_lput(uaecptr, uae_u32, uae_u32);
+extern uae_u32 read_dcache030_bget(uaecptr, uae_u32);
+extern uae_u32 read_dcache030_wget(uaecptr, uae_u32);
+extern uae_u32 read_dcache030_lget(uaecptr, uae_u32);
+
+extern void write_dcache030_mmu_bput(uaecptr, uae_u32);
+extern void write_dcache030_mmu_wput(uaecptr, uae_u32);
+extern void write_dcache030_mmu_lput(uaecptr, uae_u32);
+extern uae_u32 read_dcache030_mmu_bget(uaecptr);
+extern uae_u32 read_dcache030_mmu_wget(uaecptr);
+extern uae_u32 read_dcache030_mmu_lget(uaecptr);
+extern void write_dcache030_lrmw_mmu(uaecptr, uae_u32, uae_u32);
+extern uae_u32 read_dcache030_lrmw_mmu(uaecptr, uae_u32);
+
 extern void check_t0_trace(void);
-extern void write_dcache030(uaecptr, uae_u32, int);
-extern uae_u32 read_dcache030(uaecptr, int);
 extern uae_u32 get_word_icache030(uaecptr addr);
 extern uae_u32 get_long_icache030(uaecptr addr);
 
@@ -550,6 +609,7 @@ extern void REGPARAM3 x_put_bitfield (uae_u32 dst, uae_u32 bdata[2], uae_u32 val
 
 extern void m68k_setstopped (void);
 extern void m68k_resumestopped (void);
+extern void m68k_cancel_idle(void);
 
 extern uae_u32 REGPARAM3 get_disp_ea_020 (uae_u32 base, int idx) REGPARAM;
 extern uae_u32 REGPARAM3 get_bitfield (uae_u32 src, uae_u32 bdata[2], uae_s32 offset, int width) REGPARAM;
@@ -559,6 +619,7 @@ extern void m68k_disasm_ea (uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *sea
 extern void m68k_disasm (uaecptr addr, uaecptr *nextpc, int cnt);
 extern void m68k_disasm_2 (TCHAR *buf, int bufsize, uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr, int safemode);
 extern void sm68k_disasm (TCHAR*, TCHAR*, uaecptr addr, uaecptr *nextpc);
+extern int m68k_asm(TCHAR *buf, uae_u16 *out, uaecptr pc);
 extern int get_cpu_model (void);
 
 extern void set_cpu_caches (bool flush);
@@ -583,10 +644,12 @@ extern void init_m68k (void);
 extern void m68k_go (int);
 extern void m68k_dumpstate (uaecptr *);
 extern void m68k_dumpstate (uaecptr, uaecptr *);
-extern void m68k_dumpcache (void);
+extern void m68k_dumpcache (bool);
 extern int getDivu68kCycles (uae_u32 dividend, uae_u16 divisor);
 extern int getDivs68kCycles (uae_s32 dividend, uae_s16 divisor);
-extern void divbyzero_special (bool issigned, uae_s32 dst);
+extern void divbyzero_special(bool issigned, uae_s32 dst);
+extern void setdivuoverflowflags(uae_u32 dividend, uae_u16 divisor);
+extern void setdivsoverflowflags(uae_s32 dividend, uae_s16 divisor);
 extern void protect_roms (bool);
 extern void unprotect_maprom (void);
 extern bool is_hardreset(void);
@@ -625,6 +688,7 @@ extern void cpu_fallback(int mode);
 extern void fill_prefetch (void);
 extern void fill_prefetch_020_ntx(void);
 extern void fill_prefetch_030_ntx(void);
+extern void fill_prefetch_030_ntx_continue(void);
 extern void fill_prefetch_020(void);
 extern void fill_prefetch_030(void);
 
@@ -649,6 +713,8 @@ extern const struct cputbl op_smalltbl_52_ff[];
 extern const struct cputbl op_smalltbl_22_ff[]; // prefetch
 extern const struct cputbl op_smalltbl_23_ff[]; // CE
 extern const struct cputbl op_smalltbl_32_ff[]; // MMU
+extern const struct cputbl op_smalltbl_34_ff[]; // MMU + cache
+extern const struct cputbl op_smalltbl_35_ff[]; // MMU + CE + cache
 /* 68020 */
 extern const struct cputbl op_smalltbl_3_ff[];
 extern const struct cputbl op_smalltbl_43_ff[];
@@ -679,7 +745,6 @@ extern void compemu_reset(void);
 #define flush_icache_hard(int) do {} while (0)
 #endif
 bool check_prefs_changed_comp (bool);
-extern void flush_dcache (uaecptr, int);
 
 extern int movec_illg (int regno);
 extern uae_u32 val_move2c (int regno);

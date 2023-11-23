@@ -62,13 +62,20 @@
 #define NCR5380_DATAFLYERPLUS 30
 #define NONCR_HARDFRAME 31
 #define NCR5380_MALIBU 32
-#define NCR_LAST 33
+#define NCR5380_ADDHARD 33
+#define NONCR_INMATE 34
+#define NCR5380_EMPLANT 35
+#define OMTI_HD3000 36
+#define OMTI_WEDGE 37
+#define NCR5380_EVESHAMREF 38
+#define OMTI_PROFEX 39
+#define NCR_LAST 40
 
 extern int log_scsiemu;
 
-static const int outcmd[] = { 0x04, 0x0a, 0x0c, 0x2a, 0xaa, 0x15, 0x55, 0x0f, -1 };
-static const int incmd[] = { 0x01, 0x03, 0x08, 0x12, 0x1a, 0x5a, 0x25, 0x28, 0x34, 0x37, 0x42, 0x43, 0xa8, 0x51, 0x52, 0xb9, 0xbd, 0xbe, -1 };
-static const int nonecmd[] = { 0x00, 0x05, 0x06, 0x09, 0x0b, 0x11, 0x16, 0x17, 0x19, 0x1b, 0x1d, 0x1e, 0x2b, 0x35, 0x45, 0x47, 0x48, 0x49, 0x4b, 0x4e, 0xa5, 0xa9, 0xba, 0xbc, 0xe0, 0xe3, 0xe4, -1 };
+static const int outcmd[] = { 0x04, 0x0a, 0x0c, 0x11, 0x2a, 0xaa, 0x15, 0x55, 0x0f, -1 };
+static const int incmd[] = { 0x01, 0x03, 0x08, 0x0e, 0x12, 0x1a, 0x5a, 0x25, 0x28, 0x34, 0x37, 0x42, 0x43, 0xa8, 0x51, 0x52, 0xb9, 0xbd, 0xd8, 0xd9, 0xbe, -1 };
+static const int nonecmd[] = { 0x00, 0x05, 0x06, 0x07, 0x09, 0x0b, 0x10, 0x16, 0x17, 0x19, 0x1b, 0x1d, 0x1e, 0x2b, 0x35, 0x45, 0x47, 0x48, 0x49, 0x4b, 0x4e, 0xa5, 0xa9, 0xba, 0xbc, 0xe0, 0xe3, 0xe4, -1 };
 static const int scsicmdsizes[] = { 6, 10, 10, 12, 16, 12, 10, 6 };
 
 static void scsi_illegal_command(struct scsi_data *sd)
@@ -148,6 +155,7 @@ bool scsi_emulate_analyze (struct scsi_data *sd)
 		}
 	break;
 	case 0x06: // FORMAT TRACK
+	case 0x07: // FORMAT BAD TRACK
 		if (sd->device_type == UAEDEV_CD)
 			goto nocmd;
 		sd->direction = 0;
@@ -162,6 +170,11 @@ bool scsi_emulate_analyze (struct scsi_data *sd)
 		data_len2 = (sd->cmd[4] == 0 ? 256 : sd->cmd[4]) * sd->blocksize;
 		scsi_grow_buffer(sd, data_len2);
 	break;
+	case 0x11: // ASSIGN ALTERNATE TRACK (SASI)
+		if (sd->hfd && sd->hfd->ci.unit_feature_level < HD_LEVEL_SASI)
+			goto nocmd;
+		data_len = 4;
+		break;
 	case 0x28: // READ(10)
 		data_len2 = ((sd->cmd[7] << 8) | (sd->cmd[8] << 0)) * (uae_s64)sd->blocksize;
 		scsi_grow_buffer(sd, data_len2);
@@ -194,6 +207,8 @@ bool scsi_emulate_analyze (struct scsi_data *sd)
 	break;
 	case 0xbe: // READ CD
 	case 0xb9: // READ CD MSF
+	case 0xd8: // READ CD-DA
+	case 0xd9: // READ CD-DA MSF
 		if (sd->device_type != UAEDEV_CD)
 			goto nocmd;
 		tmp_len = (sd->cmd[6] << 16) | (sd->cmd[7] << 8) | sd->cmd[8];
@@ -211,17 +226,13 @@ bool scsi_emulate_analyze (struct scsi_data *sd)
 			sd->direction = 0;
 		}
 		return true;
-	case 0x15: // MODE SELECT
-	case 0x55: 
-	if (sd->device_type != UAEDEV_CD && sd->device_type != UAEDEV_TAPE)
-		goto nocmd;
-	break;
 	}
 	if (data_len < 0) {
-		if (cmd_len == 6)
+		if (cmd_len == 6) {
 			sd->data_len = sd->cmd[4];
-		else
+		} else {
 			sd->data_len = (sd->cmd[7] << 8) | sd->cmd[8];
+		}
 	} else {
 		sd->data_len = data_len;
 	}
@@ -764,6 +775,7 @@ struct soft_scsi
 	int subtype;
 	int dma_direction;
 	bool dma_active;
+	bool dma_started;
 	bool dma_controller;
 	struct romconfig *rc;
 	struct soft_scsi **self_ptr;
@@ -898,7 +910,7 @@ static void ew(struct soft_scsi *scsi, int addr, uae_u32 value)
 	}
 }
 
-static void generic_soft_scsi_add(int ch, struct uaedev_config_info *ci, struct romconfig *rc, int type, int boardsize, int romsize, int romtype)
+static struct soft_scsi *generic_soft_scsi_add(int ch, struct uaedev_config_info *ci, struct romconfig *rc, int type, int boardsize, int romsize, int romtype)
 {
 	struct soft_scsi *ss = allocscsi(&soft_scsi_units[type * MAX_DUPLICATE_EXPANSION_BOARDS + ci->controller_type_unit], rc, ch);
 	ss->type = type;
@@ -941,8 +953,9 @@ static void generic_soft_scsi_add(int ch, struct uaedev_config_info *ci, struct 
 	}
 	raw_scsi_reset(&ss->rscsi);
 	if (ch < 0)
-		return;
+		return ss;
 	add_scsi_device(&ss->rscsi.device[ch], ch, ci, rc);
+	return ss;
 }
 
 static void raw_scsi_busfree(struct raw_scsi *rs)
@@ -1413,6 +1426,8 @@ static void dma_check(struct soft_scsi *ncr)
 {
 	if (ncr->dmac_active && ncr->dma_direction) {
 
+		m68k_cancel_idle();
+
 		if (ncr->type == NCR5380_SUPRA && ncr->subtype == 4) {
 			if (ncr->dmac_direction != ncr->dma_direction)  {
 				write_log(_T("SUPRADMA: mismatched direction\n"));
@@ -1482,11 +1497,19 @@ static uae_u8 aic_bget_reg(struct soft_scsi *scsi)
 uae_u8 aic_bget_dma(struct soft_scsi *scsi, bool *phaseerr)
 {
 	struct raw_scsi *r = &scsi->rscsi;
+	if (!scsi->dma_direction)
+		return 0;
 	if (!aic_phase_match(scsi)) {
-		*phaseerr = true;
+		if (phaseerr)
+			*phaseerr = true;
+		if (!scsi->dmac_active) {
+			aic_int(scsi, 0x08); // COMMAND DONE
+		}
+		scsi->dma_direction = 0;
 		return 0;
 	}
-	*phaseerr = false;
+	if (phaseerr)
+		*phaseerr = false;
 	return raw_scsi_get_data(r, true);
 }
 
@@ -1584,11 +1607,19 @@ static void aic_bput_reg(struct soft_scsi *scsi, uae_u8 v)
 void aic_bput_dma(struct soft_scsi *scsi, uae_u8 v, bool *phaseerr)
 {
 	struct raw_scsi *r = &scsi->rscsi;
+	if (!scsi->dma_direction)
+		return;
 	if (!aic_phase_match(scsi)) {
-		*phaseerr = true;
+		if (phaseerr)
+			*phaseerr = true;
+		if (!scsi->dmac_active) {
+			aic_int(scsi, 0x08); // COMMAND DONE
+		}
+		scsi->dma_direction = 0;
 		return;
 	}
-	*phaseerr = false;
+	if (phaseerr)
+		*phaseerr = false;
 	raw_scsi_put_data(r, v, true);
 }
 
@@ -1629,8 +1660,13 @@ static void aic_bput_data(struct soft_scsi *scsi, uae_u8 v)
 		case 5:
 		if (v & 1) { // DMA XFER EN
 			scsi->dma_direction = (v & 2) ? 1 : -1;
-			dma_check(scsi);
-			aic_int(scsi, 0x08); // COMMAND DONE
+			if (scsi->dmac_active) {
+				dma_check(scsi);
+				aic_int(scsi, 0x08); // COMMAND DONE
+				scsi->dma_direction = 0;
+			}
+		} else {
+			scsi->dma_direction = 0;
 		}
 		break;
 		case 8: // CONTROL
@@ -1883,6 +1919,7 @@ void ncr5380_bput(struct soft_scsi *scsi, int reg, uae_u8 v)
 		if (scsi->regs[2] & 2) {
 			scsi->dma_direction = 1;
 			scsi->dma_active = true;
+			scsi->dma_started = true;
 		}
 #if NCR5380_DEBUG
 		write_log(_T("DMA target recv PC=%08x\n"), M68K_GETPC);
@@ -1892,6 +1929,7 @@ void ncr5380_bput(struct soft_scsi *scsi, int reg, uae_u8 v)
 		if (scsi->regs[2] & 2) {
 			scsi->dma_direction = -1;
 			scsi->dma_active = true;
+			scsi->dma_started = true;
 			dma_check(scsi);
 		}
 #if NCR5380_DEBUG
@@ -2136,14 +2174,19 @@ static void sasi_microforge_bput(struct soft_scsi *scsi, int reg, uae_u8 v)
 // OMTI 5510
 static void omti_irq(struct soft_scsi *scsi)
 {
-	if (scsi->intena && (scsi->chip_state & 2))
-		ncr5380_set_irq(scsi);
+	if (scsi->chip_state & 2) {
+		scsi->chip_state |= 0x100;
+		if (scsi->intena)
+			ncr5380_set_irq(scsi);
+	}
 }
 static void omti_check_state(struct soft_scsi *scsi)
 {
 	struct raw_scsi *rs = &scsi->rscsi;
 	if ((rs->bus_phase == SCSI_SIGNAL_PHASE_DATA_IN || rs->bus_phase == SCSI_SIGNAL_PHASE_DATA_OUT) && (scsi->chip_state & 1)) {
-		omti_irq(scsi);
+		if (scsi->intena && (scsi->chip_state & 2)) {
+			ncr5380_set_irq(scsi);
+		}
 	}
 }
 
@@ -2178,13 +2221,15 @@ static uae_u8 omti_bget(struct soft_scsi *scsi, int reg)
 			if (t & SCSI_IO_COMMAND)
 				v |= 4;
 		}
-		v |= 0x80 | 0x40;
+		v |= 0x80 | 0x40; // always one
 		if ((rs->bus_phase == SCSI_SIGNAL_PHASE_DATA_IN || rs->bus_phase == SCSI_SIGNAL_PHASE_DATA_OUT) && (scsi->chip_state & 1))
-			v |= 0x10;
-		if (scsi->irq)
-			v |= 0x20;
-		scsi->irq = false;
-		break;
+			v |= 0x10; // DREQ
+		if (scsi->chip_state & 0x100)
+			v |= 0x20; // IREQ
+		if (rs->bus_phase != SCSI_SIGNAL_PHASE_STATUS) {
+			scsi->chip_state &= ~0x100;
+			scsi->irq = false;
+		}
 		break;
 		case 2: // CONFIGURATION
 		v = 0xff;
@@ -2214,8 +2259,9 @@ static void omti_bput(struct soft_scsi *scsi, int reg, uae_u8 v)
 		raw_scsi_set_signal_phase(rs, false, true, false);
 		raw_scsi_set_signal_phase(rs, false, false, false);
 		break;
-		case 3: // MASK
-		scsi->chip_state = v;
+		case 3: // MASK (bit 1 = interrupt enable, bit 0 = DMA enable)
+		scsi->chip_state &= ~0xff;
+		scsi->chip_state |= v;
 		break;
 	}
 	omti_check_state(scsi);
@@ -2325,6 +2371,24 @@ static int xebec_reg(struct soft_scsi *ncr, uaecptr addr)
 	return -1;
 }
 
+static int hd3000_reg(struct soft_scsi *ncr, uaecptr addr, bool write)
+{
+	if (!(addr & 1))
+		return -1;
+	if (!(addr & 0x4000))
+		return -1;
+	return (addr / 2) & 7;
+}
+
+static int profex_reg(struct soft_scsi *ncr, uaecptr addr, bool write)
+{
+	if (addr & 1)
+		return -1;
+	if (!(addr & 0x8000))
+		return -1;
+	return (addr / 2) & 7;
+}
+
 static int hda506_reg(struct soft_scsi *ncr, uaecptr addr, bool write)
 {
 	if ((addr & 0x7fe1) != 0x7fe0)
@@ -2337,6 +2401,17 @@ static int hda506_reg(struct soft_scsi *ncr, uaecptr addr, bool write)
 static int alf1_reg(struct soft_scsi *ncr, uaecptr addr, bool write)
 {
 	if ((addr & 0x7ff9) != 0x0641)
+		return -1;
+	addr >>= 1;
+	addr &= 3;
+	return addr;
+}
+
+static int wedge_reg(struct soft_scsi *ncr, uaecptr addr, int size, bool write)
+{
+	if (size != 1)
+		return -1;
+	if ((addr & 0xFFF9) != 0x0641)
 		return -1;
 	addr >>= 1;
 	addr &= 3;
@@ -2443,6 +2518,35 @@ static int dataflyerplus_reg(uaecptr addr)
 	return (addr >> 1) & 7;
 }
 
+// this is clone of trumpcardpro!
+static int addhardreg(uaecptr addr)
+{
+	if (addr & 1)
+		return -1;
+	if (addr & 0x8000)
+		return -1;
+	if ((addr & 0xe0) == 0x60)
+		return 8;
+	if ((addr & 0xe0) != 0x40)
+		return -1;
+	addr >>= 1;
+	addr &= 7;
+	return addr;
+}
+
+static int emplantreg(uaecptr addr)
+{
+	if (addr & 1)
+		return -1;
+	if ((addr & 0xf000) == 0x6000)
+		return 8;
+	if ((addr & 0xf000) != 0x5000)
+		return -1;
+	addr >>= 4;
+	addr &= 7;
+	return addr;
+}
+
 static int malibureg(uaecptr addr)
 {
 	if ((addr & 0xc000) == 0x8000)
@@ -2455,6 +2559,17 @@ static int malibureg(uaecptr addr)
 		return -1;
 	int reg = (addr & 0x0f) >> 1;
 	return reg;
+}
+
+static int eveshamref_reg(struct soft_scsi *ncr, uaecptr addr)
+{
+	if (!ncr->configured)
+		return -1;
+	if (addr < 0x40)
+		return (addr >> 1) & 7;
+	if (addr == 0x41)
+		return 8;
+	return -1;
 }
 
 static uae_u8 read_684xx_dma(struct soft_scsi *ncr, uaecptr addr)
@@ -2612,6 +2727,34 @@ static uae_u32 ncr80_bget2(struct soft_scsi *ncr, uaecptr addr, int size)
 			}
 		}
 
+	} else if (ncr->type == NCR5380_ADDHARD) {
+
+		if (addr & 0x8000) {
+			v = ncr->rom[addr & 0x7fff];
+		} else {
+			reg = addhardreg(addr);
+			if (reg >= 0) {
+				if (reg == 8 && !ncr->dma_active) {
+					v = 0;
+				} else {
+					v = ncr5380_bget(ncr, reg);
+				}
+			}
+		}
+
+	} else if (ncr->type == NCR5380_EMPLANT) {
+
+		if ((addr & 0xf000) >= 0xc000) {
+			v = ncr->rom[addr & 0x3fff];
+		} else {
+			reg = emplantreg(addr);
+			if (reg == 8 && !ncr->dma_active)
+				reg = -1;
+			if (reg >= 0) {
+				v = ncr5380_bget(ncr, reg);
+			}
+		}
+
 	} else if (ncr->type == NONCR_HARDFRAME) {
 
 		if (addr == 0xc0) {
@@ -2624,6 +2767,26 @@ static uae_u32 ncr80_bget2(struct soft_scsi *ncr, uaecptr addr, int size)
 			v = ncr->intena ? 0x10 : 0x00;
 		} else if (addr >= 0x80 && addr <= 0x9f) {
 			v = read_684xx_dma(ncr, addr & 31);
+		} else {
+			v = ncr->rom[addr];
+		}
+
+	} else if (ncr->type == NONCR_INMATE) {
+
+		if (!(addr & 0x8000)) {
+			if (addr == 0x80) {
+				v = aic_bget_reg(ncr);
+			} else if (addr == 0x82) {
+				v = aic_bget_data(ncr);
+			} else if (addr == 0x84) {
+				v = ncr->rc->device_settings & 0x7f;
+				if (!ncr->rc->autoboot_disabled)
+					v |= 1 << 4;
+				if (ncr->dma_direction)
+					v |= 1 << 7;
+			} else if (addr == 0x88 || addr == 0x89) {
+				v = aic_bget_dma(ncr, NULL);
+			}
 		} else {
 			v = ncr->rom[addr];
 		}
@@ -2951,6 +3114,26 @@ static uae_u32 ncr80_bget2(struct soft_scsi *ncr, uaecptr addr, int size)
 		if (reg >= 0)
 			v = sasi_microforge_bget(ncr, reg);
 
+	} else if (ncr->type == OMTI_HD3000) {
+
+		if (addr < 0x4000) {
+			v = ncr->rom[addr];
+		} else {
+			reg = hd3000_reg(ncr, addr, false);
+			if (reg >= 0)
+				v = omti_bget(ncr, reg);
+		}
+
+	} else if (ncr->type == OMTI_PROFEX) {
+
+		if (addr < 0x4000) {
+			v = ncr->rom[addr];
+		} else {
+			reg = profex_reg(ncr, addr, false);
+			if (reg >= 0)
+				v = omti_bget(ncr, reg);
+		}
+
 	} else if (ncr->type == OMTI_HDA506) {
 
 		reg = hda506_reg(ncr, addr, false);
@@ -2968,6 +3151,13 @@ static uae_u32 ncr80_bget2(struct soft_scsi *ncr, uaecptr addr, int size)
 		reg = promigos_reg(ncr, addr, size, false);
 		if (reg >= 0)
 			v = omti_bget(ncr, reg);
+
+	} else if (ncr->type == OMTI_WEDGE) {
+
+		reg = wedge_reg(ncr, addr, size, false);
+		if (reg >= 0) {
+			v = omti_bget(ncr, reg);
+		}
 
 	} else if (ncr->type == OMTI_SYSTEM2000) {
 
@@ -3060,10 +3250,19 @@ static uae_u32 ncr80_bget2(struct soft_scsi *ncr, uaecptr addr, int size)
 				v = ncr5380_bget(ncr, 8);
 		}
 
+	} else if (ncr->type == NCR5380_EVESHAMREF) {
+
+		reg = eveshamref_reg(ncr, addr);
+		if (reg >= 0) {
+			v = ncr5380_bget(ncr, reg);
+		} else {
+			v = ncr->rom[addr & 0x7fff];
+		}
+
 	}
 
 #if NCR5380_DEBUG > 1
-	if (origaddr < 0x4000 || origaddr >= 0x8000)
+	if (1 || origaddr < 0x8000)
 		write_log(_T("GET %08x %02x %d %08x %d\n"), origaddr, v, reg, M68K_GETPC, regs.intmask);
 #endif
 
@@ -3085,6 +3284,32 @@ static void ncr80_bput2(struct soft_scsi *ncr, uaecptr addr, uae_u32 val, int si
 			ncr5380_bput(ncr, reg, val);
 		}
 
+	} else if (ncr->type == NCR5380_ADDHARD) {
+
+		reg = addhardreg(addr);
+		if (reg >= 0) {
+			if (reg == 8 && !ncr->dma_active) {
+				;
+			} else {
+				ncr5380_bput(ncr, reg, val);
+			}
+		}
+
+	} else if (ncr->type == NCR5380_EMPLANT) {
+
+		reg = emplantreg(addr);
+		if (reg == 8 && !ncr->dma_active)
+			reg = -1;
+		if (reg >= 0) {
+			ncr5380_bput(ncr, reg, val);
+		} else if ((addr & 0xff00) == 0x3800) {
+			if ((val & 0x88) == 0x88) {
+				ncr->intena = true;
+			} else if ((val & 0x88) == 0x08) {
+				ncr->intena = false;
+			}
+		}
+
 	} else if (ncr->type == NONCR_HARDFRAME) {
 
 		if (addr == 0xc0) {
@@ -3095,6 +3320,16 @@ static void ncr80_bput2(struct soft_scsi *ncr, uaecptr addr, uae_u32 val, int si
 			ncr->intena = (val & 0x10) != 0;
 		} else if (addr >= 0x80 && addr <= 0x9f) {
 			write_684xx_dma(ncr, addr & 31, val);
+		}
+
+	} else if (ncr->type == NONCR_INMATE) {
+
+		if (addr == 0x80) {
+			aic_bput_reg(ncr, val);
+		} else if (addr == 0x82) {
+			aic_bput_data(ncr, val);
+		} else if (addr == 0x88 || addr == 0x89) {
+			aic_bput_dma(ncr, val, NULL);
 		}
 
 	} else if (ncr->type == NCR5380_SUPRA) {
@@ -3310,6 +3545,18 @@ static void ncr80_bput2(struct soft_scsi *ncr, uaecptr addr, uae_u32 val, int si
 		if (reg >= 0)
 			omti_bput(ncr, reg, val);
 
+	} else if (ncr->type == OMTI_HD3000) {
+
+		reg = hd3000_reg(ncr, addr, true);
+		if (reg >= 0)
+			omti_bput(ncr, reg, val);
+
+	} else if (ncr->type == OMTI_PROFEX) {
+
+		reg = profex_reg(ncr, addr, true);
+		if (reg >= 0)
+			omti_bput(ncr, reg, val);
+
 	} else if (ncr->type == OMTI_ALF1 || ncr->type == OMTI_ADAPTER) {
 
 		reg = alf1_reg(ncr, addr, true);
@@ -3321,6 +3568,13 @@ static void ncr80_bput2(struct soft_scsi *ncr, uaecptr addr, uae_u32 val, int si
 		reg = promigos_reg(ncr, addr, size, true);
 		if (reg >= 0)
 			omti_bput(ncr, reg, val);
+
+	} else if (ncr->type == OMTI_WEDGE) {
+
+		reg = wedge_reg(ncr, addr, size, true);
+		if (reg >= 0) {
+			omti_bput(ncr, reg, val);
+		}
 
 	} else if (ncr->type == OMTI_SYSTEM2000) {
 
@@ -3385,10 +3639,16 @@ static void ncr80_bput2(struct soft_scsi *ncr, uaecptr addr, uae_u32 val, int si
 			if (ncr->dma_active)
 				ncr5380_bput(ncr, 8, val);
 		}
+
+	} else if (ncr->type == NCR5380_EVESHAMREF) {
+
+		reg = eveshamref_reg(ncr, addr);
+		if (reg >= 0)
+			ncr5380_bput(ncr, reg, val);
 	}
 
 #if NCR5380_DEBUG > 1
-	if (1 || origaddr >= 0x8000)
+	if (origaddr < 0x8000)
 		write_log(_T("PUT %08x %02x %d %08x %d\n"), origaddr, val, reg, M68K_GETPC, regs.intmask);
 #endif
 }
@@ -4283,6 +4543,16 @@ bool system2000_init(struct autoconfig_info *aci)
 
 	if (!scsi)
 		return false;
+	return true;
+}
+
+bool system2000_preinit(struct autoconfig_info *aci)
+{
+	struct soft_scsi *scsi = getscsi(aci->rc);
+
+	if (!scsi)
+		return false;
+
 	map_banks(scsi->bank, aci->start >> 16, aci->size >> 16, 0);
 	scsi->board_mask = aci->size - 1;
 	scsi->baseaddress = aci->start;
@@ -4297,6 +4567,41 @@ bool system2000_init(struct autoconfig_info *aci)
 void system2000_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
 {
 	generic_soft_scsi_add(ch, ci, rc, OMTI_SYSTEM2000, 65536, 16384, ROMTYPE_SYSTEM2000);
+}
+
+bool wedge_init(struct autoconfig_info *aci)
+{
+	aci->start = 0xea0000;
+	aci->size = 0x10000;
+
+	if (!aci->doinit)
+		return true;
+
+	struct soft_scsi *scsi = getscsi(aci->rc);
+
+	if (!scsi)
+		return false;
+	return true;
+}
+
+bool wedge_preinit(struct autoconfig_info *aci)
+{
+	struct soft_scsi *scsi = getscsi(aci->rc);
+
+	if (!scsi)
+		return false;
+
+	map_banks(scsi->bank, aci->start >> 16, aci->size >> 16, 0);
+	scsi->board_mask = aci->size - 1;
+	scsi->baseaddress = aci->start;
+	scsi->configured = 1;
+	aci->addrbank = scsi->bank;
+	return true;
+}
+
+void wedge_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	generic_soft_scsi_add(ch, ci, rc, OMTI_WEDGE, 65536, 0, ROMTYPE_WEDGE);
 }
 
 bool omtiadapter_init(struct autoconfig_info *aci)
@@ -4502,6 +4807,28 @@ void hardframe_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romco
 	generic_soft_scsi_add(ch, ci, rc, NONCR_HARDFRAME, 65536, 65536, ROMTYPE_HARDFRAME);
 }
 
+bool inmate_init(struct autoconfig_info *aci)
+{
+	if (!aci->doinit) {
+		load_rom_rc(aci->rc, ROMTYPE_INMATE, 32768, 0, aci->autoconfig_raw, 128, LOADROM_EVENONLY_ODDONE);
+		return true;
+	}
+
+	struct soft_scsi *scsi = getscsi(aci->rc);
+	if (!scsi)
+		return false;
+
+	load_rom_rc(aci->rc, ROMTYPE_INMATE, 32768, 0, scsi->rom, 65536, LOADROM_EVENONLY_ODDONE);
+	memcpy(scsi->acmemory, scsi->rom, sizeof scsi->acmemory);
+	aci->addrbank = scsi->bank;
+	return true;
+}
+
+void inmate_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	generic_soft_scsi_add(ch, ci, rc, NONCR_INMATE, 65536, 65536, ROMTYPE_INMATE);
+}
+
 bool malibu_init(struct autoconfig_info *aci)
 {
 	const struct expansionromtype *ert = get_device_expansion_rom(ROMTYPE_MALIBU);
@@ -4528,4 +4855,136 @@ bool malibu_init(struct autoconfig_info *aci)
 void malibu_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
 {
 	generic_soft_scsi_add(ch, ci, rc, NCR5380_MALIBU, 65536, 16384, ROMTYPE_MALIBU);
+}
+
+bool addhard_init(struct autoconfig_info *aci)
+{
+	const struct expansionromtype *ert = get_device_expansion_rom(ROMTYPE_ADDHARD);
+	if (!aci->doinit) {
+		aci->autoconfigp = ert->autoconfig;
+		return true;
+	}
+
+	struct soft_scsi *scsi = getscsi(aci->rc);
+	if (!scsi)
+		return false;
+
+	load_rom_rc(aci->rc, ROMTYPE_ADDHARD, 16384, 0, scsi->rom, 65536, LOADROM_EVENONLY_ODDONE);
+	for (int i = 0; i < 16; i++) {
+		uae_u8 b = ert->autoconfig[i];
+		ew(scsi, i * 4, b);
+	}
+	aci->addrbank = scsi->bank;
+	scsi->intena = true;
+	return true;
+}
+
+void addhard_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	generic_soft_scsi_add(ch, ci, rc, NCR5380_ADDHARD, 65536, 32768, ROMTYPE_ADDHARD);
+}
+
+bool emplant_init(struct autoconfig_info *aci)
+{
+	const struct expansionromtype *ert = get_device_expansion_rom(ROMTYPE_EMPLANT);
+	if (!aci->doinit) {
+		aci->autoconfigp = ert->autoconfig;
+		return true;
+	}
+
+	struct soft_scsi *scsi = getscsi(aci->rc);
+	if (!scsi)
+		return false;
+
+	load_rom_rc(aci->rc, ROMTYPE_EMPLANT, 8192, 0, scsi->rom, 16384, LOADROM_EVENONLY_ODDONE);
+	for (int i = 0; i < 16; i++) {
+		uae_u8 b = ert->autoconfig[i];
+		ew(scsi, i * 4, b);
+	}
+	aci->addrbank = scsi->bank;
+	return true;
+}
+
+void emplant_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	generic_soft_scsi_add(ch, ci, rc, NCR5380_EMPLANT, 65536, 16384, ROMTYPE_EMPLANT);
+}
+
+bool hd3000_init(struct autoconfig_info *aci)
+{
+	const struct expansionromtype *ert = get_device_expansion_rom(ROMTYPE_GOLEMHD3000);
+
+	if (!aci->doinit) {
+		load_rom_rc(aci->rc, ROMTYPE_GOLEMHD3000, 8192, !aci->rc->autoboot_disabled ? 0 : 8192, aci->autoconfig_raw, 128, 0);
+		return true;
+	}
+
+	struct soft_scsi *scsi = getscsi(aci->rc);
+	if (!scsi)
+		return false;
+
+	load_rom_rc(aci->rc, ROMTYPE_GOLEMHD3000, 8192, !aci->rc->autoboot_disabled ? 0 : 8192, scsi->rom, 65536, 0);
+	memcpy(scsi->acmemory, scsi->rom, sizeof scsi->acmemory);
+	aci->addrbank = scsi->bank;
+	return true;
+}
+
+void hd3000_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	generic_soft_scsi_add(ch, ci, rc, OMTI_HD3000, 65536, 16384, ROMTYPE_GOLEMHD3000);
+}
+
+bool eveshamref_init(struct autoconfig_info *aci)
+{
+	if (!aci->doinit) {
+		load_rom_rc(aci->rc, ROMTYPE_EVESHAMREF, 65536, aci->rc->autoboot_disabled ? 0x1000 : 0, aci->autoconfig_raw, 128, LOADROM_EVENONLY_ODDONE);
+		return true;
+	}
+
+	struct soft_scsi *scsi = getscsi(aci->rc);
+	if (!scsi)
+		return false;
+
+	load_rom_rc(aci->rc, ROMTYPE_EVESHAMREF, 65536, aci->rc->autoboot_disabled ? 0x1000 : 0, scsi->rom, 65536, LOADROM_EVENONLY_ODDONE);
+	memcpy(scsi->acmemory, scsi->rom, sizeof scsi->acmemory);
+	aci->addrbank = scsi->bank;
+	return true;
+}
+
+void eveshamref_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	generic_soft_scsi_add(ch, ci, rc, NCR5380_EVESHAMREF, 65536, 65536, ROMTYPE_EVESHAMREF);
+}
+
+bool profex_init(struct autoconfig_info *aci)
+{
+	const struct expansionromtype *ert = get_device_expansion_rom(ROMTYPE_PROFEX);
+
+	if (!aci->doinit) {
+		load_rom_rc(aci->rc, ROMTYPE_PROFEX, 8192, 0, aci->autoconfig_raw, 128, LOADROM_EVENONLY_ODDONE);
+		if (aci->rc->autoboot_disabled)
+			aci->autoconfig_raw[0] &= ~0x10;
+		return true;
+	}
+
+	struct soft_scsi *scsi = getscsi(aci->rc);
+	if (!scsi)
+		return false;
+
+	load_rom_rc(aci->rc, ROMTYPE_PROFEX, 8192, 0, scsi->rom, 65536, LOADROM_EVENONLY_ODDONE);
+	if (aci->rc->autoboot_disabled)
+		scsi->rom[0] &= ~0x10;
+	memcpy(scsi->acmemory, scsi->rom, sizeof scsi->acmemory);
+	aci->addrbank = scsi->bank;
+	return true;
+}
+
+void profex_add_scsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
+{
+	struct soft_scsi *ss = generic_soft_scsi_add(ch, ci, rc, OMTI_PROFEX, 65536, 16384, ROMTYPE_PROFEX);
+	if (ss && ch >= 0) {
+		// Boot ROM requires OMTI-55 "55" identifier.
+		ss->rscsi.device[ch]->hfd->sector_buffer[0] = '5';
+		ss->rscsi.device[ch]->hfd->sector_buffer[1] = '5';
+	}
 }

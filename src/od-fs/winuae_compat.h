@@ -15,7 +15,7 @@
 // for example uae_tfopen may perform charset conversion before opening the
 // file.
 
-// #define _tfopen uae_tfopen
+ #define _tfopen uae_tfopen
 #define _ftelli64 uae_ftello64
 #define _fseeki64 uae_fseeko64
 

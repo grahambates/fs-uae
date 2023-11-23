@@ -251,7 +251,7 @@ void setmousestate (int mouse, int axis, int data, int isabs);
 extern int getmousestate (int mouse);
 extern void inputdevice_updateconfig (struct uae_prefs *srcprefs, struct uae_prefs *dstprefs);
 extern void inputdevice_updateconfig_internal (struct uae_prefs *srcprefs, struct uae_prefs *dstprefs);
-extern void inputdevice_devicechange (struct uae_prefs *prefs);
+extern bool inputdevice_devicechange (struct uae_prefs *prefs);
 
 #define INTERNALEVENT_CPURESET 0
 #define INTERNALEVENT_KBRESET 1
@@ -308,13 +308,14 @@ extern void inputdevice_default_prefs (struct uae_prefs *p);
 extern void inputdevice_acquire (int allmode);
 extern void inputdevice_unacquire(void);
 extern void inputdevice_unacquire(bool emulationactive, int inputmask);
+extern void inputdevice_releasebuttons(void);
 
 extern void indicator_leds (int num, int state);
 
 extern void warpmode (int mode);
 extern void pausemode (int mode);
 
-extern void inputdevice_add_inputcode (int code, int state);
+extern void inputdevice_add_inputcode (int code, int state, const TCHAR *);
 extern void inputdevice_handle_inputcode (void);
 
 extern void inputdevice_tablet (int x, int y, int z,
