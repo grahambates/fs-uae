@@ -4280,6 +4280,12 @@ static bool merge_blacklist(void)
 
 void build_comp(void)
 {
+#ifdef FSUAE
+	if (!g_fs_uae_jit_compiler) {
+		jit_log("JIT: JIT compiler is not enabled");
+		return;
+	}
+#endif
 	int i, j;
 	unsigned long opcode;
 	const struct comptbl* tbl=op_smalltbl_0_comp_ff;

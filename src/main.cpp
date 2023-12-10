@@ -1115,6 +1115,14 @@ static int real_main2 (int argc, TCHAR **argv)
 		exit (1);
 	}
 
+#ifdef NATMEM_OFFSET
+#ifdef FSUAE
+	preinit_shm ();
+#else
+	//preinit_shm ();
+#endif
+#endif
+
 	event_init();
 
 	if (restart_config[0])
