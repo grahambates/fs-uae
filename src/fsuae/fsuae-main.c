@@ -1520,7 +1520,7 @@ static fs_thread *g_emulation_thread;
 int fs_emu_run(fs_emu_main_function function)
 {
     g_emulation_thread =
-        fs_thread_create("emulation", emulation_thread, function);
+        fs_thread_create("emulation", (fs_thread_function)emulation_thread, function);
     if (g_emulation_thread == NULL) {
         fsemu_log("Error starting emulation thread\n");
         // FIXME: ERROR MESSAGE HERE

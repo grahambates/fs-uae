@@ -21,7 +21,7 @@ int uae_start_thread (const char *name, uae_thread_function fn, void *arg,
         write_log("uae_start_tread \"%s\" function at %p arg %p\n", name,
                 fn, arg);
     }
-    uae_thread_id thread_id = fs_thread_create(name, fn, arg);
+    uae_thread_id thread_id = fs_thread_create(name, (fs_thread_function)fn, arg);
     if (thread_id == NULL) {
         write_log("ERROR creating thread\n");
         result = 0;
