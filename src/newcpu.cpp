@@ -1,3 +1,10 @@
+#ifdef FSUAE
+#define _tcstoul strtoul
+static int _tclen(const char *s) {
+       // FIXME: Correctly implement?
+       return 1;
+}
+#endif
 /*
 * UAE - The Un*x Amiga Emulator
 *
@@ -62,9 +69,8 @@ bool check_prefs_changed_comp (bool checkonly) { return false; }
 /* For faster JIT cycles handling */
 int pissoff = 0;
 
-#ifdef FSUAE
-int input_record = 0;
-int input_play = 0;
+#ifdef FSUAE // NL
+#include <fs/emu/hacks.h>
 #endif
 
 /* Opcode of faulting instruction */
@@ -6600,10 +6606,15 @@ void m68k_go (int may_quit)
 
 			if (!restored || hsync_counter == 0)
 				savestate_check ();
+#ifdef FSUAE
+#else
 			if (input_record == INPREC_RECORD_START)
 				input_record = INPREC_RECORD_NORMAL;
+#endif
 			statusline_clear();
 		} else {
+#ifdef FSUAE
+#else
 			if (input_record == INPREC_RECORD_START) {
 				input_record = INPREC_RECORD_NORMAL;
 				savestate_init ();
@@ -6611,6 +6622,7 @@ void m68k_go (int may_quit)
 				vsync_counter = 0;
 				savestate_check ();
 			}
+#endif
 		}
 
 		if (changed_prefs.inprecfile[0] && input_record)

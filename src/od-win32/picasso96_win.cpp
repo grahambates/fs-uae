@@ -4327,12 +4327,16 @@ static uae_u32 REGPARAM2 picasso_SetDisplay(TrapContext* ctx)
 
 void init_hz_p96(int monid)
 {
+#ifdef FSUAE
+	if (0) {
+#else
 	if (currprefs.win32_rtgvblankrate < 0 || isvsync_rtg()) {
 		float rate = target_getcurrentvblankrate(monid);
 		if (rate < 0)
 			p96vblank = vblank_hz;
 		else
 			p96vblank = target_getcurrentvblankrate(monid);
+#endif
 	} else if (currprefs.win32_rtgvblankrate == 0) {
 		p96vblank = vblank_hz;
 	} else {
@@ -5853,6 +5857,9 @@ void picasso_flushpixels(int index, uae_u8 *src, int off, bool render)
 	int miny = pheight - 1;
 	int flushlines = 0, matchcount = 0;
 	struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
+#ifdef FSUAE // NL
+	vidinfo->extra_mem = 1;
+#endif
 	bool overlay_updated = false;
 
 	src_start[0] = src + (off & ~gwwpagemask[index]);

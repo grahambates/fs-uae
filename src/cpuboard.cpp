@@ -36,6 +36,10 @@
 #include "cpummu030.h"
 #include "devices.h"
 
+#ifdef FSUAE // NL
+#include "uae/fs.h"
+#endif
+
 // ROM expansion board diagrom call
 // 00F83B7C 3.1 A4000
 // 00F83B7C 3.0 A1200
@@ -170,6 +174,8 @@ static bool blizzardmaprom_bank_mapped, blizzardmaprom2_bank_mapped;
 static bool cpuboard_non_byte_ea;
 static uae_u16 a2630_io;
 
+#ifdef WITH_PPC
+
 static bool ppc_irq_pending;
 
 static void set_ppc_interrupt(void)
@@ -241,6 +247,8 @@ bool ppc_interrupt(int new_m68k_ipl)
 
 	return m68kint;
 }
+
+#endif /* WITH_PPC */
 
 static bool mapromconfigured(void)
 {

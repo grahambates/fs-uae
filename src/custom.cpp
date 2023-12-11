@@ -6225,6 +6225,9 @@ static bool changed_chipset_refresh(void)
 
 void compute_framesync(void)
 {
+#ifdef FSUAE_FRAME_DEBUG
+	printf("compute_framesync [cycles]\n");
+#endif
 	struct vidbuf_description *vidinfo = &adisplays[0].gfxvidinfo;
 	struct amigadisplay *ad = &adisplays[0];
 	int islace = interlace_seen ? 1 : 0;
@@ -11312,6 +11315,9 @@ static void fpscounter(bool frameok)
 // it can line 0 or even later.
 static void vsync_handler_render(void)
 {
+#ifdef FSUAE_FRAME_DEBUG
+	uae_log("vsync_handler_pre [draw] [cycles]\n");
+#endif
 	struct amigadisplay *ad = &adisplays[0];
 
 #if 1
@@ -11460,8 +11466,11 @@ static void vsync_handler_render(void)
 #ifdef FSUAE
 	if (fsemu) {
 		// FIXME: MOVE to linesync ?
-		/* uae_log_reset_timestamp(); */
+		uae_log_reset_timestamp();
 	}
+#endif
+#ifdef FSUAE_FRAME_DEBUG
+	uae_log("[%6ld] vsync_handler_pre done\n", vsync_counter);
 #endif
 }
 
@@ -12255,6 +12264,9 @@ static void hsync_handlerh(bool onvsync)
 
 static void set_hpos(void)
 {
+#ifdef FSUAE_FRAME_DEBUG
+	printf("set_hpos get_cycles() = %ld hsync at %ld\n", get_cycles(), get_cycles () + HSYNCTIME);
+#endif
 	line_start_cycles = (get_cycles() + CYCLE_UNIT - 1) & ~(CYCLE_UNIT - 1);
 	maxhposeven_prev = maxhposeven;
 	maxhpos = maxhpos_short + lol;
@@ -12332,6 +12344,9 @@ static void hsync_handler_pre(bool onvsync)
 #endif
 		vpos = 0;
 		vsync_counter++;
+#ifdef FSUAE
+		g_uae_vsync_counter++;
+#endif
 	}
 	check_line_enabled();
 
@@ -12374,6 +12389,8 @@ STATIC_INLINE bool is_last_line(void)
 	return vpos + 1 == maxvpos + lof_store;
 }
 
+#ifdef FSUAE
+#else
 // low latency vsync
 
 #define LLV_DEBUG 0
@@ -12412,6 +12429,7 @@ static void scanlinesleep(int currline, int nextline)
 	else
 		target_sleep_nanos(500);
 }
+#endif
 
 static void linesync_first_last_line(int *first, int *last)
 {
@@ -12419,6 +12437,9 @@ static void linesync_first_last_line(int *first, int *last)
 	*first = minfirstline;
 	*last = maxvpos_display;
 	get_custom_raw_limits(&w, &h, &x, &y);
+#ifdef FSUAE
+	return;
+#endif
 	if (y > 0)
 		*first += y;
 	//write_log(_T("y=%d h=%d mfl=%d maxvpos=%d\n"), y, h, minfirstline, maxvpos_display);

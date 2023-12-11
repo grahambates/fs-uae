@@ -3279,6 +3279,22 @@ static void setbplmode(void)
 		bplmode = CMODE_NORMAL;
 }
 
+#ifdef FSUAE_XXX // NL
+
+#include <fs/emu/hacks.h>
+
+STATIC_INLINE void do_flush_line (struct vidbuffer *vb, int lineno)
+{
+	if (vb) {
+		if (fsemu) {
+			// printf("- flush_line %d (vpos %d)\n", lineno, vpos);
+		}
+		flush_line(vb, lineno);
+	}
+}
+
+#endif
+
 /* We only save hardware registers during the hardware frame. Now, when
 * drawing the frame, we expand the data into a slightly more useful
 * form. */

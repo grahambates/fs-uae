@@ -170,6 +170,11 @@ static const TCHAR *getdevname (void)
 	return _T("uaenet.device");
 }
 
+#ifdef FSUAE // NL
+#define asyncreq uaeserial_asyncreq
+#define devstruct uaeserial_devstruct
+#endif
+
 struct asyncreq {
 	struct asyncreq *next;
 	uaecptr arequest;
