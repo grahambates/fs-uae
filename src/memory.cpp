@@ -43,6 +43,14 @@
 #include "inputdevice.h"
 #include "casablanca.h"
 
+#ifdef FSUAE // NL
+#undef _WIN32
+#endif
+
+#ifdef FSUAE // NL
+extern uae_u8 *natmem_offset, *natmem_offset_end;
+#endif
+
 bool canbang;
 uaecptr highest_ram;
 static bool rom_write_enabled;

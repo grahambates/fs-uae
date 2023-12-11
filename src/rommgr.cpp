@@ -19,6 +19,10 @@
 #include "autoconf.h"
 #include "filesys.h"
 
+#ifdef FSUAE // NL
+#include "uae/fs.h"
+#endif
+
 #define SAVE_ROM 0
 
 static struct romlist *rl;
@@ -1107,6 +1111,12 @@ struct romlist **getromlistbyident (int ver, int rev, int subver, int subrev, co
 			continue;
 		if (model && !_tcsicmp (model, rd->name))
 			ok = 2;
+#ifdef FSUAE
+		/* If we get an exact match by model name, we do not want to downgrade
+		 * the match, otherwise we will fail the second model check below. */
+		// FIXME: Should probably send this else fix upstream.
+		else
+#endif
 		if ((ver < 0 || rd->ver == ver) && (rev < 0 || rd->rev == rev) && (rd->rev != 0 || rd->ver != 0)) {
 			if (subver >= 0) {
 				if (rd->subver == subver && (subrev < 0 || rd->subrev == subrev) && rd->subver > 0)
@@ -1902,6 +1912,9 @@ static int read_rom_file (uae_u8 *buf, const struct romdata *rd)
 		memcpy (buf, tmp, sizeof tmp);
 		zfile_fread (buf + sizeof tmp, rd->size - sizeof (tmp), 1, zf);
 	}
+#ifdef FSUAE
+	romlist_patch_rom(buf, rd->size);
+#endif
 	zfile_fclose (zf);
 	return 1;
 }

@@ -5847,6 +5847,21 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, const TCHAR *option, TCH
 		|| cfgfile_yesno (option, value, _T("uaeserial"), &p->uaeserial))
 		return 1;
 
+#ifdef FSUAE // NL
+       if (!g_fs_uae_jit_compiler) {
+               if (cfgfile_intval(option, value, _T("cachesize"), &p->cachesize, 1)) {
+                       /* If FS-UAE wasn't started with JIT support initially, we cannot
+                        * enable it at a later time, since 32-bit memory may not be
+                        * configured. */
+                       if (p->cachesize) {
+                               error_log(_T("uae_cachesize set without jit_compiler"));
+                               p->cachesize = 0;
+                               return 1;
+                       }
+               }
+       }
+#endif
+
 	if (cfgfile_intval(option, value, _T("cachesize"), &p->cachesize, 1)
 		|| cfgfile_intval(option, value, _T("cd32nvram_size"), &p->cs_cd32nvram_size, 1024)
 		|| cfgfile_intval(option, value, _T("chipset_hacks"), &p->cs_hacks, 1)
@@ -7130,7 +7145,11 @@ int cfgfile_save (struct uae_prefs *p, const TCHAR *filename, int type)
 {
 	struct zfile *fh;
 
+#ifdef FSUAE
+       // don't back up config file
+#else
 	cfgfile_backup (filename);
+#endif
 	fh = zfile_fopen (filename, unicode_config ? _T("w, ccs=UTF-8") : _T("w"), ZFD_NORMAL);
 	if (! fh)
 		return 0;
@@ -8898,7 +8917,11 @@ static int bip_a1000 (struct uae_prefs *p, int config, int compa, int romcheck)
 {
 	int roms[2];
 
+#ifdef FSUAE
+       roms[0] = 5;
+#else
 	roms[0] = 24;
+#endif
 	roms[1] = -1;
 	p->chipset_mask = 0;
 	p->bogomem.size = 0;
@@ -9045,6 +9068,9 @@ static int bip_a1200 (struct uae_prefs *p, int config, int compa, int romcheck)
 	roms[1] = 15;
 	roms[2] = 31;
 	roms[3] = -1;
+#ifdef FSUAE
+	roms[1] = -1;
+#endif
 	roms_bliz[0] = -1;
 	roms_bliz[1] = -1;
 	p->cs_rtc = 0;
@@ -9095,6 +9121,12 @@ static int bip_a1200 (struct uae_prefs *p, int config, int compa, int romcheck)
 		roms_bliz[0] = 100;
 		configure_rom(p, roms_bliz, romcheck);
 		break;
+#ifdef FSUAE
+		case 6:
+		roms[0] = 15;
+		roms[3] = -1;
+		break;
+#endif
 	}
 	set_68020_compa (p, compa, 0);
 	return configure_rom (p, roms, romcheck);
@@ -9424,6 +9456,13 @@ static bool has_expansion_with_rtc(struct uae_prefs* p, int chiplimit)
 	return false;
 }
 
+#ifdef FSUAE
+/**
+ * This function will be called (twice) by fixup_prefs after custom uae_
+ * options have been applied, and may reset some (chipset) options overriden
+ * by the user unless also uae_chipset_compatible has been set to -.
+ */
+#endif
 int built_in_chipset_prefs (struct uae_prefs *p)
 {
 #ifdef FSUAE
@@ -9450,7 +9489,11 @@ int built_in_chipset_prefs (struct uae_prefs *p)
 	p->cs_ksmirror_a8 = 0;
 	p->cs_ciaoverlay = 1;
 	p->cs_ciaatod = 0;
+#ifdef FSUAE
+	/* Allow RTC to be set without disabling cs_compatible */
+#else
 	p->cs_rtc = 0;
+#endif
 	p->cs_rtc_adjust_mode = p->cs_rtc_adjust = 0;
 	p->cs_df0idhw = 1;
 	p->cs_resetwarning = 1;
@@ -9794,6 +9837,9 @@ void error_log (const TCHAR *format, ...)
 	va_end (parms);
 
 	strlist *u = xcalloc (struct strlist, 1);
+#ifdef FSUAE // NL
+	gui_message("%s", bufp);
+#endif
 	if (u) {
 		u->option = my_strdup(bufp);
 		if (u->option) {

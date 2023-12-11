@@ -46,11 +46,28 @@ static long adjust_blocks (long blocks, int fromsize, int tosize)
 		return (blocks + (blocks < 0 ? -1 : 1)) / (tosize / fromsize);
 }
 
+#ifdef FSUAE
+static int get_fs_usage_fake (const TCHAR *path, const TCHAR *disk,
+		struct fs_usage *fsp)
+{
+	fsp->total = 2ll * 1024 * 1024 * 1024;
+	fsp->avail = 1ll * 1024 * 1024 * 1024;
+	return 0;
+}
+#endif
+
 #ifdef WINDOWS
+#ifdef FSUAE
+#else
 #include "od-win32/posixemu.h"
+#endif
 #include <windows.h>
 int get_fs_usage (const TCHAR *path, const TCHAR *disk, struct fs_usage *fsp)
 {
+#ifdef FSUAE
+	/* FIXME: Use fake values in deterministic mode only. */
+	return get_fs_usage_fake(path, disk, fsp);
+#endif
 	TCHAR buf2[MAX_DPATH];
 	ULARGE_INTEGER FreeBytesAvailable, TotalNumberOfBytes, TotalNumberOfFreeBytes;
 
@@ -163,6 +180,10 @@ on a system that requires a non-NULL value.  */
 #ifndef WINDOWS
 int get_fs_usage (const TCHAR *path, const TCHAR *disk, struct fs_usage *fsp)
 {
+#ifdef FSUAE
+	// FIXME: if net play only
+	return get_fs_usage_fake(path, disk, fsp);
+#endif
 #ifdef STAT_STATFS3_OSF1
 # define CONVERT_BLOCKS(B) adjust_blocks ((B), fsd.f_fsize, 512)
 

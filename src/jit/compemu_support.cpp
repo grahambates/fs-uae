@@ -82,6 +82,9 @@
 #include "comptbl.h"
 #ifdef UAE
 #include "compemu.h"
+#ifdef FSUAE
+#include "codegen_udis86.h"
+#endif
 #else
 #include "compiler/compemu.h"
 #include "fpu/fpu.h"
@@ -94,7 +97,14 @@ static void build_comp(void);
 #endif
 
 #ifdef UAE
+#ifdef FSUAE
+#include "uae/fs.h"
+#endif
 #include "uae/log.h"
+
+#if defined(__pie__) || defined (__PIE__)
+#error Position-independent code (PIE) cannot be used with JIT
+#endif
 
 #include "uae/vm.h"
 #define VM_PAGE_READ UAE_VM_READ
@@ -139,6 +149,15 @@ static inline int distrust_check(int value)
 	return 1;
 #else
 	int distrust = value;
+#ifdef FSUAE
+	switch (value) {
+		case 0: distrust = 0; break;
+		case 1: distrust = 1; break;
+		case 2: distrust = ((start_pc & 0xF80000) == 0xF80000); break;
+		case 3: distrust = !have_done_picasso; break;
+		default: abort();
+	}
+#endif
 	return distrust;
 #endif
 }

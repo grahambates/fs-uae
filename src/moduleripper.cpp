@@ -18,6 +18,18 @@
 #include "moduleripper.h"
 #include "gui.h"
 #include "uae.h"
+ 
+#ifdef FSUAE // NL
+
+typedef unsigned char Uchar;
+typedef unsigned long Ulong;
+
+extern "C" {
+#include "../prowizard/include/globals.h"
+#include "../prowizard/include/extern.h"
+}
+
+#endif
 
 static int got, canceled;
 
@@ -72,13 +84,21 @@ void moduleripper (void)
 	got = 0;
 	canceled = 0;
 #ifdef _WIN32
+#ifdef FSUAE
+
+#else
 	__try {
 #endif
-		//prowizard_search (buf, size);
+#endif
+		prowizard_search (buf, size);
 #ifdef _WIN32
+#ifdef FSUAE
+
+#else
 	} __except(ExceptionFilter (GetExceptionInformation (), GetExceptionCode ())) {
 		write_log (_T("prowizard scan crashed\n"));
 	}
+#endif
 #endif
 	if (!got)
 		notify_user (NUMSG_MODRIP_NOTFOUND);

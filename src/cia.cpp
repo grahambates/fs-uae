@@ -1922,7 +1922,11 @@ static void WriteCIAA(uae_u16 addr, uae_u8 val, uae_u32 *flags)
 				cia_parallelack();
 			} else if (isprinter() < 0) {
 				parallel_direct_write_data(val, c->drb);
+#ifdef FSUAE
+				parallel_ack();
+#else
 				cia_parallelack();
+#endif
 			}
 		}
 #endif
@@ -2678,9 +2682,13 @@ static void write_battclock(void)
 	struct zfile *f = zfile_fopen(path, _T("wb"));
 	if (f) {
 		struct tm *ct;
+#ifdef FSUAE
+		ct = uae_get_amiga_time();
+#else
 		time_t t = time(0);
 		t += currprefs.cs_rtc_adjust;
 		ct = localtime(&t);
+#endif
 		uae_u8 od;
 		if (currprefs.cs_rtc == 2) {
 			od = rtc_ricoh.clock_control_d;
@@ -2786,9 +2794,13 @@ static uae_u32 REGPARAM2 clock_bget(uaecptr addr)
 	if ((addr & 3) == 2 || (addr & 3) == 0 || currprefs.cs_rtc == 0) {
 		return dummy_get_safe(addr, 1, false, v);
 	}
+#ifdef FSUAE
+	ct = uae_get_amiga_time();
+#else
 	time_t t = time(0);
 	t += currprefs.cs_rtc_adjust;
 	ct = localtime(&t);
+#endif
 	addr >>= 2;
 	return getclockreg(addr, ct);
 }
