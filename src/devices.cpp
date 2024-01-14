@@ -279,7 +279,9 @@ void devices_update_sound(float clk, float syncadjust)
 	update_sound (clk);
 	update_sndboard_sound (clk / syncadjust);
 	update_cda_sound(clk / syncadjust);
+#ifdef WITH_X86
 	x86_update_sound(clk / syncadjust);
+#endif
 }
 
 void devices_update_sync(float svpos, float syncadjust)
@@ -315,7 +317,9 @@ void virtualdevice_free(void)
 #ifdef WITH_LUA
 	uae_lua_free();
 #endif
+#if GFXBOARD
 	gfxboard_free();
+#endif
 	savestate_free();
 	memory_cleanup();
 	free_shm();
@@ -403,7 +407,9 @@ void devices_restore_start(void)
 
 void devices_syncchange(void)
 {
+#ifdef WITH_X86
 	x86_bridge_sync_change();
+#endif
 }
 
 void devices_pause(void)

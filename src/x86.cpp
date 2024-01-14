@@ -3258,6 +3258,7 @@ static void ne2000_isa_irq_callback(struct pci_board_state *pcibs, bool irq)
 		x86_clearirq(xb->ne2000_irq);
 }
 
+#ifdef WITH_X86
 void x86_rt1000_bios(struct zfile *z, struct romconfig *rc)
 {
 	struct x86_bridge *xb = bridges[0];
@@ -3293,6 +3294,7 @@ void x86_xt_ide_bios(struct zfile *z, struct romconfig *rc)
 	zfile_fread(xtiderom, 1, 0x4000, z);
 	mem_mapping_add(&bios_mapping[5], addr, 0x4000, mem_read_romext2, mem_read_romextw2, mem_read_romextl2, mem_write_null, mem_write_nullw, mem_write_nulll, xtiderom, MEM_MAPPING_EXTERNAL | MEM_MAPPING_ROM, 0);
 }
+#endif
 
 void *sb_1_init();
 void *sb_15_init();
@@ -3518,6 +3520,7 @@ static void set_vga(struct x86_bridge *xb)
 void mouse_serial_poll(int x, int y, int z, int b, void *p);
 void mouse_ps2_poll(int x, int y, int z, int b, void *p);
 
+#ifdef WITH_X86
 void x86_mouse(int port, int x, int y, int z, int b)
 {
 	struct x86_bridge *xb = bridges[0];
@@ -3535,6 +3538,7 @@ void x86_mouse(int port, int x, int y, int z, int b)
 		break;
 	}
 }
+#endif
 
 void *mouse_serial_init();
 void *mouse_ps2_init();
