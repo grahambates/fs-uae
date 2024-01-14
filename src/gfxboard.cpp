@@ -7,8 +7,6 @@
 *
 */
 
-#ifdef GFXBOARD
-
 #define VRAMLOG 0
 #define MEMLOGR 0
 #define MEMLOGW 0
@@ -31,6 +29,8 @@ static bool memlogw = true;
 
 #include "sysconfig.h"
 #include "sysdeps.h"
+
+#ifdef GFXBOARD
 
 #include "options.h"
 #include "uae.h"
