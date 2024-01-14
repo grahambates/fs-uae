@@ -75,6 +75,15 @@ int fsemu_option_read_int(const char *name, int *result)
         sscanf(value, "%d", result);
         return 1;
     }
+#ifdef FSUAE
+    else {
+        int res = fs_config_get_int(name);
+        if (res != FS_CONFIG_NONE) {
+            *result = res;
+            return 1;
+        }        
+    }
+#endif
     return 0;
 }
 
