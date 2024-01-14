@@ -26,6 +26,8 @@ void fsemu_window_initial_fullscreen_rect(fsemu_rect_t *rect);
 
 const char *fsemu_window_title(void);
 
+bool fsemu_window_is_resizable(void);
+
 bool fsemu_window_fullscreen(void);
 void fsemu_window_toggle_fullscreen(void);
 
