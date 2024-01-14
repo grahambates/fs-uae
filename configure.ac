@@ -803,13 +803,6 @@ DIS_FEATURE([FSE_DRIVERS], [drivers], [drivers],
 REQ_FEATURE([FSEMU], [fsemu], [fsemu],
             [new FSEMU backend (experimental)])
 
-AS_IF([test "x$enable_x86" != xno], [
-  enable_gfxboard=no
- ])
-
-OPT_FEATURE([GFXBOARD], [gfxboard], [gfxboard],
-            [GFX hardware boards])
-
 AC_ARG_ENABLE([jit], [AS_HELP_STRING([--disable-jit], [JIT compiler])])
 AS_IF([test "x$enable_jit" != xno], [
     AC_TRY_COMPILE([
@@ -896,7 +889,8 @@ AS_IF([test "x$enable_x86" != xno], [
         #error Bridgeboard is only supported on x86/x86-64
         #endif
     ], [
-        AC_DEFINE([WITH_X86], [1], [Define to 1 to enable x86 bridgeboard support])
+        AC_DEFINE([WITH_X86], [1], [Define to 1 to enable x86 bridgeboard support (requires GFXBOARD)])
+        AC_DEFINE([GFXBOARD], [1], [Define to 1 to enable GFX hardware boards support (requires WITH_X86)])
     ], [
         if test "x$enable_x86" = xyes; then
             AC_MSG_FAILURE(
