@@ -271,12 +271,17 @@ static int stored_picasso_on = -1;
 
 static void cartridge_enter(void)
 {
+#ifdef GFXBOARD
 	stored_picasso_on = gfxboard_set(0, false) ? 1 : 0;
+#endif
 }
 static void cartridge_exit (void)
 {
-	if (stored_picasso_on > 0)
+	if (stored_picasso_on > 0) {
+#ifdef GFXBOARD
 		gfxboard_set(0, true);
+#endif
+	}
 	stored_picasso_on = -1;
 }
 

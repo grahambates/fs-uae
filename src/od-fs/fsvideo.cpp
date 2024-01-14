@@ -2043,7 +2043,9 @@ bool toggle_rtg (int monid, int mode)
 		}
 		if (rtg_index < 0) {
 			if (ad->picasso_on) {
+#ifdef GFXBOARD
 				gfxboard_rtg_disable(monid, old_index);
+#endif
 				ad->picasso_requested_on = false;
 				// statusline_add_message(STATUSTYPE_DISPLAY, _T("Chipset display"));
 				set_config_changed();
@@ -2054,7 +2056,10 @@ bool toggle_rtg (int monid, int mode)
 		struct rtgboardconfig *r = &currprefs.rtgboards[rtg_index];
 		if (r->rtgmem_size > 0 && r->monitor_id == monid) {
 			if (r->rtgmem_type >= GFXBOARD_HARDWARE) {
-				int idx = gfxboard_toggle(r->monitor_id, rtg_index, mode >= -1);
+				int idx = -1;
+#if GFXBOARD
+				gfxboard_toggle(r->monitor_id, rtg_index, mode >= -1);
+#endif
 				if (idx >= 0) {
 					rtg_index = idx;
 					return true;
@@ -2064,11 +2069,15 @@ bool toggle_rtg (int monid, int mode)
 					return false;
 				}
 			} else {
+#if GFXBOARD
 				gfxboard_toggle(r->monitor_id, -1, -1);
+#endif
 				if (mode < -1)
 					return true;
 				devices_unsafeperiod();
+#ifdef GFXBOARD
 				gfxboard_rtg_disable(monid, old_index);
+#endif
 				// can always switch from RTG to custom
 				if (ad->picasso_requested_on && ad->picasso_on) {
 					ad->picasso_requested_on = false;

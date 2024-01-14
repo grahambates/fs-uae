@@ -5043,10 +5043,12 @@ void full_redraw_all(void)
 			redraw = true;
 		}
 	}
+#if GFXBOARD
 	if (ad->picasso_on) {
 		gfxboard_refresh(monid);
 		redraw = true;
 	}
+#endif
 	if (redraw) {
 		render_screen(0, 1, true);
 		show_screen(0, 0);
