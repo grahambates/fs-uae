@@ -2798,6 +2798,7 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 	cfgfile_writeramboard(p, f, _T("cpuboardmem1"), 0, &p->cpuboardmem1);
 	cfgfile_dwrite(f, _T("cpuboardmem2_size"), _T("%d"), p->cpuboardmem2.size / 0x100000);
 	cfgfile_writeramboard(p, f, _T("cpuboardmem2"), 0, &p->cpuboardmem2);
+#ifdef GFXBOARD
 	cfgfile_write_bool(f, _T("gfxcard_hardware_vblank"), p->rtg_hardwareinterrupt);
 	cfgfile_write_bool(f, _T("gfxcard_hardware_sprite"), p->rtg_hardwaresprite);
 	cfgfile_dwrite_bool(f, _T("gfxcard_overlay"), p->rtg_overlay);
@@ -2837,6 +2838,7 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 			}
 		}
 	}
+#endif
 	cfgfile_write (f, _T("chipmem_size"), _T("%d"), p->chipmem.size == 0x20000 ? -1 : (p->chipmem.size == 0x40000 ? 0 : p->chipmem.size / 0x80000));
 	cfgfile_writeramboard(p, f, _T("chipmem"), 0, &p->chipmem);
 
@@ -6087,6 +6089,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, const TCHAR *option, TCH
 		return 1;
 	}
 
+#ifdef GFXBOARD
 	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
 		struct rtgboardconfig *rbc = &p->rtgboards[i];
 		TCHAR tmp[100];
@@ -6135,6 +6138,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, const TCHAR *option, TCH
 			return 1;
 		}
 	}
+#endif
 
 	if (cfgfile_string(option, value, _T("cpuboard_type"), tmpbuf, sizeof tmpbuf / sizeof(TCHAR))) {
 		p->cpuboard_type = 0;
@@ -6501,6 +6505,7 @@ void cfgfile_compatibility_rtg(struct uae_prefs *p)
 			}
 		}
 	}
+#if GFXBOARD
 	int rtgs[MAX_RTG_BOARDS] = { 0 };
 	for (int i = 0; i < MAX_RTG_BOARDS; i++) {
 		if (p->rtgboards[i].rtgmem_size && !rtgs[i]) {
@@ -6537,6 +6542,7 @@ void cfgfile_compatibility_rtg(struct uae_prefs *p)
 			}
 		}
 	}
+#endif
 }
 
 void cfgfile_compatibility_romtype(struct uae_prefs *p)

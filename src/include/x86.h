@@ -13,7 +13,9 @@ bool a2386_init(struct autoconfig_info *aci);
 bool isa_expansion_init(struct autoconfig_info *aci);
 void x86_bridge_sync_change(void);
 void x86_update_sound(float);
+#ifdef WITH_X86
 void x86_mouse(int port, int x, int y, int z, int b);
+#endif
 
 #define X86_STATE_INACTIVE 0
 #define X86_STATE_STOP 1

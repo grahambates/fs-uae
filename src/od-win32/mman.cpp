@@ -416,7 +416,11 @@ static int doinit_shm (void)
 	align = 16 * 1024 * 1024 - 1;
 	totalsize = 0x01000000;
 
+#ifdef GFXBOARD
 	z3rtgmem_size = gfxboard_get_configtype(rbc) == 3 ? rbc->rtgmem_size : 0;
+#else
+	z3rtgmem_size = 0;
+#endif
 
 	if (p->cpu_model >= 68020)
 		totalsize = 0x10000000;
@@ -589,6 +593,7 @@ static int doinit_shm (void)
 	p96mem_size = z3rtgmem_size;
 	p96base_offset = 0;
 	uae_u32 z3rtgallocsize = 0;
+#ifdef GFXBOARD
 	if (rbc->rtgmem_size && gfxboard_get_configtype(rbc) == 3) {
 		z3rtgallocsize = gfxboard_get_autoconfig_size(rbc) < 0 ? rbc->rtgmem_size : gfxboard_get_autoconfig_size(rbc);
 		if (changed_prefs.z3autoconfig_start == Z3BASE_UAE)
@@ -600,6 +605,7 @@ static int doinit_shm (void)
 	} else if (rbc->rtgmem_size && gfxboard_get_configtype(rbc) == 1) {
 		p96base_offset = 0xa80000;
 	}
+#endif
 	if (p96base_offset) {
 		if (jit_direct_compatible_memory) {
 			p96mem_offset = natmem_offset + p96base_offset;
@@ -621,6 +627,7 @@ static int doinit_shm (void)
 				addr = expansion_startaddress(addr, changed_prefs.z3fastmem2_size);
 				addr += changed_prefs.z3fastmem2_size;
 				addr = expansion_startaddress(addr, z3rtgallocsize);
+#ifdef GFXBOARD
 				if (gfxboard_get_configtype(rbc) == 3) {
 					p96base_offset = addr;
 					write_log("NATMEM: p96base_offset = 0x%x\n", p96base_offset);
@@ -634,6 +641,7 @@ static int doinit_shm (void)
 						p96mem_offset = natmem_offset + p96base_offset;
 					}
 				}
+#endif
 			}
 		}
 	}

@@ -983,6 +983,7 @@ static void rtg_render(void)
 			// flushed = true;
 #endif
 		}
+#ifdef GFXBOARD
 		gfxboard_vsync_handler(full, true);
 		if (currprefs.rtg_multithread && uaegfx_active) {
 			if (ad->pending_render) {
@@ -991,6 +992,7 @@ static void rtg_render(void)
 			}
 			write_comm_pipe_int(render_pipe, uaegfx_index, 0);
 		}
+#endif
 	}
 }
 static void rtg_clear(int monid)
@@ -1214,11 +1216,13 @@ void picasso_refresh(int monid)
 	setupcursor();
 	rtg_clear(monid);
 
+#ifdef GFXBOARD
 	if (currprefs.rtgboards[0].rtgmem_type >= GFXBOARD_HARDWARE) {
 		gfxboard_refresh(monid);
 		unlockrtg();
 		return;
 	}
+#endif
 
 	/* Make sure that the first time we show a Picasso video mode, we don't blit any crap.
 	* We can do this by checking if we have an Address yet. 
@@ -1438,7 +1442,9 @@ void picasso_handle_hsync(void)
 				}
 				picasso_trigger_vblank();
 			}
+#ifdef GFXBOARD
 			gfxboard_vsync_handler(false, false);
+#endif
 		} else {
 			picasso_handle_vsync2(mon);
 		}

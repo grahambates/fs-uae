@@ -7,6 +7,8 @@
 *
 */
 
+#ifdef GFXBOARD
+
 #define VRAMLOG 0
 #define MEMLOGR 0
 #define MEMLOGW 0
@@ -56,11 +58,12 @@ static bool memlogw = true;
 #include "qemuvga/qemuuaeglue.h"
 #include "qemuvga/vga.h"
 
+#ifdef WITH_X86
 extern void put_io_pcem(uaecptr, uae_u32, int);
 extern uae_u32 get_io_pcem(uaecptr, int);
 extern void put_mem_pcem(uaecptr, uae_u32, int);
 extern uae_u32 get_mem_pcem(uaecptr, int);
-
+#endif
 
 #define MONITOR_SWITCH_DELAY 25
 
@@ -139,6 +142,7 @@ static const struct gfxboard boards[] =
 		0x00000000, 0x00200000, 0x00200000, 0x10000, 0, 0, 2, false,
 		0, 0xc1, &a2410_func
 	},
+#ifdef WITH_X86
 	{
 		GFXBOARD_ID_SPECTRUM_Z2,
 		_T("Spectrum 28/24 [Zorro II]"), _T("Great Valley Products"), _T("Spectrum28/24_Z2"),
@@ -232,6 +236,7 @@ static const struct gfxboard boards[] =
 		ROMTYPE_PICASSOIV,
 		0, NULL, &gd5446_device
 	},
+#endif
 	{
 		GFXBOARD_ID_HARLEQUIN,
 		_T("Harlequin [Zorro II]"), _T("ACS"), _T("Harlequin_PAL"),
@@ -247,6 +252,7 @@ static const struct gfxboard boards[] =
 		0, 0xc1, &a2410_func
 	},
 #endif
+#ifdef WITH_X86
 	{
 		GFXBOARD_ID_VOODOO3_PCI,
 		_T("Voodoo 3 3000 [PCI]"), _T("3dfx"), _T("V3_3000"),
@@ -276,6 +282,7 @@ static const struct gfxboard boards[] =
 		0x00000000, 0x00200000, 0x00200000, 0x00400000, CIRRUS_ID_CLGD5434, 2, 0, false,
 		0, 0, NULL, &gd5434_vlb_swapped_device
 	},
+#endif
 	{
 		NULL
 	}
@@ -497,6 +504,7 @@ static const addrbank tmpl_gfxboard_bank_special = {
 	ABFLAG_IO | ABFLAG_SAFE, S_READ, S_WRITE
 };
 
+#ifdef WITH_X86
 static const addrbank tmpl_gfxboard_bank_vram_pcem = {
 	gfxboard_lget_vram_pcem, gfxboard_wget_vram_pcem, gfxboard_bget_vram_pcem,
 	gfxboard_lput_vram_pcem, gfxboard_wput_vram_pcem, gfxboard_bput_vram_pcem,
@@ -608,6 +616,7 @@ static const addrbank tmpl_gfxboard_bank_special_pcem = {
 	dummy_lgeti, dummy_wgeti,
 	ABFLAG_IO | ABFLAG_SAFE, S_READ, S_WRITE
 };
+#endif
 
 static void REGPARAM2 dummy_lput(uaecptr addr, uae_u32 l)
 {
@@ -1801,6 +1810,7 @@ static void reset_pci (struct rtggfxboard *gb)
 	gb->p4i2c = 0xff;
 }
 
+#ifdef WITH_X86
 static void picassoiv_checkswitch (struct rtggfxboard *gb)
 {
 	if (ISP4()) {
@@ -1824,6 +1834,7 @@ static void picassoiv_checkswitch (struct rtggfxboard *gb)
 		gb->monswitch_reset = false;
 	}
 }
+#endif
 
 static void bput_regtest (struct rtggfxboard *gb, uaecptr addr, uae_u8 v)
 {
@@ -1838,7 +1849,9 @@ static void bput_regtest (struct rtggfxboard *gb, uaecptr addr, uae_u8 v)
 	if (!(gb->vga.vga.sr[0x07] & 0x01) && gb->vram_enabled) {
 		remap_vram (gb, gb->vram_offset[0], gb->vram_offset[1], false);
 	}
+#ifdef WITH_X86
 	picassoiv_checkswitch (gb);
+#endif
 }
 
 static uae_u8 bget_regtest (struct rtggfxboard *gb, uaecptr addr, uae_u8 v)
@@ -3522,7 +3535,9 @@ static void REGPARAM2 gfxboards_bput_regs (uaecptr addr, uae_u32 v)
 	if (gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH) {
 		if (addr == 0x404) {
 			gb->picassoiv_flifi = b;
+#ifdef WITH_X86
 			picassoiv_checkswitch (gb);
+#endif
 		} else if (addr == 0x406) {
 			gb->p4i2c = b;
 		}
@@ -3618,6 +3633,7 @@ static void pci_change_config(struct pci_board_state *pci)
 	}
 }
 
+#ifdef WITH_X86
 static void REGPARAM2 voodoo3_io_lput(struct pci_board_state *pcibs, uaecptr addr, uae_u32 b)
 {
 	put_io_pcem(addr, b, 2);
@@ -4072,7 +4088,7 @@ static const struct pci_board s3virge_pci_board =
 	true,
 	get_pci_pcem, put_pci_pcem, pci_change_config
 };
-
+#endif
 
 int gfxboard_get_index_from_id(int id)
 {
@@ -4445,6 +4461,7 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 	memcpy(&gb->gfxboard_bank_special, &tmpl_gfxboard_bank_special, sizeof(addrbank));
 	memcpy(&gb->gfxboard_bank_memory_nojit, &tmpl_gfxboard_bank_memory_nojit, sizeof(addrbank));
 
+#ifdef WITH_X86
 	memcpy(&gb->gfxboard_bank_vram_pcem, &tmpl_gfxboard_bank_vram_pcem, sizeof(addrbank));
 	memcpy(&gb->gfxboard_bank_vram_normal_pcem, &tmpl_gfxboard_bank_vram_normal_pcem, sizeof(addrbank));
 	memcpy(&gb->gfxboard_bank_vram_wordswap_pcem, &tmpl_gfxboard_bank_vram_wordswap_pcem, sizeof(addrbank));
@@ -4460,6 +4477,7 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 	memcpy(&gb->gfxboard_bank_mmio_lbs_pcem, &tmpl_gfxboard_bank_mmio_lbs_pcem, sizeof(addrbank));
 	memcpy(&gb->gfxboard_bank_special_pcem, &tmpl_gfxboard_bank_special_pcem, sizeof(addrbank));
 	memcpy(&gb->gfxboard_bank_bios, &tmpl_gfxboard_bank_bios, sizeof(addrbank));
+#endif
 
 	gb->gfxboard_bank_memory.name = gb->memorybankname;
 	gb->gfxboard_bank_memory_nojit.name = gb->memorybanknamenojit;
@@ -4478,10 +4496,12 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 
 		TCHAR path[MAX_DPATH];
 		fetch_rompath(path, sizeof(path) / sizeof(TCHAR));
+#ifdef WITH_X86
 		if (gb->rbc->rtgmem_type == GFXBOARD_ID_VOODOO3_PCI || gb->rbc->rtgmem_type == GFXBOARD_ID_VOODOO5_PCI)
 			_tcscat(path, _T("voodoo3.rom"));
 		else
 			_tcscat(path, _T("s3virge.rom"));
+#endif
 		struct zfile *zf = read_rom_name(path);
 		if (zf) {
 			gb->bios = xcalloc(uae_u8, 65536);
@@ -4501,10 +4521,12 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 		gb->configured_regs = 1;
 		struct pci_bridge *b = pci_bridge_get();
 		if (b) {
+#ifdef WITH_X86
 			if (gb->rbc->rtgmem_type == GFXBOARD_ID_VOODOO3_PCI || gb->rbc->rtgmem_type == GFXBOARD_ID_VOODOO5_PCI)
 				gb->pcibs = pci_board_add(b, &voodoo3_pci_board, -1, 0, aci, gb);
 			else
 				gb->pcibs = pci_board_add(b, &s3virge_pci_board, -1, 0, aci, gb);
+#endif
 		}
 		gb->gfxboard_intena = 1;
 		return true;
@@ -5065,7 +5087,7 @@ static void REGPARAM2 gfxboard_lput_vram_p4z2_pcem(uaecptr addr, uae_u32 l)
 
 
 
-
+#ifdef WITH_X86
 static uae_u32 REGPARAM2 gfxboard_lget_io_pcem(uaecptr addr)
 {
 	struct rtggfxboard *gb = getgfxboard(addr);
@@ -5204,7 +5226,7 @@ static void REGPARAM2 gfxboard_bput_io_swap2_pcem(uaecptr addr, uae_u32 b)
 	addr ^= 3;
 	put_io_pcem(addr, b, 0);
 }
-
+#endif
 
 void put_pci_pcem(uaecptr addr, uae_u8 v);
 uae_u8 get_pci_pcem(uaecptr addr);
@@ -5247,6 +5269,7 @@ static void REGPARAM2 gfxboard_lput_pci_pcem(uaecptr addr, uae_u32 l)
 }
 
 
+#ifdef WITH_X86
 static uae_u32 REGPARAM2 gfxboard_bget_mmio_pcem(uaecptr addr)
 {
 	struct rtggfxboard *gb = getgfxboard(addr);
@@ -5969,6 +5992,7 @@ static void REGPARAM2 gfxboard_lput_special_pcem(uaecptr addr, uae_u32 l)
 {
 	special_pcem_put(addr, l, 2);
 }
+#endif
 
 void *pcem_getvram(int size)
 {
@@ -6062,3 +6086,5 @@ void gfxboard_freertgbuffer(int monid, uae_u8 *dst)
 
 	xfree(dst);
 }
+
+#endif
