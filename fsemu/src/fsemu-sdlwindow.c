@@ -390,8 +390,10 @@ SDL_Window *fsemu_sdlwindow_create(void)
     // specify SDL_WINDOW_OPENGL right now, to avoid "flickering" due to window
     // being recreated later (?) by SDL.
     flags |= SDL_WINDOW_OPENGL;
-    // We always want a resizable window. Annoying for users without.
-    flags |= SDL_WINDOW_RESIZABLE;
+    
+    if (fsemu_window_is_resizable()) {
+        flags |= SDL_WINDOW_RESIZABLE;
+    }
 #if 1
     // Create the window hidden initially, and then show later via
     // fsemu_sdlwindow_show.
