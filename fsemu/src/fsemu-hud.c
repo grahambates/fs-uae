@@ -61,6 +61,8 @@ typedef struct {
 static struct {
     bool initialized;
 
+    bool hide;
+
     GAsyncQueue *pending_notices;
 
     fsemu_font_t *notice_title_font;
@@ -164,6 +166,11 @@ static void fsemu_hud_update_notice(fsemu_hud_notice_t *notice)
 static void fsemu_hud_set_notice_visible(fsemu_hud_notice_t *notice,
                                          bool visible)
 {
+    if (fsemu_hud.hide) {
+        // if the hud is hidden then nothing is visible.
+        return;
+    }
+
     notice->background_item.visible = visible;
     notice->icon_item.visible = visible;
     notice->title_item.visible = visible;
@@ -601,6 +608,9 @@ void fsemu_hud_init(void)
     fsemu_hud.initialized = true;
     fsemu_hud_log("Initializing hud module\n");
     fsemu_module_on_quit(fsemu_hud_quit);
+
+    fsemu_option_read_bool_default(
+        FSEMU_OPTION_HIDE_HUD, &fsemu_hud.hide, false);
 
     // FIXME: Medium ?
     fsemu_hud.notice_title_font =

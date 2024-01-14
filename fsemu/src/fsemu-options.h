@@ -27,6 +27,8 @@
 
 #define FSEMU_OPTION_INITIAL_INPUT_GRAB "initial_input_grab"
 
+#define FSEMU_OPTION_HIDE_HUD "hide_hud"
+
 #define FSEMU_OPTION_LOG_AUDIO "log_audio"
 #define FSEMU_OPTION_LOG_FRAME "log_frame"
 #define FSEMU_OPTION_LOG_INPUT "log_input"
