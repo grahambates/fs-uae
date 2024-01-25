@@ -15,6 +15,8 @@
 #define FSEMU_OPTION_FULLSCREEN_X "fullscreen_x"
 #define FSEMU_OPTION_FULLSCREEN_Y "fullscreen_y"
 
+#define FSEMU_OPTION_WINDOW_RESIZABLE "window_resizable"
+
 #define FSEMU_OPTION_GAME_MODE "game_mode"
 
 #define FSEMU_OPTION_GAME_COMPANIES "game_companies"

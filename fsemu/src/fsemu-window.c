@@ -26,6 +26,7 @@ static struct fsemu_window {
     bool active;
     // True if the window (or will be) shown fullscreen.
     bool fullscreen;
+    bool is_resizable;
     char title[FSEMU_WINDOW_TITLE_MAX];
     // fsemu_point_t position;
     fsemu_size_t size;
@@ -42,8 +43,15 @@ static void fsemu_window_read_options(void)
 {
     fsemu_option_read_bool_default(
         FSEMU_OPTION_FULLSCREEN, &fsemu_window.fullscreen, false);
+    fsemu_option_read_bool_default(
+        FSEMU_OPTION_WINDOW_RESIZABLE, &fsemu_window.is_resizable, true);
 
     fsemu_rect_t *rect = &fsemu_window.initial_rect;
+
+    // default position is centered
+    rect->x = -1;
+    rect->y = -1;    
+
     fsemu_option_read_int(FSEMU_OPTION_WINDOW_X, &rect->x);
     fsemu_option_read_int(FSEMU_OPTION_WINDOW_Y, &rect->y);
     fsemu_option_read_int(FSEMU_OPTION_WINDOW_W, &rect->w);
@@ -102,8 +110,6 @@ void fsemu_window_initial_rect(fsemu_rect_t *rect, double ui_scale)
         "Initial window rect: %d %d %d %d (UI scale %0.1f)\n",
         rect->x, rect->y, rect->w, rect->h, ui_scale);
     if (rect->w == 0 || rect->h == 0) {
-        rect->x = -1;
-        rect->y = -1;
         rect->w = initial_w * ui_scale;
         rect->h = initial_h * ui_scale;
     }
@@ -252,6 +258,13 @@ void fsemu_window_notify_quit(void)
 {
     // fsemu_thread_assert_main();
     fsemu_sdlwindow_notify_quit();
+}
+
+// ----------------------------------------------------------------------------
+
+bool fsemu_window_is_resizable(void)
+{
+    return fsemu_window.is_resizable;
 }
 
 // ----------------------------------------------------------------------------
