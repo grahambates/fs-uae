@@ -140,9 +140,9 @@ static uae_u8 get_a2410_control(struct a2410_struct *data)
 {
 	uae_u8 v = (uae_u8)data->a2410_control;
 	v &= ~(0x10 | 0x40 | 0x80);
-	v |= 0x20;
+	v |= 0x20 | 0x80;
 	if (v & 0x08) // SBR
-		v |= 0x80; // LGBACK
+		v &= ~0x80; // LGBACK (Active low)
 	if (currprefs.cs_compatible == CP_A3000 || currprefs.cs_compatible == CP_A3000T ||
 		currprefs.cs_compatible == CP_A4000 || currprefs.cs_compatible == CP_A4000T ||
 		currprefs.cs_z3autoconfig)
@@ -583,9 +583,14 @@ static void tms_reset(void *userdata)
 	data->a2410_hsync_max = 2;
 	data->a2410_visible = false;
 	data->a2410_enabled = false;
+	data->a2410_control = 0;
+	data->tms_vp = data->tms_hp = 0;
+	data->a2410_width = 0;
+	data->a2410_height = 0;
 
 	if (data->program_ram)
 		tms_device.device_reset();
+
 	data->tms_configured = 0;
 }
 
@@ -807,7 +812,7 @@ static void tms_hsync_handler2(struct a2410_struct *data)
 	if (!data->tms_configured)
 		return;
 
-	tms_device.m_icount = 100;
+	tms_device.m_icount = 1000;
 	tms_device.execute_run();
 	int a2410_vpos = data->tms_vp;
 	data->tms_vp = tms_device.scanline_callback(NULL, data->tms_vp, data->a2410_interlace < 0);

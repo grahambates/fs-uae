@@ -1455,7 +1455,7 @@ bool lockscr3d(struct vidbuffer *vb)
 	struct AmigaMonitor *mon = &AMonitors[vb->monitor_id];
 	if (mon->currentmode.flags & DM_D3D) {
 		if (!(mon->currentmode.flags & DM_SWSCALE)) {
-			vb->bufmem = D3D_locktexture(vb->monitor_id, &vb->rowbytes, NULL, false);
+			vb->bufmem = D3D_locktexture(vb->monitor_id, &vb->rowbytes, NULL, NULL, false);
 			if (vb->bufmem)
 				return true;
 		}
@@ -1492,7 +1492,7 @@ int lockscr(struct vidbuffer *vb, bool fullupdate, bool first, bool skip)
 			ret = 1;
 		} else {
 			ret = 0;
-			vb->bufmem = D3D_locktexture(vb->monitor_id, &vb->rowbytes, NULL, skip ? -1 : (fullupdate ? 1 : 0));
+			vb->bufmem = D3D_locktexture(vb->monitor_id, &vb->rowbytes, NULL, NULL, skip ? -1 : (fullupdate ? 1 : 0));
 			if (vb->bufmem) {
 				if (first)
 					init_row_map();
@@ -1599,14 +1599,22 @@ void getrtgfilterrect2(int monid, RECT *sr, RECT *dr, RECT *zr, int *mode, int d
 	if (mon->scalepicasso == RTG_MODE_INTEGER_SCALE) {
 		int divx = mon->currentmode.native_width / srcwidth;
 		int divy = mon->currentmode.native_height / srcheight;
-		int mul = !divx || !divy ? 1 : (divx > divy ? divy : divx);
-		SetRect(dr, 0, 0, mon->currentmode.native_width / mul, mon->currentmode.native_height / mul);
-		int xx = (mon->currentmode.native_width / mul - srcwidth) / 2;
-		int yy = (mon->currentmode.native_height / mul - srcheight) / 2;
+		float mul = (float)(!divx || !divy ? 1 : (divx > divy ? divy : divx));
+		if (!divx || !divy) {
+			if ((float)mon->currentmode.native_width / srcwidth <= 0.95f || ((float)mon->currentmode.native_height / srcheight <= 0.95f)) {
+				mul = 0.5f;
+			}
+			if ((float)mon->currentmode.native_width / srcwidth <= 0.45f || ((float)mon->currentmode.native_height / srcheight <= 0.45f)) {
+				mul = 0.25f;
+			}
+		}
+		SetRect(dr, 0, 0, (int)(mon->currentmode.native_width / mul), (int)(mon->currentmode.native_height / mul));
+		int xx = (int)((mon->currentmode.native_width / mul - srcwidth) / 2);
+		int yy = (int)((mon->currentmode.native_height / mul - srcheight) / 2);
 		picasso_offset_x = -xx;
 		picasso_offset_y = -yy;
-		mx = (float)mul;
-		my = (float)mul;
+		mx = mul;
+		my = mul;
 		outwidth = srcwidth;
 		outheight = srcheight;
 		*mode = 1;
@@ -1661,9 +1669,7 @@ void getrtgfilterrect2(int monid, RECT *sr, RECT *dr, RECT *zr, int *mode, int d
 static uae_u8 *gfx_lock_picasso2(int monid, bool fullupdate)
 {
 	struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[monid];
-	int pitch;
-	uae_u8 *p = D3D_locktexture(monid, &pitch, NULL, fullupdate);
-	vidinfo->rowbytes = pitch;
+	uae_u8 *p = D3D_locktexture(monid, &vidinfo->rowbytes, &vidinfo->maxwidth, &vidinfo->maxheight, fullupdate);
 	return p;
 }
 uae_u8 *gfx_lock_picasso(int monid, bool fullupdate)
@@ -2056,7 +2062,7 @@ static int open_windows(struct AmigaMonitor *mon, bool mousecapture, bool starte
 	if (upd > 0) {
 		inputdevice_acquire(TRUE);
 		if (!isfocus())
-			inputdevice_unacquire(true, input);
+			inputdevice_unacquire(input);
 	}
 
 	if (startpaused)
@@ -2205,6 +2211,7 @@ int check_prefs_changed_gfx(void)
 		c |= gf->gfx_filter_blur != gfc->gfx_filter_blur ? (1) : 0;
 
 		c |= gf->gfx_filter_aspect != gfc->gfx_filter_aspect ? (1) : 0;
+		c |= gf->gfx_filter_rotation != gfc->gfx_filter_rotation ? (1) : 0;
 		c |= gf->gfx_filter_keep_aspect != gfc->gfx_filter_keep_aspect ? (1) : 0;
 		c |= gf->gfx_filter_keep_autoscale_aspect != gfc->gfx_filter_keep_autoscale_aspect ? (1) : 0;
 		c |= gf->gfx_filter_luminance != gfc->gfx_filter_luminance ? (1) : 0;
@@ -2514,6 +2521,7 @@ int check_prefs_changed_gfx(void)
 		currprefs.win32_iconified_priority != changed_prefs.win32_iconified_priority ||
 		currprefs.win32_active_nocapture_nosound != changed_prefs.win32_active_nocapture_nosound ||
 		currprefs.win32_active_nocapture_pause != changed_prefs.win32_active_nocapture_pause ||
+		currprefs.win32_active_input != changed_prefs.win32_active_input ||
 		currprefs.win32_inactive_nosound != changed_prefs.win32_inactive_nosound ||
 		currprefs.win32_inactive_pause != changed_prefs.win32_inactive_pause ||
 		currprefs.win32_inactive_input != changed_prefs.win32_inactive_input ||
@@ -2535,6 +2543,7 @@ int check_prefs_changed_gfx(void)
 		currprefs.win32_inactive_priority = changed_prefs.win32_inactive_priority;
 		currprefs.win32_iconified_priority = changed_prefs.win32_iconified_priority;
 		currprefs.win32_active_nocapture_nosound = changed_prefs.win32_active_nocapture_nosound;
+		currprefs.win32_active_input = changed_prefs.win32_active_input;
 		currprefs.win32_active_nocapture_pause = changed_prefs.win32_active_nocapture_pause;
 		currprefs.win32_inactive_nosound = changed_prefs.win32_inactive_nosound;
 		currprefs.win32_inactive_pause = changed_prefs.win32_inactive_pause;
@@ -3050,6 +3059,7 @@ void gfx_set_picasso_modeinfo(int monid, RGBFTYPE rgbfmt)
 #ifdef RETROPLATFORM
 	rp_set_hwnd(mon->hAmigaWnd);
 #endif
+	target_graphics_buffer_update(monid);
 }
 #endif
 
@@ -4076,8 +4086,8 @@ bool target_graphics_buffer_update(int monid)
 
 	graphicsbuffer_retry = false;
 	if (mon->screen_is_picasso) {
-		w = state->Width > vidinfo->width ? state->Width : vidinfo->width;
-		h = state->Height > vidinfo->height ? state->Height : vidinfo->height;
+		w = state->Width;
+		h = state->Height;
 	} else {
 		struct vidbuffer *vb = avidinfo->drawbuffer.tempbufferinuse ? &avidinfo->tempbuffer : &avidinfo->drawbuffer;
 		avidinfo->outbuffer = vb;

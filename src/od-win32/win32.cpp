@@ -40,6 +40,7 @@
 #include <Avrt.h>
 #include <Cfgmgr32.h>
 #include <shellscalingapi.h>
+#include <dinput.h>
 
 #include "resource.h"
 
@@ -210,6 +211,7 @@ TCHAR start_path_exe[MAX_DPATH];
 TCHAR start_path_plugins[MAX_DPATH];
 TCHAR start_path_new1[MAX_DPATH]; /* AF2005 */
 TCHAR start_path_new2[MAX_DPATH]; /* AMIGAFOREVERDATA */
+TCHAR start_path_custom[MAX_DPATH];
 TCHAR bootlogpath[MAX_DPATH];
 TCHAR logpath[MAX_DPATH];
 bool winuaelog_temporary_enable;
@@ -1249,11 +1251,11 @@ static void winuae_inactive(struct AmigaMonitor *mon, HWND hWnd, int minimized)
 				setpaused(1);
 				sound_closed = 1;
 			} else if (currprefs.win32_iconified_nosound) {
-				inputdevice_unacquire(true, currprefs.win32_iconified_input);
+				inputdevice_unacquire(currprefs.win32_iconified_input);
 				setsoundpaused();
 				sound_closed = -1;
 			} else {
-				inputdevice_unacquire(true, currprefs.win32_iconified_input);
+				inputdevice_unacquire(currprefs.win32_iconified_input);
 			}
 		} else if (mouseactive) {
 			inputdevice_unacquire();
@@ -1270,11 +1272,11 @@ static void winuae_inactive(struct AmigaMonitor *mon, HWND hWnd, int minimized)
 				setpaused(2);
 				sound_closed = 1;
 			} else if (currprefs.win32_inactive_nosound) {
-				inputdevice_unacquire(true, currprefs.win32_inactive_input);
+				inputdevice_unacquire(currprefs.win32_inactive_input);
 				setsoundpaused();
 				sound_closed = -1;
 			} else {
-				inputdevice_unacquire(true, currprefs.win32_inactive_input);
+				inputdevice_unacquire(currprefs.win32_inactive_input);
 			}
 		}
 	} else {
@@ -1971,8 +1973,18 @@ static LRESULT CALLBACK AmigaWindowProc(HWND hWnd, UINT message, WPARAM wParam, 
 		return 0;
 
 	case WM_KEYDOWN:
-		if (dinput_wmkey((uae_u32)lParam))
-			inputdevice_add_inputcode(AKS_ENTERGUI, 1, NULL);
+		if (!hGUIWnd) {
+			if (dinput_wmkey((uae_u32)lParam)) {
+				inputdevice_add_inputcode(AKS_ENTERGUI, 1, NULL);
+			}
+		} else {
+			int scancode = (lParam >> 16) & 0xff;
+			if (((currprefs.win32_guikey > 0 && scancode == currprefs.win32_guikey) || (currprefs.win32_guikey < 0 && scancode == DIK_F12))) {
+				SetForegroundWindow(hGUIWnd);
+			} else if (wParam == VK_ESCAPE) {
+				SendMessage(hGUIWnd, WM_CLOSE, 0, 0);
+			}
+		}
 		return 0;
 
 	case WM_LBUTTONUP:
@@ -2004,7 +2016,11 @@ static LRESULT CALLBACK AmigaWindowProc(HWND hWnd, UINT message, WPARAM wParam, 
 			} else if (dinput_winmouse() >= 0 && isfocus()) {
 				if (log_winmouse)
 					write_log(_T("WM_LBUTTONDOWN\n"));
-				setmousebuttonstate(dinput_winmouse(), 0, 1);
+				if (message == WM_LBUTTONDBLCLK && hGUIWnd) {
+					SetForegroundWindow(hGUIWnd);
+				} else {
+					setmousebuttonstate(dinput_winmouse(), 0, 1);
+				}
 			}
 		}
 		return 0;
@@ -3031,20 +3047,20 @@ static LRESULT CALLBACK HiddenWindowProc (HWND hWnd, UINT message, WPARAM wParam
 			disk_eject (3);
 			break;
 		case ID_ST_DF0:
-			DiskSelection (isfullscreen() > 0 ? NULL : hWnd, IDC_DF0, 0, &changed_prefs, NULL, NULL);
-			disk_insert (0, changed_prefs.floppyslots[0].df);
+			DiskSelection(isfullscreen() > 0 ? NULL : hWnd, IDC_DF0, 0, &changed_prefs, NULL, NULL);
+			disk_insert(0, changed_prefs.floppyslots[0].df);
 			break;
 		case ID_ST_DF1:
-			DiskSelection (isfullscreen() > 0 ? NULL : hWnd, IDC_DF1, 0, &changed_prefs, NULL, NULL);
-			disk_insert (1, changed_prefs.floppyslots[0].df);
+			DiskSelection(isfullscreen() > 0 ? NULL : hWnd, IDC_DF1, 0, &changed_prefs, NULL, NULL);
+			disk_insert(1, changed_prefs.floppyslots[1].df);
 			break;
 		case ID_ST_DF2:
-			DiskSelection (isfullscreen() > 0 ? NULL : hWnd, IDC_DF2, 0, &changed_prefs, NULL, NULL);
-			disk_insert (2, changed_prefs.floppyslots[0].df);
+			DiskSelection(isfullscreen() > 0 ? NULL : hWnd, IDC_DF2, 0, &changed_prefs, NULL, NULL);
+			disk_insert(2, changed_prefs.floppyslots[2].df);
 			break;
 		case ID_ST_DF3:
-			DiskSelection (isfullscreen() > 0 ? NULL : hWnd, IDC_DF3, 0, &changed_prefs, NULL, NULL);
-			disk_insert (3, changed_prefs.floppyslots[0].df);
+			DiskSelection(isfullscreen() > 0 ? NULL : hWnd, IDC_DF3, 0, &changed_prefs, NULL, NULL);
+			disk_insert(3, changed_prefs.floppyslots[3].df);
 			break;
 
 		}
@@ -3516,13 +3532,13 @@ void toggle_mousegrab(void)
 static bool createbootlog = true;
 static bool logging_disabled = false;
 
-void logging_open (int bootlog, int append)
+bool logging_open(int bootlog, int append)
 {
 	TCHAR *outpath;
 	TCHAR debugfilename[MAX_DPATH];
 
 	if (logging_disabled && !winuaelog_temporary_enable)
-		return;
+		return true;
 
 	outpath = logpath;
 	debugfilename[0] = 0;
@@ -3539,8 +3555,10 @@ void logging_open (int bootlog, int append)
 	if (debugfilename[0]) {
 		if (!debugfile)
 			debugfile = log_open (debugfilename, append, bootlog, outpath);
+		return debugfile != NULL;
 	}
 #endif
+	return true;
 }
 
 typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
@@ -3564,9 +3582,12 @@ void logging_init (void)
 			start_path_data, LOG_NORMAL);
 		if (debugfile)
 			log_close (debugfile);
-		debugfile = 0;
+		debugfile = NULL;
 	}
-	logging_open (first ? 0 : 1, 0);
+	bool ok = logging_open(first ? 0 : 1, 0);
+	if (first == 1 && !ok) {
+		write_log(_T("Failed to create log file.\n"));
+	}
 	logging_started = 1;
 	first++;
 
@@ -4216,6 +4237,7 @@ void target_default_options (struct uae_prefs *p, int type)
 		p->win32_logfile = 0;
 		p->win32_active_nocapture_pause = 0;
 		p->win32_active_nocapture_nosound = 0;
+		p->win32_active_input = 1 | 2 | 4;
 		p->win32_iconified_nosound = 1;
 		p->win32_iconified_pause = 1;
 		p->win32_iconified_input = 0;
@@ -4327,6 +4349,7 @@ void target_save_options (struct zfile *f, struct uae_prefs *p)
 #endif
 	cfgfile_target_dwrite_bool(f, _T("active_not_captured_nosound"), p->win32_active_nocapture_nosound);
 	cfgfile_target_dwrite_bool(f, _T("active_not_captured_pause"), p->win32_active_nocapture_pause);
+	cfgfile_target_dwrite(f, _T("active_input"), _T("%d"), p->win32_active_input);
 	cfgfile_target_dwrite(f, _T("inactive_priority"), _T("%d"), priorities[p->win32_inactive_priority].value);
 	cfgfile_target_dwrite_bool(f, _T("inactive_nosound"), p->win32_inactive_nosound);
 	cfgfile_target_dwrite_bool(f, _T("inactive_pause"), p->win32_inactive_pause);
@@ -4523,6 +4546,7 @@ static int target_parse_option_host(struct uae_prefs *p, const TCHAR *option, co
 		|| cfgfile_yesno(option, value, _T("active_not_captured_nosound"), &p->win32_active_nocapture_nosound)
 		|| cfgfile_yesno(option, value, _T("inactive_pause"), &p->win32_inactive_pause)
 		|| cfgfile_yesno(option, value, _T("inactive_nosound"), &p->win32_inactive_nosound)
+		|| cfgfile_intval(option, value, _T("active_input"), &p->win32_active_input, 1)
 		|| cfgfile_intval(option, value, _T("inactive_input"), &p->win32_inactive_input, 1)
 		|| cfgfile_yesno(option, value, _T("iconified_pause"), &p->win32_iconified_pause)
 		|| cfgfile_yesno(option, value, _T("iconified_nosound"), &p->win32_iconified_nosound)
@@ -5099,7 +5123,7 @@ static void romlist_add2 (const TCHAR *path, struct romdata *rd)
 }
 
 extern int scan_roms (HWND, int);
-void read_rom_list (void)
+void read_rom_list(bool initial)
 {
 	TCHAR tmp2[1000];
 	int idx, idx2;
@@ -5113,6 +5137,9 @@ void read_rom_list (void)
 	if (fkey == NULL)
 		return;
 	if (!exists || forceroms) {
+		if (initial) {
+			scaleresource_init(NULL, 0);
+		}
 		load_keyring (NULL, NULL);
 		scan_roms (NULL, forceroms ? 0 : 1);
 	}
@@ -5700,6 +5727,8 @@ static void WIN32_HandleRegistryStuff (void)
 	if (!regqueryint (NULL, _T("QuickStartMode"), &quickstart))
 		quickstart = 1;
 
+	regqueryint(NULL, _T("KeySwapBackslashF11"), &key_swap_hack);
+
 	tmp[0] = 0;
 	size = sizeof(tmp) / sizeof(TCHAR);
 	if (regquerystr(NULL, _T("FloppyBridge"), tmp, &size)) {
@@ -5731,7 +5760,7 @@ static void WIN32_HandleRegistryStuff (void)
 	regclosetree (read_disk_history (HISTORY_FLOPPY));
 	regclosetree (read_disk_history (HISTORY_CD));
 	associate_init_extensions ();
-	read_rom_list ();
+	read_rom_list(true);
 	load_keyring (NULL, NULL);
 	target_load_debugger_config();
 }
@@ -6051,8 +6080,11 @@ void setpathmode (pathtype pt)
 	if (pt == PATH_TYPE_NEWAF)
 		_tcscpy (pathmode, _T("AmigaForever"));
 	if (pt == PATH_TYPE_AMIGAFOREVERDATA)
-		_tcscpy (pathmode, _T("AMIGAFOREVERDATA"));
-	regsetstr (NULL, _T("PathMode"), pathmode);
+		_tcscpy(pathmode, _T("AMIGAFOREVERDATA"));
+	if (pt == PATH_TYPE_CUSTOM)
+		_tcscpy(pathmode, _T("WinUAE_Custom"));
+	regsetstr(NULL, _T("PathMode"), pathmode);
+	regsetstr(NULL, _T("PathCustom"), start_path_custom);
 }
 
 static void getstartpaths (void)
@@ -6072,6 +6104,8 @@ static void getstartpaths (void)
 		int size = sizeof (prevpath) / sizeof (TCHAR);
 		if (!regquerystr (key, _T("PathMode"), prevpath, &size))
 			prevpath[0] = 0;
+		if (!regquerystr(key, _T("PathCustom"), start_path_custom, &size))
+			start_path_custom[0] = 0;
 		regclosetree (key);
 	}
 	if (!_tcscmp (prevpath, _T("WinUAE")))
@@ -6080,8 +6114,16 @@ static void getstartpaths (void)
 		path_type = PATH_TYPE_NEWWINUAE;
 	if (!_tcscmp (prevpath, _T("AF2005")) || !_tcscmp (prevpath, _T("AmigaForever")))
 		path_type = PATH_TYPE_NEWAF;
-	if (!_tcscmp (prevpath, _T("AMIGAFOREVERDATA")))
+	if (!_tcscmp(prevpath, _T("AMIGAFOREVERDATA")))
 		path_type = PATH_TYPE_AMIGAFOREVERDATA;
+	if (!_tcscmp(prevpath, _T("WinUAE_Custom"))) {
+		path_type = PATH_TYPE_CUSTOM;
+		if (start_path_custom[0]) {
+			_tcscpy(start_path_data, start_path_custom);
+		} else {
+			path_type = PATH_TYPE_NEWWINUAE;
+		}
+	}
 
 	_tcscpy(start_path_exe, executable_path);
 	if((posn = _tcsrchr (start_path_exe, '\\')))
@@ -6686,6 +6728,14 @@ static int parseargs(const TCHAR *argx, const TCHAR *np, const TCHAR *np2)
 	}
 	if (!_tcscmp(arg, _T("rpmodem"))) {
 		rp_modem = 1;
+		return 1;
+	}
+	if (!_tcscmp(arg, _T("key_swap_hack"))) {
+		key_swap_hack = 1;
+		return 1;
+	}
+	if (!_tcscmp(arg, _T("key_swap_hack2"))) {
+		key_swap_hack2 = 1;
 		return 1;
 	}
 
@@ -7578,7 +7628,7 @@ void registertouch(HWND hwnd)
 
 void systray (HWND hwnd, int remove)
 {
-	static const GUID iconguid = { 0x6974bfc1, 0x898b, 0x4157, { 0xa4, 0x30, 0x43, 0x6b, 0xa0, 0xdd, 0x5d, 0xf2 } };
+	static const GUID iconguid = { 0xb9628768, 0xad27, 0x40fa, { 0xbd, 0xb, 0x35, 0x21, 0xdf, 0x6b, 0x8f, 0x4f } };
 	NOTIFYICONDATA nid;
 	BOOL v;
 	static bool noguid;

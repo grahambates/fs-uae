@@ -218,6 +218,7 @@ AM_CPPFLAGS += -I$(s)/src/od-win32/caps
 fs_uae_LDADD += libuae.a
 # libuae_a_CXXFLAGS = $(CM_CFLAGS) -fpermissive
 libuae_a_SOURCES = \
+	src/aros.rom.cpp \
 	src/a2065.cpp \
 	src/a2091.cpp \
 	src/akiko.cpp \
@@ -255,6 +256,10 @@ libuae_a_SOURCES = \
 	src/audio.cpp \
 	src/autoconf.cpp \
 	src/barto_gdbserver.cpp \
+	src/blit.h \
+	src/blitfunc.cpp \
+	src/blitfunc.h \
+	src/blittable.cpp \
 	src/blitter.cpp \
 	src/blkdev.cpp \
 	src/blkdev_cdimage.cpp \
@@ -270,8 +275,26 @@ libuae_a_SOURCES = \
 	src/cia.cpp \
 	src/consolehook.cpp \
 	src/cpuboard.cpp \
+	src/cpudefs.cpp \
+	src/cpuemu_0.cpp \
+	src/cpuemu_11.cpp \
+	src/cpuemu_13.cpp \
+	src/cpuemu_20.cpp \
+	src/cpuemu_21.cpp \
+	src/cpuemu_22.cpp \
+	src/cpuemu_23.cpp \
+	src/cpuemu_24.cpp \
+	src/cpuemu_31.cpp \
+	src/cpuemu_32.cpp \
+	src/cpuemu_33.cpp \
+	src/cpuemu_34.cpp \
+	src/cpuemu_35.cpp \
+	src/cpuemu_40.cpp \
+	src/cpuemu_50.cpp \
 	src/cpummu.cpp \
 	src/cpummu30.cpp \
+	src/cpustbl.cpp \
+	src/cpustbl.h \
 	src/crc32.cpp \
 	src/custom.cpp \
 	src/debug.cpp \
@@ -468,11 +491,13 @@ libuae_a_SOURCES = \
 	src/isofs.cpp \
 	src/jit/codegen_udis86.h \
 	src/jit/codegen_x86.h \
+	src/jit/compemu.cpp \
 	src/jit/compemu.h \
 	src/jit/compemu_fpp.cpp \
 	src/jit/compemu_midfunc_arm.h \
 	src/jit/compemu_midfunc_x86.h \
 	src/jit/compemu_support.cpp \
+	src/jit/cputbl.h \
 	src/jit/flags_x86.h \
 	src/keybuf.cpp \
 	src/logging.cpp \

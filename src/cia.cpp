@@ -19,7 +19,9 @@
 #include "custom.h"
 #include "newcpu.h"
 #include "cia.h"
+#ifdef SERIAL_PORT
 #include "serial.h"
+#endif
 #include "disk.h"
 #include "xwin.h"
 #include "keybuf.h"
@@ -294,9 +296,11 @@ static void RethinkICR(int num)
 #endif
 		if (!(c->icr1 & 0x80)) {
 			c->icr1 |= 0x80 | 0x40;
+#ifdef DEBUGGER
 			if (debug_dma) {
 				record_dma_event(num ? DMA_EVENT_CIAB_IRQ : DMA_EVENT_CIAA_IRQ, current_hpos(), vpos);
 			}
+#endif
 			ICR(num);
 		}
 	}
@@ -753,7 +757,7 @@ static int get_cia_sync_cycles(int *syncdelay)
 	return add;
 }
 
-static void CIA_synced_interrupt(uae_u32 v)
+void event_CIA_synced_interrupt(uae_u32 v)
 {
 	CIA_update();
 	CIA_calctimers();
@@ -775,7 +779,7 @@ static void CIA_sync_interrupt(int num, uae_u8 icr)
 		int syncdelay = 0;
 		int delay = get_cia_sync_cycles(&syncdelay);
 		delay += syncdelay;
-		event2_newevent_xx(-1, DIV10 + delay, num, CIA_synced_interrupt);
+		event2_newevent_xx(-1, DIV10 + delay, num, event_CIA_synced_interrupt);
 	} else {
 		c->icr1 |= icr;
 		CIA_check_ICR();
@@ -814,12 +818,12 @@ static bool cia_checkalarm(bool inc, bool irq, int num)
 {
 	struct CIA *c = &cia[num];
 
+#if 0
 	// hack: do not trigger alarm interrupt if KS code and both
 	// tod and alarm == 0. This incorrectly triggers on non-cycle exact
 	// modes. Real hardware value written to ciabtod by KS is always
 	// at least 1 or larger due to bus cycle delays when reading
 	// old value.
-#if 0
 	if (num) {
 		if (!currprefs.cpu_compatible && (munge24(m68k_getpc()) & 0xFFF80000) != 0xF80000) {
 			if (c->tod == 0 && c->alarm == 0)
@@ -935,7 +939,7 @@ static void do_tod_hack(bool dotod)
 		cia[0].tod++;
 		cia[0].tod &= 0x00ffffff;
 		tod_hack_tod_last = cia[0].tod;
-		cia_checkalarm(false, false, 0);
+		cia_checkalarm(false, true, 0);
 	}
 }
 
@@ -982,8 +986,7 @@ static void resetwarning_check(void)
 			write_log(_T("KB: reset warning forced reset. Phase=%d\n"), resetwarning_phase);
 			resetwarning_phase = -1;
 			kblostsynccnt = 0;
-			send_internalevent(INTERNALEVENT_KBRESET);
-			uae_reset(0, 1);
+			inputdevice_do_kb_reset();
 		}
 	}
 	if (resetwarning_phase == 1) {
@@ -1005,8 +1008,7 @@ static void resetwarning_check(void)
 			write_log(_T("KB: reset warning end by software. reset.\n"));
 			resetwarning_phase = -1;
 			kblostsynccnt = 0;
-			send_internalevent(INTERNALEVENT_KBRESET);
-			uae_reset(0, 1);
+			inputdevice_do_kb_reset();
 		}
 	}
 }
@@ -1061,7 +1063,7 @@ static void CIA_tod_inc(bool irq, int num)
 	cia_checkalarm(true, irq, num);
 }
 
-static void CIA_tod_inc_event(uae_u32 num)
+void event_CIA_tod_inc_event(uae_u32 num)
 {
 	struct CIA *c = &cia[num];
 	if (c->tod_event_state != 2) {
@@ -1099,7 +1101,7 @@ static void CIA_tod_check(int num)
 	}
 	// Not yet, add event to guarantee exact TOD inc position
 	c->tod_event_state = 2; // event active
-	event2_newevent_xx(-1, -hpos * CYCLE_UNIT, num, CIA_tod_inc_event);
+	event2_newevent_xx(-1, -hpos * CYCLE_UNIT, num, event_CIA_tod_inc_event);
 }
 
 static void CIA_tod_handler(int hoffset, int num, bool delayedevent)
@@ -1120,7 +1122,7 @@ static void CIA_tod_handler(int hoffset, int num, bool delayedevent)
 	if (checkalarm((c->tod + 1) & 0xffffff, c->alarm, true)) {
 		// causes interrupt on this line, add event
 		c->tod_event_state = 2; // event active
-		event2_newevent_xx(-1, c->tod_offset * CYCLE_UNIT, num, CIA_tod_inc_event);
+		event2_newevent_xx(-1, c->tod_offset * CYCLE_UNIT, num, event_CIA_tod_inc_event);
 	}
 }
 
@@ -1935,9 +1937,11 @@ static void WriteCIAA(uae_u16 addr, uae_u8 val, uae_u32 *flags)
 			arcadia_parport(1, c->prb, c->drb);
 		}
 #endif
+#ifdef PARALLEL_PORT
 		if (!isprinter() && parallel_port_scsi) {
 			parallel_port_scsi_write(0, c->prb, c->drb);
 		}
+#endif
 		break;
 	case 2:
 #if DONGLE_DEBUG > 0
@@ -2259,12 +2263,16 @@ static void cia_wait_pre(int cianummask)
 	cia_now_evt = get_cycles();
 	int syncdelay = 0;
 	int delay = get_cia_sync_cycles(&syncdelay);
+#ifdef DEBUGGER
 	if (debug_dma) {
 		cia_cycles(syncdelay, 100, 0, 0);
 		cia_cycles(delay, 0, 0, 0);
 	} else {
 		cia_cycles(syncdelay + delay, 0, 0, 0);
 	}
+#else
+	cia_cycles(syncdelay + delay, 0, 0, 0);
+#endif
 #endif
 }
 
@@ -2404,9 +2412,11 @@ static uae_u32 REGPARAM2 cia_bget(uaecptr addr)
 	if (!isgaylenocia (addr))
 		return dummy_get(addr, 1, false, 0);
 
+#ifdef DEBUGGER
 	if (memwatch_access_validator) {
 		validate_cia(addr, 0, 0);
 	}
+#endif
 
 	switch (cia_chipselect(addr))
 	{
@@ -2466,9 +2476,11 @@ static uae_u32 REGPARAM2 cia_wget(uaecptr addr)
 	if (!isgaylenocia (addr))
 		return dummy_get_safe(addr, 2, false, 0);
 
+#ifdef DEBUGGER
 	if (memwatch_access_validator) {
 		write_log(_T("CIA word read %08x PC=%08x\n"), addr, M68K_GETPC);
 	}
+#endif
 
 	switch (cia_chipselect(addr))
 	{
@@ -2539,12 +2551,14 @@ static uae_u32 REGPARAM2 cia_lgeti(uaecptr addr)
 
 static bool cia_debug(uaecptr addr, uae_u32 value, int size)
 {
+#ifdef DEBUGGER
 	if (addr == DEBUG_SPRINTF_ADDRESS || addr == DEBUG_SPRINTF_ADDRESS + 4 || addr == DEBUG_SPRINTF_ADDRESS + 8 ||
 		(addr == DEBUG_SPRINTF_ADDRESS + 2 && currprefs.cpu_model < 68020) ||
 		(addr == DEBUG_SPRINTF_ADDRESS + 6 && currprefs.cpu_model < 68020) ||
 		(addr == DEBUG_SPRINTF_ADDRESS + 10 && currprefs.cpu_model < 68020)) {
 		return debug_sprintf(addr, value, size);
 	}
+#endif
 	return false;
 }
 
@@ -2563,9 +2577,11 @@ static void REGPARAM2 cia_bput(uaecptr addr, uae_u32 value)
 	if (!isgaylenocia(addr))
 		return;
 
+#ifdef DEBUGGER
 	if (memwatch_access_validator) {
 		validate_cia(addr, 1, value);
 	}
+#endif
 
 	int cs = cia_chipselect(addr);
 
@@ -2604,9 +2620,11 @@ static void REGPARAM2 cia_wput(uaecptr addr, uae_u32 v)
 	if (!isgaylenocia(addr))
 		return;
 
+#ifdef DEBUGGER
 	if (memwatch_access_validator) {
 		write_log(_T("CIA word write %08x = %04x PC=%08x\n"), addr, v & 0xffff, M68K_GETPC);
 	}
+#endif
 
 	if (addr & 1)
 		v = (v << 8) | (v >> 8);
@@ -2655,7 +2673,7 @@ addrbank clock_bank = {
 	clock_lput, clock_wput, clock_bput,
 	default_xlate, default_check, NULL, NULL, _T("Battery backed up clock (none)"),
 	dummy_lgeti, dummy_wgeti,
-	ABFLAG_IO, S_READ, S_WRITE, NULL, 0x3f, 0xd80000
+	ABFLAG_IO, S_READ, S_WRITE, NULL, 0x3f, 0xdc0000
 };
 
 static uae_u8 getclockreg(int addr, struct tm *ct)

@@ -241,7 +241,7 @@ static bool delayed_set_switch;
 
 static int uaegfx_old, uaegfx_active;
 static uae_u32 reserved_gfxmem;
-static uaecptr uaegfx_resname,
+static uaecptr uaegfx_resname, uaegfx_prefix,
 	uaegfx_resid,
 	uaegfx_init,
 	uaegfx_base,
@@ -2373,21 +2373,22 @@ static void FillBoardInfo(TrapContext *ctx, uaecptr amigamemptr, struct LibResol
 	}
 	trap_set_bytes(ctx, amigamemptr, 0, PSSO_ModeInfo_sizeof);
 
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_Active, 1);
 	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_Width, width);
 	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_Height, height);
 	trap_put_byte(ctx, amigamemptr + PSSO_ModeInfo_Depth, depth);
 	trap_put_byte(ctx, amigamemptr + PSSO_ModeInfo_Flags, 0);
-	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_HorTotal, width);
-	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_HorBlankSize, 1);
-	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_HorSyncStart, 0);
-	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_HorSyncSize, 1);
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_HorTotal, width + 8);
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_HorBlankSize, 8);
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_HorSyncStart, 2);
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_HorSyncSize, 2);
 	trap_put_byte(ctx, amigamemptr + PSSO_ModeInfo_HorSyncSkew, 0);
 	trap_put_byte(ctx, amigamemptr + PSSO_ModeInfo_HorEnableSkew, 0);
 
-	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_VerTotal, height);
-	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_VerBlankSize, 1);
-	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_VerSyncStart, 0);
-	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_VerSyncSize, 1);
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_VerTotal, height + 8);
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_VerBlankSize, 8);
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_VerSyncStart, 2);
+	trap_put_word(ctx, amigamemptr + PSSO_ModeInfo_VerSyncSize, 2);
 
 	trap_put_byte(ctx, amigamemptr + PSSO_ModeInfo_first_union, 98);
 	trap_put_byte(ctx, amigamemptr + PSSO_ModeInfo_second_union, 14);
@@ -2957,7 +2958,8 @@ void picasso96_alloc (TrapContext *ctx)
 {
 	if (currprefs.rtgboards[0].rtgmem_type >= GFXBOARD_HARDWARE)
 		return;
-	uaegfx_resname = ds (_T("uaegfx.card"));
+	uaegfx_resname = ds(_T("uaegfx.card"));
+	uaegfx_prefix = ds(_T("UAE"));
 	if (uaegfx_old)
 		return;
 	picasso96_alloc2 (ctx);
@@ -2977,10 +2979,9 @@ static void inituaegfx(TrapContext *ctx, uaecptr ABI)
 	trap_put_long(ctx, ABI + PSSO_BoardInfo_BoardType, picasso96_BT);
 	trap_put_long(ctx, ABI + PSSO_BoardInfo_GraphicsControllerType, picasso96_GCT);
 	trap_put_long(ctx, ABI + PSSO_BoardInfo_PaletteChipType, picasso96_PCT);
-	trap_put_long(ctx, ABI + PSSO_BoardInfo_BoardName, uaegfx_resname);
-	trap_put_long(ctx, ABI + PSSO_BoardInfo_BoardType, 1);
+	trap_put_long(ctx, ABI + PSSO_BoardInfo_BoardName, uaegfx_prefix);
 
-	trap_put_long(ctx, ABI + PSSO_BoardInfo_MemoryClock, 100000000);
+	trap_put_long(ctx, ABI + PSSO_BoardInfo_MemoryClock, 200000000);
 
 	/* only 1 clock */
 	trap_put_long(ctx, ABI + PSSO_BoardInfo_PixelClockCount + PLANAR * 4, 1);
@@ -5964,17 +5965,17 @@ void picasso_flushpixels(int index, uae_u8 *src, int off, bool render)
 			dst = dstp;
 
 			// safety check
-			if (pwidth > vidinfo->rowbytes / vidinfo->pixbytes) {
-				pwidth = vidinfo->rowbytes / vidinfo->pixbytes;
+			if (pwidth > vidinfo->maxwidth) {
+				pwidth = vidinfo->maxwidth;
 			}
-			if (pheight > vidinfo->height) {
-				pheight = vidinfo->height;
+			if (pheight > vidinfo->maxheight) {
+				pheight = vidinfo->maxheight;
 			}
 
 			if (!split && vidinfo->rtg_clear_flag) {
 				uae_u8 *p2 = dst;
-				for (int h = 0; h < vidinfo->height; h++) {
-					memset(p2, 0, vidinfo->width * vidinfo->pixbytes);
+				for (int h = 0; h < vidinfo->maxheight; h++) {
+					memset(p2, 0, vidinfo->maxwidth * vidinfo->pixbytes);
 					p2 += vidinfo->rowbytes;
 				}
 				vidinfo->rtg_clear_flag--;

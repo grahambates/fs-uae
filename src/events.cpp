@@ -477,14 +477,18 @@ void event2_newevent_x_replace_exists(evt_t t, uae_u32 data, evfunc2 func)
 	}
 }
 
-
-void event2_newevent_x_replace(evt_t t, uae_u32 data, evfunc2 func)
+void event2_newevent_x_remove(evfunc2 func)
 {
 	for (int i = 0; i < ev2_max; i++) {
 		if (eventtab2[i].active && eventtab2[i].handler == func) {
 			eventtab2[i].active = false;
 		}
 	}
+}
+
+void event2_newevent_x_replace(evt_t t, uae_u32 data, evfunc2 func)
+{
+	event2_newevent_x_remove(func);
 	if (t <= 0) {
 		func(data);
 		return;
@@ -509,48 +513,14 @@ int current_hpos(void)
 }
 */
 
-// emulate VPOSHW writes changing cycle counter
-void modify_eventcounter(int diff)
+void clear_events(void)
 {
-
-	int hpos = current_hpos();
-
-	if (hpos + diff < 0) {
-		return;
-	}
-	if (hpos + diff >= maxhpos) {
-		return;
-	}
-
-	int cdiff = diff * CYCLE_UNIT;
-	if (cdiff < 0) {
-		if (currcycle >= cdiff) {
-			currcycle -= cdiff;
-		} else {
-			cdiff = -(int)currcycle;
-			currcycle = 0;
-		}
-	} else {
-		currcycle += cdiff;
-	}
-
-	int hp1 = current_hpos();
-
-	cia_adjust_eclock_phase(diff);
-
-	// adjust all existing timers
+	nextevent = EVT_MAX;
 	for (int i = 0; i < ev_max; i++) {
-		if (i != ev_hsync && i != ev_hsynch) {
-			eventtab[i].evtime += cdiff;
-			eventtab[i].oldcycles += cdiff;
-		}
+		eventtab[i].active = 0;
+		eventtab[i].oldcycles = get_cycles();
 	}
-
 	for (int i = 0; i < ev2_max; i++) {
-		eventtab2[i].evtime += cdiff;
+		eventtab2[i].active = 0;
 	}
-
-	int hp2 = current_hpos();
-
-	events_schedule();
 }

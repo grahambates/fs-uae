@@ -18,7 +18,9 @@
 #include "events.h"
 #include "uae/memory.h"
 #include "custom.h"
+#ifdef SERIAL_PORT
 #include "serial.h"
+#endif
 #include "newcpu.h"
 #include "disk.h"
 #include "debug.h"
@@ -41,7 +43,9 @@
 #include "cpuboard.h"
 #include "uae/ppc.h"
 #include "devices.h"
+#ifdef JIT
 #include "jit/compemu.h"
+#endif
 #include "disasm.h"
 #ifdef RETROPLATFORM
 #include "rp.h"
@@ -282,6 +286,9 @@ void fixup_cpu (struct uae_prefs *p)
 			p->cpuboardmem1.size = 8 * 1024 * 1024;
 	}
 
+	if (p->cachesize_inhibit) {
+		p->cachesize = 0;
+	}
 	if (p->cpu_model < 68020 && p->cachesize) {
 		p->cachesize = 0;
 		error_log (_T("JIT requires 68020 or better CPU."));
@@ -427,6 +434,12 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 		err = 1;
 	}
 
+	if (p->chipmem.size == 0x180000 && p->cachesize) {
+		error_log(_T("JIT unsupported chipmem size %d (0x%x)."), p->chipmem.size, p->chipmem.size);
+		p->chipmem.size = 0x200000;
+		err = 1;
+	}
+
 	for (int i = 0; i < MAX_RAM_BOARDS; i++) {
 		if ((p->fastmem[i].size & (p->fastmem[i].size - 1)) != 0
 			|| (p->fastmem[i].size != 0 && (p->fastmem[i].size < 0x10000 || p->fastmem[i].size > 0x800000)))
@@ -530,6 +543,11 @@ void fixup_prefs (struct uae_prefs *p, bool userconfig)
 	if (p->chipmem.size > 0x200000 && (p->fastmem[0].size > 262144 || p->fastmem[1].size > 262144)) {
 		error_log(_T("You can't use fastmem and more than 2MB chip at the same time."));
 		p->chipmem.size = 0x200000;
+		err = 1;
+	}
+	if (p->bogomem.size == 0x180000 && p->cachesize) {
+		error_log(_T("JIT unsupported bogomem size %d (0x%x)."), p->bogomem.size, p->bogomem.size);
+		p->bogomem.size = 0x100000;
 		err = 1;
 	}
 	if (p->mem25bit.size > 128 * 1024 * 1024 || (p->mem25bit.size & 0xfffff)) {
@@ -787,10 +805,12 @@ static int default_config;
 
 void uae_reset (int hardreset, int keyboardreset)
 {
+#ifdef DEBUGGER
 	if (debug_dma) {
 		record_dma_reset(0);
 		record_dma_reset(0);
 	}
+#endif
 	currprefs.quitstatefile[0] = changed_prefs.quitstatefile[0] = 0;
 
 	if (quit_program == 0) {
@@ -808,7 +828,9 @@ void uae_quit (void)
 #ifdef FSUAE
 	write_log("uae_quit\n");
 #endif
+#ifdef DEBUGGER
 	deactivate_debugger ();
+#endif
 	if (quit_program != -UAE_QUIT)
 		quit_program = -UAE_QUIT;
 	target_quit ();
@@ -1147,6 +1169,7 @@ static int real_main2 (int argc, TCHAR **argv)
 	inputdevice_init ();
 
 	copy_prefs(&currprefs, &changed_prefs);
+	inputdevice_updateconfig(&currprefs, &changed_prefs);
 
 	no_gui = ! currprefs.start_gui;
 	if (restart_program == 2 || restart_program == 4)
@@ -1231,8 +1254,8 @@ static int real_main2 (int argc, TCHAR **argv)
 	gui_update ();
 
 	if (graphics_init (true)) {
-		setup_brkhandler ();
 #ifdef DEBUGGER
+		setup_brkhandler ();
 		if (currprefs.start_debugger && debuggable ())
 			activate_debugger ();
 #endif

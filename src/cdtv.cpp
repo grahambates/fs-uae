@@ -19,6 +19,8 @@
 
 #ifdef CDTV
 
+#ifdef CDTV
+
 #include "options.h"
 #include "uae/memory.h"
 #include "custom.h"
@@ -1951,6 +1953,8 @@ void restore_cdtv_final(void)
 	}
 }
 
-#endif
+#endif /* SAVESTATE */
+
+#endif /* CDTV */
 
 #endif /* CDTV */

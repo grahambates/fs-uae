@@ -47,6 +47,7 @@ static bool memlogw = true;
 #include "xwin.h"
 #include "devices.h"
 #include "gfxfilter.h"
+#include "flashrom.h"
 #include "pcem/device.h"
 #include "pcem/vid_s3_virge.h"
 #include "pcem/vid_cl5429.h"
@@ -83,7 +84,7 @@ extern uae_u32 get_mem_pcem(uaecptr, int);
 #define PICASSOIV_VRAM2 0x00800000
 #define PICASSOIV_ROM_OFFSET 0x0200
 #define PICASSOIV_FLASH_OFFSET 0x8000
-#define PICASSOIV_FLASH_BANK 0x8000
+#define PICASSOIV_FLASH_BANK 0x10000
 #define PICASSOIV_MAX_FLASH (GFXBOARD_AUTOCONFIG_SIZE - 32768)
 
 #define PICASSOIV_BANK_UNMAPFLASH 2
@@ -311,6 +312,7 @@ struct rtggfxboard
 	uae_u8 picassoiv_bank, picassoiv_flifi;
 	uae_u8 p4autoconfig[256];
 	struct zfile *p4rom;
+	void *p4flashrom;
 	bool p4z2;
 	uae_u32 p4_mmiobase;
 	uae_u32 p4_special_mask;
@@ -719,14 +721,14 @@ void video_blit_memtoscreen(int x, int y, int y1, int y2, int w, int h)
 				if (gb->gfxboard_surface) {
 					struct picasso_vidbuf_description *vidinfo = &picasso_vidinfo[gb->monitor_id];
 					if (w != gb->width_redraw || h != gb->height_redraw) {
-						for (int y = 0; y < vidinfo->height; y++) {
+						for (int y = 0; y < vidinfo->maxheight; y++) {
 							uae_u8 *d = gb->gfxboard_surface + y * vidinfo->rowbytes;
 							if (y < h) {
-								if (vidinfo->width > w) {
-									memset(d + w * vidinfo->pixbytes, 0, (vidinfo->width - w) * vidinfo->pixbytes);
+								if (vidinfo->maxwidth > w) {
+									memset(d + w * vidinfo->pixbytes, 0, (vidinfo->maxwidth - w) * vidinfo->pixbytes);
 								}
 							} else {
-								memset(d, 0, vidinfo->width * vidinfo->pixbytes);
+								memset(d, 0, vidinfo->maxwidth * vidinfo->pixbytes);
 							}
 						}
 						gb->width_redraw = w;
@@ -734,10 +736,10 @@ void video_blit_memtoscreen(int x, int y, int y1, int y2, int w, int h)
 						y1 = 0;
 						y2 = h;
 					}
-					for (int yy = y1; yy < y2 && yy < vidinfo->height; yy++) {
+					for (int yy = y1; yy < y2 && yy < vidinfo->maxheight; yy++) {
 						uae_u8 *d = gb->gfxboard_surface + yy * vidinfo->rowbytes;
 						uae_u8 *s = getpcembuffer32(x, y, yy);
-						int ww = w > vidinfo->width ? vidinfo->width : w;
+						int ww = w > vidinfo->maxwidth ? vidinfo->maxwidth : w;
 						memcpy(d, s, ww * vidinfo->pixbytes);
 					}
 				}
@@ -3171,6 +3173,10 @@ static void gfxboard_free_board(struct rtggfxboard *gb)
 	gb->gfxboard_intena = 0;
 	gb->picassoiv_bank = 0;
 	gb->active = false;
+	flash_free(gb->p4flashrom);
+	gb->p4flashrom = NULL;
+	zfile_fclose(gb->p4rom);
+	gb->p4rom = NULL;
 }
 
 void gfxboard_free(void)
@@ -3392,13 +3398,9 @@ static uae_u32 REGPARAM2 gfxboards_bget_regs (uaecptr addr)
 			write_log (_T("PicassoIV BGET %08x %02x\n"), addr, v);
 #endif
 	} else {
-		if (addr < PICASSOIV_FLASH_OFFSET) {
-			v = gb->automemory[addr];
-			return v;
-		}
-		addr -= PICASSOIV_FLASH_OFFSET;
+		addr += ((gb->picassoiv_bank & PICASSOIV_BANK_FLASHBANK) ? 0x8000 * 2 : 0);
 		addr /= 2;
-		v = gb->automemory[addr + PICASSOIV_FLASH_OFFSET + ((gb->picassoiv_bank & PICASSOIV_BANK_FLASHBANK) ? 0x8000 : 0)];
+		v = flash_read(gb->p4flashrom, addr);
 	}
 	return v;
 }
@@ -3532,16 +3534,6 @@ static void REGPARAM2 gfxboards_bput_regs (uaecptr addr, uae_u32 v)
 		}
 		return;
 	}
-	if (gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH) {
-		if (addr == 0x404) {
-			gb->picassoiv_flifi = b;
-#ifdef WITH_X86
-			picassoiv_checkswitch (gb);
-#endif
-		} else if (addr == 0x406) {
-			gb->p4i2c = b;
-		}
-	}
 	if (gb->picassoiv_bank & PICASSOIV_BANK_MAPRAM) {
 		// memory mapped io
 		if (addr >= gb->p4_mmiobase && addr < gb->p4_mmiobase + 0x8000) {
@@ -3553,7 +3545,7 @@ static void REGPARAM2 gfxboards_bput_regs (uaecptr addr, uae_u32 v)
 			return;
 		}
 	}
-	if (gb->p4z2 && addr >= 0x10000) {
+	if (gb->p4z2 && addr >= 0x10000 && (gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH)) {
 		addr -= 0x10000;
 		addr = mungeaddr (gb, addr, true);
 		if (addr) {
@@ -3563,6 +3555,16 @@ static void REGPARAM2 gfxboards_bput_regs (uaecptr addr, uae_u32 v)
 		}
 		return;
 	}
+
+	if (gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH) {
+		if (addr == 0x404) {
+			gb->picassoiv_flifi = b;
+			picassoiv_checkswitch(gb);
+		} else if (addr == 0x406) {
+			gb->p4i2c = b;
+		}
+	}
+
 #if PICASSOIV_DEBUG_IO
 	write_log (_T("PicassoIV BPUT %08x %02X\n"), addr, b & 0xff);
 #endif
@@ -4265,8 +4267,6 @@ static void gfxboard_init (struct autoconfig_info *aci, struct rtggfxboard *gb)
 	gb->gfxmem_bank = gfxmem_banks[gb->rtg_index];
 	gb->gfxmem_bank->mask = gb->rbc->rtgmem_size - 1;
 	gb->p4z2 = false;
-	zfile_fclose (gb->p4rom);
-	gb->p4rom = NULL;
 	gb->banksize_mask = gb->board->banksize - 1;
 	memset (gb->cirrus_pci, 0, sizeof(gb->cirrus_pci));
 	reset_pci (gb);
@@ -4302,9 +4302,8 @@ static void loadp4rom (struct rtggfxboard *gb)
 	}
 	// main flash code
 	zfile_fseek (gb->p4rom, 16384, SEEK_SET);
-	zfile_fread (&gb->automemory[PICASSOIV_FLASH_OFFSET], 1, PICASSOIV_MAX_FLASH, gb->p4rom);
-	zfile_fclose (gb->p4rom);
-	gb->p4rom = NULL;
+	zfile_fread (&gb->automemory[PICASSOIV_FLASH_OFFSET / 2], 1, PICASSOIV_MAX_FLASH, gb->p4rom);
+	gb->p4flashrom = flash_new(gb->automemory, 131072, 131072, 0x01, 0x20, gb->p4rom, 0);
 	write_log (_T("PICASSOIV: flash rom loaded\n"));
 }
 
@@ -4373,19 +4372,18 @@ bool gfxboard_init_memory (struct autoconfig_info *aci)
 		TCHAR path[MAX_DPATH];
 		fetch_rompath (path, sizeof(path) / sizeof (TCHAR));
 
-		gb->p4rom = read_device_rom(p, ROMTYPE_PICASSOIV, 0, roms);
+		if (rl) {
+			gb->p4rom = flashromfile_open(rl->path);
+		}
 
 		if (!gb->p4rom && p->picassoivromfile[0] && zfile_exists(p->picassoivromfile))
-			gb->p4rom = read_rom_name(p->picassoivromfile);
-
-		if (!gb->p4rom && rl)
-			gb->p4rom = read_rom(rl->rd);
+			gb->p4rom = flashromfile_open(p->picassoivromfile);
 
 		if (!gb->p4rom) {
 			_tcscat (path, _T("picasso_iv_flash.rom"));
-			gb->p4rom = read_rom_name (path);
+			gb->p4rom = flashromfile_open(path);
 			if (!gb->p4rom)
-				gb->p4rom = read_rom_name (_T("picasso_iv_flash.rom"));
+				gb->p4rom = flashromfile_open(_T("picasso_iv_flash.rom"));
 		}
 		if (gb->p4rom) {
 			zfile_fread (gb->p4autoconfig, sizeof(gb->p4autoconfig), 1, gb->p4rom);
@@ -5639,7 +5637,7 @@ static void special_pcem_put(uaecptr addr, uae_u32 v, int size)
 		write_log(_T("PicassoIV CL REG PUT %08x %02x PC=%08x\n"), addr, v, M68K_GETPC);
 #endif
 
-		if (addr >= 0x400000 || (gb->p4z2 && !(gb->picassoiv_bank & PICASSOIV_BANK_MAPRAM) && (gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH) && ((addr >= 0x800 && addr < 0xc00) || (addr >= 0x1000 && addr < 0x2000)))) {
+		if ((addr >= 0x400000 && addr < 0xa00000) || (gb->p4z2 && !(gb->picassoiv_bank & PICASSOIV_BANK_MAPRAM) && (gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH) && ((addr >= 0x800 && addr < 0xc00) || (addr >= 0x1000 && addr < 0x2000)))) {
 			uae_u32 addr2 = addr & 0xffff;
 			if (addr2 >= 0x0800 && addr2 < 0x840) {
 				addr2 -= 0x800;
@@ -5669,7 +5667,7 @@ static void special_pcem_put(uaecptr addr, uae_u32 v, int size)
 #endif
 			}
 			return;
-			}
+		}
 		if (gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH) {
 			if (size == 0) {
 				if (addr == 0x404) {
@@ -5706,7 +5704,7 @@ static void special_pcem_put(uaecptr addr, uae_u32 v, int size)
 				goto end;
 			}
 		}
-		if (gb->p4z2 && addr >= 0x10000) {
+		if (gb->p4z2 && addr >= 0x10000 && (gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH)) {
 			addr -= 0x10000;
 			if (size == 2) {
 				v = do_byteswap_32(v);
@@ -5723,6 +5721,14 @@ static void special_pcem_put(uaecptr addr, uae_u32 v, int size)
 //			}
 			goto end;
 		}
+		if (!(gb->picassoiv_bank & PICASSOIV_BANK_UNMAPFLASH)) {
+			if (addr >= PICASSOIV_FLASH_OFFSET / 2) {
+				addr /= 2;
+				addr += ((gb->picassoiv_bank & PICASSOIV_BANK_FLASHBANK) ? PICASSOIV_FLASH_BANK : 0);
+				flash_write(gb->p4flashrom, addr, v);
+			}
+		}
+
 #if PICASSOIV_DEBUG_IO
 		write_log(_T("PicassoIV BPUT %08x %08X %d\n"), addr, v, size);
 #endif
@@ -5951,13 +5957,13 @@ static uae_u32 special_pcem_get(uaecptr addr, int size)
 				write_log(_T("PicassoIV BGET %08x %02x\n"), addr, v);
 #endif
 		} else {
-			if (addr < PICASSOIV_FLASH_OFFSET) {
+			if (addr < PICASSOIV_FLASH_OFFSET / 2) {
 				v = gb->automemory[addr];
 				return v;
 			}
-			addr -= PICASSOIV_FLASH_OFFSET;
 			addr /= 2;
-			v = gb->automemory[addr + PICASSOIV_FLASH_OFFSET + ((gb->picassoiv_bank & PICASSOIV_BANK_FLASHBANK) ? 0x8000 : 0)];
+			addr += (gb->picassoiv_bank & PICASSOIV_BANK_FLASHBANK) ? PICASSOIV_FLASH_BANK : 0;
+			v = flash_read(gb->p4flashrom, addr);
 		}
 
 	}

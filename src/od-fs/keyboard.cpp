@@ -17,6 +17,11 @@ static void close_kb (void)
 	LOG_STUB ("");
 }
 
+static void release_keys (void)
+{
+	LOG_STUB ("");
+}
+
 static int acquire_kb (int num, int flags)
 {
 	// UAE_LOG_STUB ("num=%d flags=%d return 1", num, flags);

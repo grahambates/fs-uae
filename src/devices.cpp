@@ -16,8 +16,10 @@
 #include "sndboard.h"
 #include "statusline.h"
 #include "uae/ppc.h"
+#ifdef CD32
 #include "cd32_fmv.h"
 #include "akiko.h"
+#endif
 #include "disk.h"
 #include "cia.h"
 #include "inputdevice.h"
@@ -29,7 +31,9 @@
 #include "blitter.h"
 #include "xwin.h"
 #include "custom.h"
+#ifdef SERIAL_PORT
 #include "serial.h"
+#endif
 #include "bsdsocket.h"
 #include "uaeserial.h"
 #include "uaeresource.h"
@@ -39,10 +43,14 @@
 #include "gui.h"
 #include "savestate.h"
 #include "uaeexe.h"
+#ifdef WITH_UAENATIVE
 #include "uaenative.h"
+#endif
 #include "tabletlibrary.h"
 #include "luascript.h"
+#ifdef DRIVESOUND
 #include "driveclick.h"
+#endif
 #include "x86.h"
 #include "ethernet.h"
 #include "drawing.h"
@@ -253,7 +261,9 @@ void devices_hsync(void)
 	CIA_hsync_prehandler();
 
 	decide_blitter(-1);
+#ifdef SERIAL_PORT
 	serial_hsynchandler();
+#endif
 
 	execute_device_items(device_hsyncs, device_hsync_cnt);
 }
@@ -286,7 +296,9 @@ void devices_update_sound(float clk, float syncadjust)
 
 void devices_update_sync(float svpos, float syncadjust)
 {
+#ifdef CD32
 	cd32_fmv_set_sync(svpos, syncadjust);
+#endif
 }
 
 void virtualdevice_free(void)
@@ -324,7 +336,9 @@ void virtualdevice_free(void)
 	memory_cleanup();
 	free_shm();
 	cfgfile_addcfgparam(0);
+#ifdef DRIVESOUND
 	driveclick_free();
+#endif
 	ethernet_enumerate_free();
 	rtarea_free();
 
@@ -391,9 +405,11 @@ void virtualdevice_init (void)
 
 void devices_restore_start(void)
 {
+	restore_audio_start();
 	restore_cia_start();
 	restore_blkdev_start();
 	restore_blitter_start();
+	restore_custom_start();
 	changed_prefs.bogomem.size = 0;
 	changed_prefs.chipmem.size = 0;
 	for (int i = 0; i < MAX_RAM_BOARDS; i++) {
