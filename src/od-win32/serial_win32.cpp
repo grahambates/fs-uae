@@ -223,7 +223,7 @@ static void sersend_end(uae_u32 v);
 
 void SERPER (uae_u16 w)
 {
-	int baud = 0, i, per;
+	int baud = 0, mbaud = 0, i, per;
 	int oldper = serper;
 	static int warned;
 
@@ -250,6 +250,7 @@ void SERPER (uae_u16 w)
 	if (baud <= 0) {
 		baud = allowed_baudrates[1];
 	}
+	mbaud = baud;
 
 	serial_period_hsyncs = (((serper & 0x7fff) + 1) * (1 + 8 + ninebit + 1 - 1)) / maxhpos;
 	if (serial_period_hsyncs <= 0)
@@ -284,7 +285,7 @@ void SERPER (uae_u16 w)
 	serial_send_previous = -1;
 
 #ifdef SERIAL_PORT
-	setbaud (baud);
+	setbaud(baud, mbaud);
 #endif
 
 	// mid transmit period change
@@ -606,7 +607,7 @@ static void checksend(void)
 	}
 #endif
 	if (serempty_enabled && !serxdevice_enabled) {
-		return;
+		goto end;
 	}
 #ifdef SERIAL_MAP
 	if (sermap_data && sermap_enabled) {
@@ -644,6 +645,7 @@ static void checksend(void)
 		serial_send_previous = serdatshift_masked;
 	}
 #endif
+end:
 	if (serial_period_hsyncs <= 1 || data_in_sershift == 2) {
 		data_in_sershift = 0;
 		serdatcopy();

@@ -98,7 +98,7 @@ STATIC_INLINE int PIXEL_XPOS(int xx)
 	return x;
 }
 
-#define min_diwlastword (0)
+#define min_diwlastword (PIXEL_XPOS(hsyncstartpos_start_cycles << CCK_SHRES_SHIFT))
 #define max_diwlastword (PIXEL_XPOS(denisehtotal))
 
 STATIC_INLINE int coord_window_to_hw_x(int x)
@@ -366,7 +366,8 @@ enum nln_how {
 	nln_lower_black_always
 };
 
-extern void hsync_record_line_state (int lineno, enum nln_how, int changed);
+extern void hsync_record_line_state(int lineno, enum nln_how, int changed);
+extern void hsync_record_line_state_last(int lineno, enum nln_how, int changed);
 extern void vsync_handle_redraw (int long_field, int lof_changed, uae_u16, uae_u16, bool drawlines, bool initial);
 extern bool vsync_handle_check (void);
 extern void draw_lines(int end, int section);

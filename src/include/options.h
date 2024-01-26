@@ -19,7 +19,7 @@
 #include "xwin.h"
 
 #define UAEMAJOR 5
-#define UAEMINOR 0
+#define UAEMINOR 1
 #define UAESUBREV 0
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
@@ -732,6 +732,7 @@ struct uae_prefs {
 	int cs_denisemodel;
 	bool cs_memorypatternfill;
 	bool cs_ipldelay;
+	uae_u32 seed;
 
 	struct boardromconfig expansionboard[MAX_EXPANSION_BOARDS];
 
@@ -909,6 +910,7 @@ struct uae_prefs {
 	bool win32_filesystem_mangle_reserved_names;
 	bool win32_shutdown_notification;
 	bool win32_warn_exit;
+	bool win32_gui_control;
 	bool right_control_is_right_win_key;
 #ifdef WITH_SLIRP
 #ifdef FSUAE

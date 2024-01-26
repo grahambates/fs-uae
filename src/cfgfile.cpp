@@ -167,7 +167,7 @@ static const TCHAR *soundmode1[] = { _T("none"), _T("interrupts"), _T("normal"),
 static const TCHAR *soundmode2[] = { _T("none"), _T("interrupts"), _T("good"), _T("best"), 0 };
 static const TCHAR *centermode1[] = { _T("none"), _T("simple"), _T("smart"), 0 };
 static const TCHAR *centermode2[] = { _T("false"), _T("true"), _T("smart"), 0 };
-static const TCHAR *stereomode[] = { _T("mono"), _T("stereo"), _T("clonedstereo"), _T("4ch"), _T("clonedstereo6ch"), _T("6ch"), _T("mixed"), 0 };
+static const TCHAR *stereomode[] = { _T("mono"), _T("stereo"), _T("clonedstereo"), _T("4ch"), _T("clonedstereo6ch"), _T("6ch"),  _T("clonedstereo8ch"), _T("8ch"), _T("mixed"), 0 };
 static const TCHAR *interpolmode[] = { _T("none"), _T("anti"), _T("sinc"), _T("rh"), _T("crux"), 0 };
 static const TCHAR *collmode[] = { _T("none"), _T("sprites"), _T("playfields"), _T("full"), 0 };
 static const TCHAR *compmode[] = { _T("direct"), _T("indirect"), _T("indirectKS"), _T("afterPic"), 0 };
@@ -226,7 +226,7 @@ static const TCHAR *dongles[] =
 	_T("robocop 3"), _T("leaderboard"), _T("b.a.t. ii"), _T("italy'90 soccer"), _T("dames grand maitre"),
 	_T("rugby coach"), _T("cricket captain"), _T("leviathan"), _T("musicmaster"),
 	_T("logistics"), _T("scala red"), _T("scala green"),
-	_T("strikermanager"), _T("multi-player soccer manager"),
+	_T("strikermanager"), _T("multi-player soccer manager"), _T("football director 2"),
 	NULL
 };
 static const TCHAR *cdmodes[] = { _T("disabled"), _T(""), _T("image"), _T("ioctl"), _T("spti"), _T("aspi"), 0 };
@@ -395,33 +395,6 @@ static const TCHAR *obsolete[] = {
 
 #define UNEXPANDED _T("$(FILE_PATH)")
 
-static void clearmountitems(struct uae_prefs *p)
-{
-	p->mountitems = 0;
-	for (int i = 0; i < MOUNT_CONFIG_SIZE; i++) {
-		p->mountconfig[i].configoffset = -1;
-		p->mountconfig[i].unitnum = -1;
-	}
-}
-
-void discard_prefs(struct uae_prefs *p, int type)
-{
-	struct strlist **ps = &p->all_lines;
-	while (*ps) {
-		struct strlist *s = *ps;
-		*ps = s->next;
-		xfree(s->value);
-		xfree(s->option);
-		xfree(s);
-	}
-	p->all_lines = NULL;
-	currprefs.all_lines = changed_prefs.all_lines = NULL;
-#ifdef FILESYS
-	filesys_cleanup();
-#endif
-	clearmountitems(p);
-}
-
 static TCHAR *cfgfile_unescape(const TCHAR *s, const TCHAR **endpos, TCHAR separator, bool min)
 {
 	bool quoted = false;
@@ -448,28 +421,27 @@ static TCHAR *cfgfile_unescape(const TCHAR *s, const TCHAR **endpos, TCHAR separ
 			c = s[i + 1];
 			switch (c)
 			{
-			case 'X':
-			case 'x':
-				c2 = _totupper(s[i + 2]);
-				v = ((c2 >= 'A') ? c2 - 'A' : c2 - '0') << 4;
-				c2 = _totupper(s[i + 3]);
-				v |= (c2 >= 'A') ? c2 - 'A' : c2 - '0';
-				*p++ = c2;
-				i += 2;
-				break;
-			case 'r':
-				*p++ = '\r';
-				break;
-			case '\n':
-				*p++ = '\n';
-				break;
-			default:
-				*p++ = c;
-				break;
+				case 'X':
+				case 'x':
+					c2 = _totupper(s[i + 2]);
+					v = ((c2 >= 'A') ? c2 - 'A' : c2 - '0') << 4;
+					c2 = _totupper(s[i + 3]);
+					v |= (c2 >= 'A') ? c2 - 'A' : c2 - '0';
+					*p++ = c2;
+					i += 2;
+					break;
+				case 'r':
+					*p++ = '\r';
+					break;
+				case 'n':
+					*p++ = '\n';
+					break;
+				default:
+					*p++ = c;
+					break;
 			}
 			i++;
-		}
-		else {
+		} else {
 			*p++ = c;
 		}
 	}
@@ -485,6 +457,33 @@ static TCHAR *cfgfile_unescape(const TCHAR *s, const TCHAR **endpos)
 static TCHAR *cfgfile_unescape_min(const TCHAR *s)
 {
 	return cfgfile_unescape(s, NULL, 0, true);
+}
+
+static void clearmountitems(struct uae_prefs *p)
+{
+	p->mountitems = 0;
+	for (int i = 0; i < MOUNT_CONFIG_SIZE; i++) {
+		p->mountconfig[i].configoffset = -1;
+		p->mountconfig[i].unitnum = -1;
+	}
+}
+
+void discard_prefs(struct uae_prefs *p, int type)
+{
+	struct strlist **ps = &p->all_lines;
+	while (*ps) {
+		struct strlist *s = *ps;
+		*ps = s->next;
+		xfree(s->value);
+		xfree(s->option);
+		xfree(s);
+	}
+	p->all_lines = NULL;
+	currprefs.all_lines = changed_prefs.all_lines = NULL;
+#ifdef FILESYS
+	filesys_cleanup();
+#endif
+	clearmountitems(p);
 }
 
 static TCHAR *cfgfile_option_find_it(const TCHAR *s, const TCHAR *option, bool checkequals)
@@ -2781,6 +2780,9 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 	cfgfile_dwrite_strarr(f, _T("agnusmodel"), agnusmodel, p->cs_agnusmodel);
 	cfgfile_dwrite_strarr(f, _T("agnussize"), agnussize, p->cs_agnussize);
 	cfgfile_dwrite_strarr(f, _T("denisemodel"), denisemodel, p->cs_denisemodel);
+	if (p->seed) {
+		cfgfile_write(f, _T("rndseed"), _T("%d"), p->seed);
+	}
 
 	if (is_board_enabled(p, ROMTYPE_CD32CART, 0)) {
 		cfgfile_dwrite_bool(f, _T("cd32fmv"), true);
@@ -5287,7 +5289,7 @@ static int cfgfile_parse_newfilesys (struct uae_prefs *p, int nr, int type, TCHA
 		// quoted special case
 		if (tmpp2[0] == '\"') {
 			const TCHAR *end;
-			TCHAR *n = cfgfile_unescape (tmpp2, &end, 0, false);
+			TCHAR *n = cfgfile_unescape (tmpp2, &end, 0, true);
 			if (!n)
 				goto invalid_fs;
 			_tcscpy (uci.rootdir, n);
@@ -5315,7 +5317,7 @@ static int cfgfile_parse_newfilesys (struct uae_prefs *p, int nr, int type, TCHA
 		// quoted special case
 		if (tmpp2[0] == '\"') {
 			const TCHAR *end;
-			TCHAR *n = cfgfile_unescape (tmpp2, &end, 0, false);
+			TCHAR *n = cfgfile_unescape (tmpp2, &end, 0, true);
 			if (!n)
 				goto invalid_fs;
 			_tcscpy (uci.rootdir, n);
@@ -5365,14 +5367,14 @@ static int cfgfile_parse_newfilesys (struct uae_prefs *p, int nr, int type, TCHA
 				if (getintval2 (&tmpp2, &uci.highcyl, ',', false)) {
 					getintval (&tmpp2, &uci.pcyls, '/');
 					getintval (&tmpp2, &uci.pheads, '/');
-					getintval2 (&tmpp2, &uci.psecs, '/', true);
+					getintval2 (&tmpp2, &uci.psecs, ',', true);
 					if (uci.pheads && uci.psecs) {
 						uci.physical_geometry = true;
 					} else {
 						uci.pheads = uci.psecs = uci.pcyls = 0;
 						uci.physical_geometry = false;
 					}
-					if (tmpp2[0]) {
+					if (tmpp2 && tmpp2[0]) {
 						if (tmpp2[0] == '\"') {
 							n = cfgfile_unescape (tmpp2, &end, 0, false);
 							if (!n)
@@ -5828,17 +5830,6 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, const TCHAR *option, TCH
 		if (p->cpu_model >= 68020 && p->cachesize > 0)
 			p->cpu_cycle_exact = p->cpu_memory_cycle_exact = p->blitter_cycle_exact = 0;
 		p->cpu_memory_cycle_exact = p->cpu_cycle_exact;
-		// pre-4.4.0 didn't support cpu multiplier in prefetch mode without cycle-exact
-		// set pre-4.4.0 defaults first
-		if (!p->cpu_cycle_exact && p->cpu_compatible && !p->cpu_clock_multiplier) {
-			if (p->cpu_model < 68020) {
-				p->cpu_clock_multiplier = 2 * 256;
-			} else if (p->cpu_model == 68020) {
-				p->cpu_clock_multiplier = 4 * 256;
-			} else {
-				p->cpu_clock_multiplier = 8 * 256;
-			}
-		}
 		return 1;
 	}
 	if (cfgfile_yesno (option, value, _T("blitter_cycle_exact"), &p->blitter_cycle_exact)) {
@@ -6038,7 +6029,8 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, const TCHAR *option, TCH
 		|| cfgfile_intval(option, value, _T("genlock_mix"), &p->genlock_mix, 1)
 		|| cfgfile_intval(option, value, _T("keyboard_handshake"), &p->cs_kbhandshake, 1)
 		|| cfgfile_intval(option, value, _T("eclockphase"), &p->cs_eclockphase, 1)
-		|| cfgfile_intval(option, value, _T("chipset_rtc_adjust"), &p->cs_rtc_adjust, 1))
+		|| cfgfile_intval(option, value, _T("chipset_rtc_adjust"), &p->cs_rtc_adjust, 1)
+		|| cfgfile_intval(option, value, _T("rndseed"), &p->seed, 1))
 		return 1;
 
 	if (cfgfile_strval(option, value, _T("comp_trustbyte"), &p->comptrustbyte, compmode, 0)
@@ -7178,18 +7170,21 @@ static int cfgfile_load_2 (struct uae_prefs *p, const TCHAR *filename, bool real
 						}
 						if (s) {
 							s++;
-							bool quoted = false;
 							if (s[0] == '"') {
-								s++;
-								quoted = true;
+								const TCHAR *end;
+								TCHAR *n = cfgfile_unescape(s, &end, 0, true);
+								_tcscpy(tmp, n);
+								s = tmp;
+								xfree(n);
+							} else {
+								const TCHAR *se = _tcschr(s, ',');
+								if (se) {
+									tmp[se - tmp] = 0;
+								}
 							}
-							const TCHAR *se = _tcschr(s, quoted ? '"' : ',');
-							if (se) {
-								tmp[se - tmp] = 0;
-								_tcscpy(p->mountconfig[0].ci.rootdir, s);
-								cfgfile_resolve_path_load(p->mountconfig[0].ci.rootdir, MAX_DPATH, isvsys ? PATH_DIR : PATH_HDF);
-								p->mountitems = 1;
-							}
+							_tcscpy(p->mountconfig[0].ci.rootdir, s);
+							cfgfile_resolve_path_load(p->mountconfig[0].ci.rootdir, MAX_DPATH, isvsys ? PATH_DIR : PATH_HDF);
+							p->mountitems = 1;
 						}
 					}
 				}
@@ -8634,7 +8629,7 @@ void default_prefs (struct uae_prefs *p, bool reset, int type)
 	p->fpu_model = 0;
 	p->cpu_model = 68000;
 	p->m68k_speed_throttle = 0;
-	p->cpu_clock_multiplier = 2 * 256;
+	p->cpu_clock_multiplier = 0;
 	p->cpu_frequency = 0;
 	p->mmu_model = 0;
 	p->cpu060_revision = 6;

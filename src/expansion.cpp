@@ -50,6 +50,7 @@
 #include "sana2.h"
 #include "arcadia.h"
 #include "devices.h"
+#include "dsp3210/dsp_glue.h"
 
 
 #define CARD_FLAG_CAN_Z3 1
@@ -2398,6 +2399,10 @@ static uaecptr check_boot_rom (struct uae_prefs *p, int *boot_rom_type)
 		return b;
 	if (nr_directory_units (p))
 		return b;
+#ifdef WIN32
+	if (p->win32_automount_drives || p->win32_automount_cddrives || p->win32_automount_netdrives || p->win32_automount_removable)
+		return b;
+#endif
 	if (p->socket_emu)
 		return b;
 	if (p->uaeserial)
@@ -5067,8 +5072,8 @@ static const struct expansionboardsettings nexus_settings[] = {
 };
 static const struct expansionboardsettings buddha_settings[] = {
 	{
-		_T("Model\0") _T("Buddha\0") _T("Catweasel Z2\0"),
-		_T("model\0") _T("buddha\0") _T("cwz2\0"),
+		_T("Model\0") _T("Buddha\0") _T("Buddha plus one\0") _T("Catweasel Z2\0"),
+		_T("model\0") _T("buddha\0") _T("buddhaplusone\0") _T("cwz2\0"),
 		true, false, 0
 	},
 	{
@@ -5291,6 +5296,14 @@ const struct expansionromtype expansionroms[] = {
 		NULL, 0,
 		false, EXPANSIONTYPE_INTERNAL
 	},
+#ifdef WITH_DSP
+	{
+		_T("dsp3210"), _T("DSP3210"), _T("AT&T"),
+		NULL, dsp_init, NULL, NULL, ROMTYPE_DSP3210 | ROMTYPE_NOT, 0, 0, BOARD_NONAUTOCONFIG_BEFORE, true,
+		NULL, 0,
+		false, EXPANSIONTYPE_INTERNAL
+	},
+#endif
 
 	/* PCI Bridgeboards */
 

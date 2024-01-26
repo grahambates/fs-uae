@@ -79,7 +79,7 @@ static uint32_t uae_random_state;
 // FIXME: Problematic with re-recording and savestates. Must be included in
 // save state if desired to use...
 
-uae_u32 uaesrand (uae_u32 seed)
+uae_u32 uaesetrandseed(uae_u32 seed)
 {
 #if 0
 	// Temporarily disabled, need to check that combined seed is valid
@@ -117,4 +117,14 @@ uae_u32 uaerand (void)
 uae_u32 uaerandgetseed (void)
 {
 	return uae_random_seed;
+}
+
+void uaerandomizeseed(void)
+{
+	if (currprefs.seed == 0) {
+		uae_u32 t = getlocaltime();
+		uaesetrandseed(t);
+	} else {
+		uaesetrandseed(currprefs.seed);
+	}
 }

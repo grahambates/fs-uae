@@ -670,6 +670,7 @@ static uae_u32 REGPARAM2 blizzardf0_bget(uaecptr addr)
 
 	blizzardf0_slow(1);
 
+	addr &= blizzardf0_bank.mask;
 	if (is_csmk3(&currprefs) || is_blizzardppc(&currprefs)) {
 		if (flash_unlocked) {
 			return flash_read(flashrom, addr);
@@ -686,7 +687,6 @@ static uae_u32 REGPARAM2 blizzardf0_bget(uaecptr addr)
 				return flash_read(flashrom, addr);
 		}
 	}
-	addr &= blizzardf0_bank.mask;
 	v = blizzardf0_bank.baseaddr[addr];
 	return v;
 }
@@ -722,12 +722,12 @@ static void REGPARAM2 blizzardf0_bput(uaecptr addr, uae_u32 b)
 {
 	blizzardf0_slow(1);
 
+	addr &= blizzardf0_bank.mask;
 	if (is_csmk3(&currprefs) || is_blizzardppc(&currprefs)) {
 		if (flash_unlocked) {
 			flash_write(flashrom, addr, b);
 		}
 	} else if (is_csmk2(&currprefs)) {
-		addr &= 65535;
 		addr += 65536;
 		addr &= ~3;
 		addr |= csmk2_flashaddressing;
@@ -862,6 +862,7 @@ static void REGPARAM2 blizzardea_bput(uaecptr addr, uae_u32 b)
 		if (addr >= CYBERSTORM_MK2_SCSI_OFFSET) {
 			cpuboard_ncr9x_scsi_put(addr, b);
 		}  else {
+			addr &= 65535;
 			addr &= ~3;
 			addr |= csmk2_flashaddressing;
 			flash_write(flashrom, addr, b);
@@ -1694,7 +1695,12 @@ void cpuboard_map(void)
 
 	if (is_mtec_ematrix530(&currprefs) || is_sx32pro(&currprefs) || is_apollo(&currprefs) || is_dce_typhoon2(&currprefs)) {
 		if (cpuboardmem1_bank.allocated_size) {
-			map_banks(&cpuboardmem1_bank, cpuboardmem1_bank.start >> 16, 0x08000000 >> 16, cpuboardmem1_bank.allocated_size >> 16);
+			uae_u32 max = 0x08000000;
+			// don't cross 0x08000000
+			if (cpuboardmem1_bank.start < 0x08000000 && cpuboardmem1_bank.start + max > 0x08000000 && cpuboardmem1_bank.start + cpuboardmem1_bank.allocated_size < 0x08000000) {
+				max = 0x08000000 - cpuboardmem1_bank.start;
+			}
+			map_banks(&cpuboardmem1_bank, cpuboardmem1_bank.start >> 16, max >> 16, cpuboardmem1_bank.allocated_size >> 16);
 		}
 		if (cpuboardmem2_bank.allocated_size && cpuboardmem2_bank.start < 0x18000000) {
 			map_banks(&cpuboardmem2_bank, cpuboardmem2_bank.start >> 16, cpuboardmem2_bank.allocated_size >> 16, 0);

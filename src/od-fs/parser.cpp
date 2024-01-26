@@ -794,7 +794,7 @@ void setserstat (int mask, int onoff)
 #endif
 }
 
-int setbaud (long baud)
+int setbaud (int baud, int origbaud)
 {
 	if (!currprefs.use_serial) {
 		return 1;

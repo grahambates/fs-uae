@@ -57,9 +57,13 @@
 #include "videograb.h"
 #include "rommgr.h"
 #include "newcpu.h"
+#ifdef WITH_MIDIEMU
+#include "midiemu.h"
+#endif
 #ifdef RETROPLATFORM
 #include "rp.h"
 #endif
+#include "dsp3210/dsp_glue.h"
 #include "barto_gdbserver.h"
 
 #define MAX_DEVICE_ITEMS 64
@@ -94,6 +98,8 @@ static int device_rethink_cnt;
 static DEVICE_VOID device_rethinks[MAX_DEVICE_ITEMS];
 static int device_leave_cnt;
 static DEVICE_VOID device_leaves[MAX_DEVICE_ITEMS];
+static int device_leave_early_cnt;
+static DEVICE_VOID device_leaves_early[MAX_DEVICE_ITEMS];
 static int device_resets_cnt;
 static DEVICE_INT device_resets[MAX_DEVICE_ITEMS];
 static bool device_reset_done[MAX_DEVICE_ITEMS];
@@ -107,6 +113,7 @@ static void reset_device_items(void)
 	device_rethink_cnt = 0;
 	device_resets_cnt = 0;
 	device_leave_cnt = 0;
+	device_leave_early_cnt = 0;
 	memset(device_reset_done, 0, sizeof(device_reset_done));
 }
 
@@ -130,9 +137,14 @@ void device_add_check_config(DEVICE_VOID p)
 {
 	add_device_item(device_configs, &device_configs_cnt, p);
 }
-void device_add_exit(DEVICE_VOID p)
+void device_add_exit(DEVICE_VOID p, DEVICE_VOID p2)
 {
-	add_device_item(device_leaves, &device_leave_cnt, p);
+	if (p != NULL) {
+		add_device_item(device_leaves, &device_leave_cnt, p);
+	}
+	if (p2 != NULL) {
+		add_device_item(device_leaves_early, &device_leave_early_cnt, p2);
+	}
 }
 void device_add_reset(DEVICE_INT p)
 {
@@ -181,6 +193,9 @@ void devices_reset(int hardreset)
 	init_eventtab();
 	init_shm();
 	memory_reset();
+#ifdef AUTOCONFIG
+	rtarea_reset();
+#endif
 	DISK_reset();
 	CIA_reset();
 	a1000_reset();
@@ -224,9 +239,6 @@ void devices_reset(int hardreset)
 	dongle_reset();
 	sampler_init();
 	device_func_reset();
-#ifdef AUTOCONFIG
-	rtarea_reset();
-#endif
 #ifdef RETROPLATFORM
 	rp_reset();
 #endif
@@ -292,6 +304,9 @@ void devices_update_sound(float clk, float syncadjust)
 #ifdef WITH_X86
 	x86_update_sound(clk / syncadjust);
 #endif
+#ifdef WITH_MIDIEMU
+	midi_update_sound(clk / syncadjust);
+#endif
 }
 
 void devices_update_sync(float svpos, float syncadjust)
@@ -307,6 +322,9 @@ void virtualdevice_free(void)
 	// must be first
 	uae_ppc_free();
 #endif
+
+	execute_device_items(device_leaves_early, device_leave_early_cnt);
+
 #ifdef FILESYS
 	filesys_cleanup();
 #endif
@@ -433,6 +451,9 @@ void devices_pause(void)
 #ifdef WITH_PPC
 	uae_ppc_pause(1);
 #endif
+#ifdef WITH_DSP
+	dsp_pause(1);
+#endif
 	blkdev_entergui();
 #ifdef RETROPLATFORM
 	rp_pause(1);
@@ -449,6 +470,9 @@ void devices_unpause(void)
 #endif
 #ifdef WITH_PPC
 	uae_ppc_pause(0);
+#endif
+#ifdef WITH_DSP
+	dsp_pause(0);
 #endif
 	pausevideograb(0);
 	ethernet_pause(0);

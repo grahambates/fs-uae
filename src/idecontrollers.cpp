@@ -28,8 +28,13 @@
 #include "ncr9x_scsi.h"
 #include "autoconf.h"
 #include "devices.h"
+#include "flashrom.h"
+
 
 #define DEBUG_IDE 0
+#define DEBUG_IDE_MASK 0xf800
+#define DEBUG_IDE_MASK_VAL 0x0800
+
 #define DEBUG_IDE_GVP 0
 #define DEBUG_IDE_ALF 0
 #define DEBUG_IDE_APOLLO 0
@@ -121,8 +126,8 @@ static struct ide_board *accessx_board[MAX_DUPLICATE_EXPANSION_BOARDS];
 static struct ide_board *ivst500at_board[MAX_DUPLICATE_EXPANSION_BOARDS];
 static struct ide_board *trifecta_board[MAX_DUPLICATE_EXPANSION_BOARDS];
 static struct ide_board *tandem_board[MAX_DUPLICATE_EXPANSION_BOARDS];
-static struct ide_board* dotto_board[MAX_DUPLICATE_EXPANSION_BOARDS];
-static struct ide_board* dev_board[MAX_DUPLICATE_EXPANSION_BOARDS];
+static struct ide_board *dotto_board[MAX_DUPLICATE_EXPANSION_BOARDS];
+static struct ide_board *dev_board[MAX_DUPLICATE_EXPANSION_BOARDS];
 
 static struct ide_hdf *idecontroller_drive[TOTAL_IDE * 2];
 static struct ide_thread_state idecontroller_its;
@@ -148,6 +153,8 @@ static void freencrunit(struct ide_board *ide)
 	}
 	if (ide->self_ptr)
 		*ide->self_ptr = NULL;
+	flash_free(ide->flashrom);
+	zfile_fclose(ide->romfile);
 	xfree(ide->rom);
 	xfree(ide);
 }
@@ -211,6 +218,8 @@ static void add_ide_standard_unit(int ch, struct uaedev_config_info *ci, struct 
 {
 	struct ide_hdf *ide;
 	struct ide_board *ideb;
+	int maxch = maxunit / 2;
+	int idetypenum = idetype + maxch * ci->controller_type_unit;
 	if (ch >= maxunit)
 		return;
 	ideb = allocide(&ideboard[ci->controller_type_unit], rc, ch);
@@ -218,8 +227,8 @@ static void add_ide_standard_unit(int ch, struct uaedev_config_info *ci, struct 
 		return;
 	ideb->keepautoconfig = true;
 	ideb->type = idetype;
-	ide = add_ide_unit (&idecontroller_drive[(idetype + ci->controller_type_unit) * 2], 2, ch, ci, rc);
-	init_ide(ideb, idetype + ci->controller_type_unit, maxunit, byteswap, adide);
+	ide = add_ide_unit (&idecontroller_drive[idetypenum * 2], maxunit, ch, ci, rc);
+	init_ide(ideb, idetypenum, maxunit, byteswap, adide);
 }
 
 static bool ide_interrupt_check(struct ide_board *board, bool edge_triggered)
@@ -291,17 +300,18 @@ static void idecontroller_hsync(void)
 	}
 }
 
-static void reset_ide(struct ide_board *board)
+static void reset_ide(struct ide_board *board, int hardreset)
 {
 	board->configured = 0;
 	board->intena = false;
 	board->enabled = false;
+	board->hardreset = hardreset != 0;
 }
 
 static void idecontroller_reset(int hardreset)
 {
 	for (int i = 0; ide_boards[i]; i++) {
-		reset_ide(ide_boards[i]);
+		reset_ide(ide_boards[i], hardreset);
 	}
 }
 
@@ -476,12 +486,29 @@ static int get_adide_reg(uaecptr addr, struct ide_board *board)
 	return reg;
 }
 
-static int get_buddha_reg(uaecptr addr, struct ide_board *board, int *portnum)
+static int get_buddha_reg(uaecptr addr, struct ide_board *board, int *portnum, int *flashoffset)
 {
 	int reg = -1;
+	if (flashoffset) {
+		*flashoffset = -1;
+	}
+	if (board->flashenabled) {
+		if (flashoffset && !(addr & 1)) {
+			*flashoffset = ((board->userdata & 0x100) ? 32768 : 0) + (addr >> 1);
+		}
+		return -1;
+	}
 	if (addr < 0x800 || addr >= 0xe00)
 		return reg;
 	*portnum = (addr - 0x800) / 0x200;
+	if ((board->aci->rc->device_settings & 3) == 1) {
+		if ((addr & (0x80 | 0x40)) == 0x80) {
+			return IDE_DATA;
+		}
+		if ((addr & (0x80 | 0x40)) == 0xc0) {
+			return -1;
+		}
+	}
 	reg = (addr >> 2) & 15;
 	if (addr & 0x100)
 		reg |= IDE_SECONDARY;
@@ -629,41 +656,53 @@ static int getidenum(struct ide_board *board, struct ide_board **arr)
 	return 0;
 }
 
-static uae_u32 ide_read_byte(struct ide_board *board, uaecptr addr)
+static uae_u32 ide_read_byte2(struct ide_board *board, uaecptr addr)
 {
 	uaecptr oaddr = addr;
 	uae_u8 v = 0xff;
 
 	addr &= board->mask;
 
-#if DEBUG_IDE
-	if (0 || !(addr & 0x8000))
-		write_log(_T("IDE IO BYTE READ %08x %08x\n"), addr, M68K_GETPC);
-#endif
-
-	if (addr < 0x40 && (!board->configured || board->keepautoconfig))
+	if (addr < 0x40 && !board->flashenabled && (!board->configured || board->keepautoconfig))
 		return board->acmemory[addr];
 
 	if (board->type == BUDDHA_IDE) {
 
 		int portnum;
-		int regnum = get_buddha_reg(addr, board, &portnum);
-		if (regnum >= 0) {
+		int flashoffset = -1;
+		bool p1 = (board->aci->rc->device_settings & 3) == 1;
+		int regnum = get_buddha_reg(addr, board, &portnum, &flashoffset);
+		if (flashoffset >= 0) {
+			v = flash_read(board->flashrom, flashoffset);
+		} else if (regnum >= 0) {
 			if (board->ide[portnum])
 				v = get_ide_reg_multi(board, regnum, portnum, 1);
 		} else if (addr >= 0xf00 && addr < 0x1000) {
-			if ((addr & ~3) == 0xf00)
+			if ((addr & ~3) == 0xf00) {
 				v = ide_irq_check(board->ide[0], false) ? 0x80 : 0x00;
-			else if ((addr & ~3) == 0xf40)
+			} else if ((addr & ~3) == 0xf40) {
 				v = ide_irq_check(board->ide[1], false) ? 0x80 : 0x00;
-			else if ((addr & ~3) == 0xf80)
+			} else if ((addr & ~3) == 0xf80 && !p1) {
 				v = ide_irq_check(board->ide[2], false) ? 0x80 : 0x00;
-			else
+			} else {
 				v = 0;
+			}
+			if (p1) {
+				if (addr == 0xf42 && board->hardreset) {
+					v |= 0x80;
+				}
+				if (addr & 2) {
+					v |= 1 << 5;
+				}
+			}
 		} else if (addr >= 0x7fc && addr <= 0x7ff) {
 			v = board->userdata;
-		} else {
-			v = board->rom[addr & board->rom_mask];
+		} else if (!(addr & 1)) {
+			int offset = (addr >> 1) & board->rom_mask;
+			if (p1 && (board->userdata & 0x100)) {
+				offset += 0x8000;
+			}
+			v = board->rom[offset];
 		}
 
 	} else if (board->type == ALF_IDE || board->type == TANDEM_IDE) {
@@ -1026,6 +1065,17 @@ static uae_u32 ide_read_byte(struct ide_board *board, uaecptr addr)
 	return v;
 }
 
+static uae_u32 ide_read_byte(struct ide_board *board, uaecptr addr)
+{
+	uae_u32 v = ide_read_byte2(board, addr);
+#if DEBUG_IDE
+	if ((addr & DEBUG_IDE_MASK) == DEBUG_IDE_MASK_VAL) {
+		write_log(_T("IDE IO BYTE READ %08x=%02x %08x\n"), addr & board->mask, v & 0xff, M68K_GETPC);
+	}
+#endif
+	return v;
+}
+
 static uae_u32 ide_read_word(struct ide_board *board, uaecptr addr)
 {
 	uae_u32 v = 0xffff;
@@ -1075,10 +1125,11 @@ static uae_u32 ide_read_word(struct ide_board *board, uaecptr addr)
 		if (board->type == BUDDHA_IDE) {
 
 			int portnum;
-			int regnum = get_buddha_reg(addr, board, &portnum);
+			int regnum = get_buddha_reg(addr, board, &portnum, NULL);
 			if (regnum == IDE_DATA) {
-				if (board->ide[portnum])
+				if (board->ide[portnum]) {
 					v = get_ide_reg_multi(board, IDE_DATA, portnum, 1);
+				}
 			} else {
 				v = ide_read_byte(board, addr) << 8;
 				v |= ide_read_byte(board, addr + 1);
@@ -1335,8 +1386,9 @@ static uae_u32 ide_read_word(struct ide_board *board, uaecptr addr)
 	}
 
 #if DEBUG_IDE
-	if (0 || !(addr & 0x8000))
+	if ((addr & DEBUG_IDE_MASK) == DEBUG_IDE_MASK_VAL) {
 		write_log(_T("IDE IO WORD READ %08x %04x %08x\n"), addr, v, M68K_GETPC);
+	}
 #endif
 
 	return v;
@@ -1348,8 +1400,9 @@ static void ide_write_byte(struct ide_board *board, uaecptr addr, uae_u8 v)
 	addr &= board->mask;
 
 #if DEBUG_IDE
-	if (0 || !(addr & 0x8000))
+	if ((addr & DEBUG_IDE_MASK) == DEBUG_IDE_MASK_VAL) {
 		write_log(_T("IDE IO BYTE WRITE %08x=%02x %08x\n"), addr, v, M68K_GETPC);
+	}
 #endif
 
 	if (!board->configured) {
@@ -1385,15 +1438,68 @@ static void ide_write_byte(struct ide_board *board, uaecptr addr, uae_u8 v)
 		if (board->type == BUDDHA_IDE) {
 
 			int portnum;
-			int regnum = get_buddha_reg(addr, board, &portnum);
-			if (regnum >= 0) {
+			int flashoffset = -1;
+			bool p1 = (board->aci->rc->device_settings & 3) == 1;
+			int regnum = get_buddha_reg(addr, board, &portnum, &flashoffset);
+			if (flashoffset >= 0) {
+				flash_write(board->flashrom, flashoffset, v);
+			} else if (regnum >= 0) {
 				if (board->ide[portnum]) {
 					put_ide_reg_multi(board, regnum, v, portnum, 1);
 				}
 			} else if (addr >= 0xfc0 && addr < 0xfc4) {
 				board->intena = true;
+				if (addr == 0xfc2 && p1) {
+					uae_u8 v2 = v & 0xf0;
+					int cnt = (board->userdata >> 16) & 15;
+					if (v2 == 0xa0 && cnt == 0) {
+						cnt++;
+					} else if (v2 == 0x50 && cnt == 1) {
+						cnt++;
+					} else if (v2 == 0xa0 && cnt == 2) {
+						cnt++;
+					} else if (v2 == 0x70 && cnt == 3) {
+						board->userdata |= 0x100000;
+						write_log("RAM expansion OFF\n");
+					} else if (v2 == 0xc0 && cnt == 3) {
+						board->userdata |= 0x200000;
+					} else if (v2 == 0xe0 && cnt == 3) {
+						write_log("Lockdown EEPROM\n");
+					} else if (v2 == 0xb0 && cnt == 3) {
+						write_log("Fast-Z2 ON\n");
+					} else if (v2 == 0x30 && cnt == 3) {
+						write_log("Fast-Z2 OFF\n");
+					} else if (v2 == 0x90 && cnt == 3) {
+						write_log("Early write ON\n");
+					} else if (v2 == 0x80 && cnt == 3) {
+						write_log("Early write OFF\n");
+					} else if (v2 == 0x60 && (board->userdata & 0x100000)) {
+						write_log("$a00000 ON\n");
+					} else if (v2 == 0x60 && (board->userdata & 0x200000)) {
+						write_log("$c00000 ON\n");
+					} else if (v2 == 0xf0 && cnt == 3) {
+						board->flashenabled = true;
+					} else {
+						cnt = 0;
+					}
+					board->userdata &= 0xfff0ffff;
+					board->userdata |= cnt << 16;
+				}
+				if (addr == 0xf42 && p1 && (v & 0xf0) == 0x60) {
+					board->hardreset = false;
+				}
 			} else if (addr >= 0x7fc && addr <= 0x7ff) {
-				board->userdata = v;
+				board->userdata &= ~0xff;
+				board->userdata |= v;
+			} else if (addr == 0xc3) {
+				if (p1) {
+					board->userdata |= 0x100;
+				}
+			} else if (addr == 0xc1) {
+				board->userdata &= ~0x100;
+			} else if (addr == 1) {
+				board->userdata = 0;
+				board->flashenabled = false;
 			}
 
 		} else  if (board->type == ALF_IDE || board->type == TANDEM_IDE) {
@@ -1653,8 +1759,9 @@ static void ide_write_word(struct ide_board *board, uaecptr addr, uae_u16 v)
 	addr &= board->mask;
 
 #if DEBUG_IDE
-	if (0 || !(addr & 0x8000))
+	if ((addr & DEBUG_IDE_MASK) == DEBUG_IDE_MASK_VAL) {
 		write_log(_T("IDE IO WORD WRITE %08x=%04x %08x\n"), addr, v, M68K_GETPC);
+	}
 #endif
 
 	if (board->configured) {
@@ -1662,7 +1769,7 @@ static void ide_write_word(struct ide_board *board, uaecptr addr, uae_u16 v)
 		if (board->type == BUDDHA_IDE) {
 
 			int portnum;
-			int regnum = get_buddha_reg(addr, board, &portnum);
+			int regnum = get_buddha_reg(addr, board, &portnum, NULL);
 			if (regnum == IDE_DATA) {
 				if (board->ide[portnum])
 					put_ide_reg_multi(board, IDE_DATA, v, portnum, 1);
@@ -1974,7 +2081,7 @@ static struct ide_board *getide(struct autoconfig_info *aci)
 {
 	device_add_rethink(idecontroller_rethink);
 	device_add_hsync(idecontroller_hsync);
-	device_add_exit(idecontroller_free);
+	device_add_exit(idecontroller_free, NULL);
 
 	for (int i = 0; i < MAX_IDE_UNITS; i++) {
 		if (ide_boards[i]) {
@@ -2464,10 +2571,15 @@ static void rochard_add_ide_unit(int ch, struct uaedev_config_info *ci, struct r
 bool buddha_init(struct autoconfig_info *aci)
 {
 	const struct expansionromtype *ert = get_device_expansion_rom(ROMTYPE_BUDDHA);
+	bool p1 = (aci->rc->device_settings & 3) == 1;
 
 	ide_add_reset();
 	if (!aci->doinit) {
-		aci->autoconfigp = ert->autoconfig;
+		if (p1) {
+			load_rom_rc(aci->rc, ROMTYPE_BUDDHA, 65536, 0, aci->autoconfig_raw, sizeof aci->autoconfig_raw, LOADROM_EVENONLY_ODDONE);
+		} else {
+			aci->autoconfigp = ert->autoconfig;
+		}
 		return true;
 	}
 	struct ide_board *ide = getide(aci);
@@ -2477,13 +2589,17 @@ bool buddha_init(struct autoconfig_info *aci)
 	ide->rom_size = 65536;
 	ide->mask = 65536 - 1;
 
-	ide->rom = xcalloc(uae_u8, ide->rom_size);
-	memset(ide->rom, 0xff, ide->rom_size);
+	ide->rom = xcalloc(uae_u8, ide->rom_size * 2);
+	memset(ide->rom, 0xff, ide->rom_size * 2);
 	ide->rom_mask = ide->rom_size - 1;
-	load_rom_rc(aci->rc, ROMTYPE_BUDDHA, 32768, 0, ide->rom, 65536, LOADROM_EVENONLY_ODDONE | LOADROM_FILL);
+	ide->romfile = load_rom_rc_zfile(aci->rc, ROMTYPE_BUDDHA, 65536, 0, ide->rom, 65536, LOADROM_FILL);
+	if (p1) {
+		ide->flashrom = flash_new(ide->rom, 65536, 65536, 0xbf, 0x5d, ide->romfile, FLASHROM_PARALLEL_EEPROM | FLASHROM_DATA_PROTECT);
+	}
+
 	for (int i = 0; i < 16; i++) {
 		uae_u8 b = ert->autoconfig[i];
-		if (i == 1 && (aci->rc->device_settings & 1))
+		if (i == 1 && (aci->rc->device_settings & 3) == 2)
 			b = 42;
 		ew(ide, i * 4, b);
 	}
@@ -2494,6 +2610,10 @@ bool buddha_init(struct autoconfig_info *aci)
 void buddha_add_ide_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)
 {
 	add_ide_standard_unit(ch, ci, rc, buddha_board, BUDDHA_IDE, false, false, 6);
+	if ((rc->device_settings & 3) == 1) {
+		// 3rd port has no interrupt
+		buddha_board[ci->controller_type_unit]->ide[2]->irq_inhibit = true;
+	}
 }
 
 void rochard_add_idescsi_unit(int ch, struct uaedev_config_info *ci, struct romconfig *rc)

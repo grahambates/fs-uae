@@ -569,7 +569,7 @@ static int hdf_read_2 (struct hardfiledata *hfd, void *buffer, uae_u64 offset, i
     return 0;
 }
 
-int hdf_read_target (struct hardfiledata *hfd, void *buffer, uae_u64 offset, int len)
+int hdf_read_target (struct hardfiledata *hfd, void *buffer, uae_u64 offset, int len, uae_u32 *error)
 {
     int got = 0;
     uae_u8 *p = (uae_u8*)buffer;
@@ -651,7 +651,7 @@ static int hdf_write_2 (struct hardfiledata *hfd, void *buffer, uae_u64 offset, 
     }
     return outlen;
 }
-int hdf_write_target (struct hardfiledata *hfd, void *buffer, uae_u64 offset, int len)
+int hdf_write_target (struct hardfiledata *hfd, void *buffer, uae_u64 offset, int len, uae_u32 *error)
 {
     int got = 0;
     uae_u8 *p = (uae_u8*)buffer;

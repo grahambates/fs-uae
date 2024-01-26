@@ -646,6 +646,7 @@ struct picasso96_state_struct
     int         XYOffset;
     bool        dualclut, advDragging;
     int         HLineDBL, VLineDBL;
+    bool        ModeChanged;
 };
 
 extern void InitPicasso96(int monid);
@@ -697,7 +698,6 @@ extern void gfx_set_picasso_colors(int monid, RGBFTYPE rgbfmt);
 extern void gfx_set_picasso_state(int monid,int on);
 extern uae_u8 *gfx_lock_picasso(int monid, bool);
 void gfx_unlock_picasso(int monid, bool dorender);
-extern int createwindowscursor(int monid, uaecptr src, int w, int h, int hiressprite, int doubledsprite, int chipset);
 
 void lockrtg(void);
 void unlockrtg(void);

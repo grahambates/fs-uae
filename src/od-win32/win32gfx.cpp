@@ -1,4 +1,4 @@
-/*
+﻿/*
 /*
 * UAE - The Un*x Amiga Emulator
 *
@@ -57,11 +57,17 @@
 #include "gfxboard.h"
 #include "cpuboard.h"
 #include "x86.h"
+#include "keybuf.h"
 #ifdef RETROPLATFORM
 #include "rp.h"
 #endif
 #include "statusline.h"
 #include "devices.h"
+#ifdef WITH_MIDIEMU
+#include "midiemu.h"
+#endif
+
+#include "darkmode.h"
 
 #define DM_DX_FULLSCREEN 1
 #define DM_W_FULLSCREEN 2
@@ -548,7 +554,6 @@ static void display_param_init(struct AmigaMonitor *mon)
 	if (!wait_vblank_display || !wait_vblank_display->HasAdapterData) {
 		write_log(_T("Selected display mode does not have adapter data!\n"));
 	}
-	Sleep(10);
 	scanlinecalibrating = true;
 	target_calibrate_spin();
 	scanlinecalibrating = false;
@@ -2001,11 +2006,6 @@ static int open_windows(struct AmigaMonitor *mon, bool mousecapture, bool starte
 	mon->in_sizemove = 0;
 
 	updatewinfsmode(mon->monitor_id, &currprefs);
-#ifdef D3D
-	gfx_lock();
-	D3D_free(mon->monitor_id, false);
-	gfx_unlock();
-#endif
 
 	int init_round = 0;
 	ret = -2;
@@ -2136,8 +2136,24 @@ int check_prefs_changed_gfx(void)
 		c2 |= ((currprefs.gfx_monitor[i].gfx_size_win.width + 7) & ~7) != ((changed_prefs.gfx_monitor[i].gfx_size_win.width + 7) & ~7) ? 16 : 0;
 		c2 |= currprefs.gfx_monitor[i].gfx_size_win.height != changed_prefs.gfx_monitor[i].gfx_size_win.height ? 16 : 0;
 		if (c2) {
-			c |= c2;
-			monitors[i] = true;
+			if (i > 0) {
+				for (int j = 0; j < MAX_AMIGAMONITORS; j++) {
+					struct rtgboardconfig *rbc = &changed_prefs.rtgboards[j];
+					if (rbc->monitor_id == i) {
+						c |= c2;
+						monitors[i] = true;
+					}
+				}
+				if (!monitors[i]) {
+					currprefs.gfx_monitor[i].gfx_size_fs.width = changed_prefs.gfx_monitor[i].gfx_size_fs.width;
+					currprefs.gfx_monitor[i].gfx_size_fs.height = changed_prefs.gfx_monitor[i].gfx_size_fs.height;
+					currprefs.gfx_monitor[i].gfx_size_win.width = changed_prefs.gfx_monitor[i].gfx_size_win.width;
+					currprefs.gfx_monitor[i].gfx_size_win.height = changed_prefs.gfx_monitor[i].gfx_size_win.height;
+				}
+			} else {
+				c |= c2;
+				monitors[i] = true;
+			}
 		}
 		if (WIN32GFX_IsPicassoScreen(&AMonitors[i])) {
 			struct gfx_filterdata *gfc = &changed_prefs.gf[1];
@@ -2306,6 +2322,8 @@ int check_prefs_changed_gfx(void)
 				c = 1024;
 			} else if (display_change_requested == 2) {
 				c = 512;
+			} else if (display_change_requested == 4) {
+				c = 32;
 			} else {
 				c = 2;
 				keepfsmode = 0;
@@ -2531,6 +2549,7 @@ int check_prefs_changed_gfx(void)
 		currprefs.win32_ctrl_F11_is_quit != changed_prefs.win32_ctrl_F11_is_quit ||
 		currprefs.win32_shutdown_notification != changed_prefs.win32_shutdown_notification ||
 		currprefs.win32_warn_exit != changed_prefs.win32_warn_exit ||
+		currprefs.win32_gui_control != changed_prefs.win32_gui_control ||
 		currprefs.right_control_is_right_win_key != changed_prefs.right_control_is_right_win_key)
 	{
 		currprefs.win32_minimize_inactive = changed_prefs.win32_minimize_inactive;
@@ -2554,6 +2573,7 @@ int check_prefs_changed_gfx(void)
 		currprefs.win32_ctrl_F11_is_quit = changed_prefs.win32_ctrl_F11_is_quit;
 		currprefs.win32_shutdown_notification = changed_prefs.win32_shutdown_notification;
 		currprefs.win32_warn_exit = changed_prefs.win32_warn_exit;
+		currprefs.win32_gui_control = changed_prefs.win32_gui_control;
 		currprefs.right_control_is_right_win_key = changed_prefs.right_control_is_right_win_key;
 		inputdevice_unacquire ();
 		currprefs.keyboard_leds_in_use = changed_prefs.keyboard_leds_in_use = (currprefs.keyboard_leds[0] | currprefs.keyboard_leds[1] | currprefs.keyboard_leds[2]) != 0;
@@ -2605,18 +2625,19 @@ int check_prefs_changed_gfx(void)
 	}
 	if (currprefs.win32_midiindev != changed_prefs.win32_midiindev ||
 		currprefs.win32_midioutdev != changed_prefs.win32_midioutdev ||
-		currprefs.sound_volume_midi != changed_prefs.sound_volume_midi ||
 		currprefs.win32_midirouter != changed_prefs.win32_midirouter)
 	{
 		currprefs.win32_midiindev = changed_prefs.win32_midiindev;
 		currprefs.win32_midioutdev = changed_prefs.win32_midioutdev;
-		currprefs.sound_volume_midi = changed_prefs.sound_volume_midi;
 		currprefs.win32_midirouter = changed_prefs.win32_midirouter;
+
 #ifdef SERIAL_PORT
-		if (midi_ready) {
-			Midi_Close ();
-			Midi_Open ();
-		}
+		serial_exit();
+		serial_init();
+		Midi_Reopen();
+#endif
+#ifdef WITH_MIDIEMU
+		midi_emu_reopen();
 #endif
 	}
 
@@ -2989,11 +3010,12 @@ void gfx_set_picasso_state(int monid, int on)
 		if (_tcscmp(newf->gfx_filtermask[i], oldf->gfx_filtermask[i]))
 			mode = -1;
 	}
+	bool differentmonitor = getdisplay(&currprefs, newmode->gfx_display) != getdisplay(&currprefs, oldmode->gfx_display);
 	// if screen parameter changes, need to reopen window
 	if (newmode->gfx_fullscreen != oldmode->gfx_fullscreen ||
 		(newmode->gfx_fullscreen && (
 			newmode->gfx_backbuffers != oldmode->gfx_backbuffers ||
-			newmode->gfx_display != oldmode->gfx_display ||
+			differentmonitor ||
 			newmode->gfx_refreshrate != oldmode->gfx_refreshrate ||
 			newmode->gfx_strobo != oldmode->gfx_strobo ||
 			newmode->gfx_vflip != oldmode->gfx_vflip ||
@@ -3039,6 +3061,7 @@ static void updatepicasso96(struct AmigaMonitor *mon)
 void gfx_set_picasso_modeinfo(int monid, RGBFTYPE rgbfmt)
 {
 	struct AmigaMonitor *mon = &AMonitors[monid];
+	struct picasso96_state_struct *state = &picasso96_state[mon->monitor_id];
 	int need;
 	if (!mon->screen_is_picasso)
 		return;
@@ -3049,13 +3072,12 @@ void gfx_set_picasso_modeinfo(int monid, RGBFTYPE rgbfmt)
 	if (need > 0) {
 		open_screen(mon);
 	} else if (need < 0) {
-		struct picasso96_state_struct *state = &picasso96_state[mon->monitor_id];
 		struct winuae_currentmode *wc = &mon->currentmode;
-		if (state->Width != wc->native_width || state->Width != wc->current_width ||
-			state->Height != wc->native_height || state->Height != wc->current_height) {
+		if (state->ModeChanged) {
 			open_windows(mon, true, true);
 		}
 	}
+	state->ModeChanged = false;
 #ifdef RETROPLATFORM
 	rp_set_hwnd(mon->hAmigaWnd);
 #endif
@@ -3196,6 +3218,7 @@ static void createstatuswindow(struct AmigaMonitor *mon)
 	if (mon->hStatusWnd) {
 		ShowWindow(mon->hStatusWnd, SW_HIDE);
 		DestroyWindow(mon->hStatusWnd);
+		mon->hStatusWnd = NULL;
 	}
 	if (currprefs.win32_statusbar == 0 || mon->monitor_id > 0)
 		return;
@@ -3209,6 +3232,13 @@ static void createstatuswindow(struct AmigaMonitor *mon)
 		0, 0, 0, 0, mon->hMainWnd, (HMENU) 1, hInst, NULL);
 	if (!mon->hStatusWnd)
 		return;
+	if (g_darkModeSupported) {
+		BOOL value = g_darkModeEnabled;
+		DwmSetWindowAttribute(mon->hStatusWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &value, sizeof(value));
+		if (g_darkModeEnabled) {
+			SubClassStatusBar(mon->hStatusWnd);
+		}
+	}
 	wi.cbSize = sizeof wi;
 	GetWindowInfo(mon->hMainWnd, &wi);
 	extra = wi.rcClient.top - wi.rcWindow.top;
@@ -3234,7 +3264,7 @@ static void createstatuswindow(struct AmigaMonitor *mon)
 		if (lpParts) {
 			int i = 0, i1;
 			// left side, msg area
-			lpParts[i] = rc.left + 2;
+			lpParts[i] = rc.left;
 			i++;
 			window_led_msg_start = i;
 			/* Calculate the right edge coordinate for each part, and copy the coords to the array.  */
@@ -3532,7 +3562,7 @@ static int create_windows(struct AmigaMonitor *mon)
 #endif
 		GetWindowRect (mon->hAmigaWnd, &r);
 
-		int sbheight = currprefs.win32_statusbar ? getstatuswindowheight(mon->monitor_id, mon->hAmigaWnd) : 0;
+		int sbheight = currprefs.win32_statusbar && !currprefs.win32_borderless ? getstatuswindowheight(mon->monitor_id, mon->hAmigaWnd) : 0;
 		int dpi = getdpiforwindow(mon->hAmigaWnd);
 
 		x = r.left;
@@ -3569,6 +3599,7 @@ static int create_windows(struct AmigaMonitor *mon)
 			else
 				ny = rc.top + (rc.bottom - rc.top - nh);
 		}
+
 		if (w != nw || h != nh || x != nx || y != ny || sbheight != mon->window_extra_height_bar || dpi != mon->dpi) {
 			w = nw;
 			h = nh;
@@ -3625,6 +3656,10 @@ static int create_windows(struct AmigaMonitor *mon)
 		return 1;
 	}
 
+	gfx_lock();
+	D3D_free(mon->monitor_id, false);
+	gfx_unlock();
+
 	if (fsw && !borderless)
 		borderless = 1;
 	window_led_drives = 0;
@@ -3632,7 +3667,7 @@ static int create_windows(struct AmigaMonitor *mon)
 	mon->hMainWnd = NULL;
 	x = 0; y = 0;
 
-	int sbheight = currprefs.win32_statusbar ? getstatuswindowheight(mon->monitor_id, NULL) : 0;
+	int sbheight = currprefs.win32_statusbar && !currprefs.win32_borderless ? getstatuswindowheight(mon->monitor_id, NULL) : 0;
 
 	if (borderless)
 		sbheight = cyborder = 0;
@@ -3701,7 +3736,9 @@ static int create_windows(struct AmigaMonitor *mon)
 			mon->currentmode.native_width = rc.right - rc.left;
 			mon->currentmode.native_height = rc.bottom - rc.top;
 		}
-		flags |= currprefs.win32_main_alwaysontop ? WS_EX_TOPMOST : 0;
+		if (currprefs.gfx_api < 2) {
+			flags |= currprefs.win32_main_alwaysontop ? WS_EX_TOPMOST : 0;
+		}
 
 		if (!borderless) {
 			RECT rc2;
@@ -3730,6 +3767,10 @@ static int create_windows(struct AmigaMonitor *mon)
 					}
 				}
 				break;
+			}
+			if (g_darkModeSupported) {
+				BOOL value = g_darkModeEnabled;
+				DwmSetWindowAttribute(mon->hMainWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &value, sizeof(value));
 			}
 			GetWindowRect(mon->hMainWnd, &rc2);
 			mon->window_extra_width = rc2.right - rc2.left - mon->currentmode.current_width;
@@ -3780,6 +3821,10 @@ static int create_windows(struct AmigaMonitor *mon)
 		write_log (_T("creation of amiga window failed\n"));
 		close_hwnds(mon);
 		return 0;
+	}
+	if (g_darkModeSupported) {
+		BOOL value = g_darkModeEnabled;
+		DwmSetWindowAttribute(mon->hAmigaWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &value, sizeof(value));
 	}
 	if (mon->hMainWnd == NULL) {
 		mon->hMainWnd = mon->hAmigaWnd;
@@ -3876,11 +3921,13 @@ static BOOL doInit(struct AmigaMonitor *mon)
 {
 	int tmp_depth;
 	int ret = 0;
+	bool modechanged;
 
 retry:
 	struct vidbuf_description *avidinfo = &adisplays[mon->monitor_id].gfxvidinfo;
 	struct amigadisplay *ad = &adisplays[mon->monitor_id];
 
+	modechanged = true;
 	if (wasfullwindow_a == 0)
 		wasfullwindow_a = currprefs.gfx_apmode[0].gfx_fullscreen == GFX_FULLWINDOW ? 1 : -1;
 	if (wasfullwindow_p == 0)
@@ -3988,8 +4035,10 @@ retry:
 	}
 
 	S2X_free(mon->monitor_id);
-	for (int i = 0; i < MAX_AMIGAMONITORS; i++) {
-		oldtex_w[i] = oldtex_h[i] = -1;
+	if (!D3D_isenabled(mon->monitor_id)) {
+		for (int i = 0; i < MAX_AMIGAMONITORS; i++) {
+			oldtex_w[i] = oldtex_h[i] = -1;
+		}
 	}
 	if (mon->currentmode.flags & DM_D3D) {
 		int fmh = mon->screen_is_picasso ? 1 : currprefs.gf[ad->gf_index].gfx_filter_filtermodeh + 1;
@@ -4000,8 +4049,8 @@ retry:
 		int errv = 0;
 		const TCHAR *err = D3D_init(mon->hAmigaWnd, mon->monitor_id, mon->currentmode.native_width, mon->currentmode.native_height,
 			mon->currentmode.current_depth, &mon->currentmode.freq, fmh, fmv, &errv);
-		if (errv) {
-			if (errv == -1 && currprefs.gfx_api == 0) {
+		if (errv > 0) {
+			if (errv == 2 && currprefs.gfx_api == 0) {
 				write_log("Retrying D3D %s\n", err);
 				changed_prefs.gfx_api = currprefs.gfx_api = 2;
 				changed_prefs.color_mode = currprefs.color_mode = 5;
@@ -4023,7 +4072,7 @@ retry:
 				err = D3D_init(mon->hAmigaWnd, mon->monitor_id, mon->currentmode.native_width, mon->currentmode.native_height,
 					mon->currentmode.current_depth, &mon->currentmode.freq, fmh, fmv, &errv);
 			}
-			if (errv) {
+			if (errv > 0) {
 				D3D_free(0, true);
 				if (isfullscreen() > 0) {
 					int idx = mon->screen_is_picasso ? 1 : 0;
@@ -4048,28 +4097,37 @@ retry:
 				ret = -1;
 				goto oops;
 			}
+		} else if (errv < 0) {
+			modechanged = false;
 		}
 		target_graphics_buffer_update(mon->monitor_id);
 		updatewinrect(mon, true);
 	}
-	init_colors(mon->monitor_id);
 
 	mon->screen_is_initialized = 1;
 
-	display_param_init(mon);
+	if (modechanged) {
+		init_colors(mon->monitor_id);
+		display_param_init(mon);
+		createstatusline(mon->hAmigaWnd, mon->monitor_id);
+	}
 
-	createstatusline(mon->hAmigaWnd, mon->monitor_id);
+
 	picasso_refresh(mon->monitor_id);
 #ifdef RETROPLATFORM
-	rp_set_hwnd_delayed ();
+	rp_set_hwnd_delayed();
 #endif
 
-	if (isfullscreen () != 0)
+	if (isfullscreen () != 0) {
 		setmouseactive(mon->monitor_id, -1);
+	}
+
+	osk_setup(mon->monitor_id, -2);
 
 	return 1;
 
 oops:
+	osk_setup(mon->monitor_id, 0);
 	close_hwnds(mon);
 	return ret;
 }
@@ -4095,8 +4153,10 @@ bool target_graphics_buffer_update(int monid)
 		h = vb->outheight;
 	}
 
-	if (oldtex_w[monid] == w && oldtex_h[monid] == h && oldtex_rtg[monid] == mon->screen_is_picasso)
+	if (oldtex_w[monid] == w && oldtex_h[monid] == h && oldtex_rtg[monid] == mon->screen_is_picasso && D3D_alloctexture(mon->monitor_id, -1, -1)) {
+		osk_setup(monid, -2);
 		return false;
+	}
 
 	if (!w || !h) {
 		oldtex_w[monid] = w;
@@ -4114,6 +4174,7 @@ bool target_graphics_buffer_update(int monid)
 	oldtex_w[monid] = w;
 	oldtex_h[monid] = h;
 	oldtex_rtg[monid] = mon->screen_is_picasso;
+	osk_setup(monid, -2);
 
 	write_log (_T("Buffer %d size (%d*%d) %s\n"), monid, w, h, mon->screen_is_picasso ? _T("RTG") : _T("Native"));
 
@@ -4371,4 +4432,606 @@ const TCHAR *DXError(HRESULT ddrval)
 		HRESULT_CODE(ddrval),
 		HRESULT_CODE(ddrval));
 	return dderr;
+}
+
+struct osd_kb
+{
+	uae_s16 x, y;
+	uae_s16 w, h;
+	uae_u16 code;
+	uae_s8 pressed;
+	uae_s8 inverted;
+};
+
+static struct osd_kb *osd_kb_data;
+static int osd_kb_selected = 11, osd_kb_x, osd_kb_y;
+struct extoverlay osd_kb_eo = { 0 };
+
+#define OSD_KB_TRANSPARENCY 0xaa
+#define OSD_KB_ACTIVE_TRANSPARENCY 0xaa
+#define OSD_KB_PRESSED_TRANSPARENCY 0xff
+#define OSD_KB_COLOR 0xeeeeee
+#define OSD_KB_ACTIVE_COLOR 0x44cc44
+#define OSD_KB_PRESSED_COLOR 0x222222
+#define OSD_KB_PRESSED_COLOR2 0x444444
+
+static void drawpixel(uae_u8 *p, uae_u32 c, uae_u8 trans)
+{
+	((uae_u32*)p)[0] = (c & 0x00ffffff) | (trans << 24);
+}
+
+static void drawline(struct extoverlay *eo, int x1, int y1, int x2, int y2)
+{
+	uae_u8 *p = eo->data + y1 * eo->width * 4 + x1 * 4;
+	if (x1 != x2) {
+		x2++;
+	}
+	if (y1 != y2) {
+		y2++;
+	}
+	while (x1 != x2) {
+		drawpixel(p, OSD_KB_COLOR, OSD_KB_TRANSPARENCY);
+		if (x1 < x2) {
+			x1++;
+			p += 4;
+		} else {
+			x1--;
+			p -= 4;
+		}
+	}
+	while (y1 != y2) {
+		drawpixel(p, OSD_KB_COLOR, OSD_KB_TRANSPARENCY);
+		if (y1 < y2) {
+			y1++;
+			p += eo->width * 4;
+		} else {
+			y1--;
+			p -= eo->width * 4;
+		}
+	}
+}
+
+static void highlight(struct extoverlay *eo, struct osd_kb *kb, bool mode)
+{
+	if (kb->inverted) {
+		kb->inverted = false;
+		highlight(eo, kb, true);
+		kb->inverted = false;
+	}
+	int x1 = kb->x;
+	int x2 = kb->x + kb->w;
+	int y1 = kb->y;
+	int y2 = kb->y + kb->h;
+	uae_u8 *p = eo->data + y1 * eo->width * 4;
+	uae_u32 color = 0;
+	uae_u8 tr = 0;
+	if (mode) {
+		kb->inverted = true;
+		color = OSD_KB_COLOR;
+		tr = OSD_KB_TRANSPARENCY;
+	} else {
+		color = !mode ? OSD_KB_COLOR : OSD_KB_ACTIVE_COLOR;
+		tr = !mode ? OSD_KB_TRANSPARENCY : OSD_KB_ACTIVE_TRANSPARENCY;
+		if (kb->pressed) {
+			color = OSD_KB_PRESSED_COLOR;
+			tr = OSD_KB_PRESSED_TRANSPARENCY;
+		}
+	}
+	while (y1 <= y2) {
+		uae_u8 *pp = p + x1 * 4;
+		for (int x = x1; x <= x2; x++) {
+			if (kb->inverted) {
+				uae_u32 *p32 = (uae_u32*)pp;
+				*p32 ^= 0xffffff;
+			} else {
+				if (pp[0] || pp[1] || pp[2]) {
+					drawpixel(pp, color, tr);
+				} else {
+					pp[3] = tr;
+				}
+			}
+			pp += 4;
+		}
+		p += eo->width * 4;
+		y1++;
+	}
+	if (mode) {
+		if (osd_kb_x < kb->x || osd_kb_x > kb->x + kb->w) {
+			osd_kb_x = kb->x + kb->w / 2;
+		}
+		if (osd_kb_y < kb->y || osd_kb_y > kb->y + kb->h) {
+			osd_kb_y = kb->y + kb->h / 2;
+		}
+	}
+}
+
+static const uae_s16 layout[] = {
+	10,-5,13,13,13,13,13,-5,13,13,13,13,13,-5,13,13,13,13,0,
+	15,10,10,10,10,10,10,10,10,10,10,10,10,10,10,-5,15,15,-5,10,10,10,10,0,
+	23,10,10,10,10,10,10,10,10,10,10,10,10,12 + 256,-40,10,10,10,10,0,
+	13,10,10,10,10,10,10,10,10,10,10,10,10,10,-27,10,-15,10,10,10,10,0,
+	18,10,10,10,10,10,10,10,10,10,10,10,27,-5,10,10,10,-5,10,10,10,10 + 256,0,
+	-8,13,13,90,13,13,-45,20,10,0,
+	0
+};
+static const TCHAR *key_labels[] = {
+	L"Esc",L"F1",L"F2",L"F3",L"F4",L"F5",L"F6",L"F7",L"F8",L"F9",L"F10",L"GUI",L"J<>M",L"↑↓",L"X",
+	L"~|´",L"!|1",L"@|2",L"#|3",L"$|4",L"%|5",L"^|6",L"&|7",L"*|8",L"(|9",L")|0",L"_|-",L"+|=",L"\\||\\\\",L"←",L"Del",L"Help",L"(",L")",L"/",L"*",
+	L"←|→",L"Q",L"W",L"E",L"R",L"T",L"Y",L"U",L"I",L"O",L"P",L"{|[",L"}|]",L"Ret",L"7",L"8",L"9",L"-",
+	L"Ctrl",L"Caps|Lock",L"A",L"S",L"D",L"F",L"G",L"H",L"J",L"K",L"L",L":|;",L"*|'",L"",L"↑",L"4",L"5",L"6",L"+",
+	L"Shift",L"",L"Z",L"X",L"C",L"V",L"B",L"N",L"M",L"<|,",L">|.",L"?|/",L"Shift",L"←",L"↓",L"→",L"1",L"2",L"3",L"E|n|t|e|r",
+	L"Alt",L"\\iA",L"",L"\\iA",L"Alt",L"0",L".",
+	0,0
+};
+static const uae_u16 key_codes[] = {
+	0x45, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, AKS_ENTERGUI | 0x8000, AKS_SWAPJOYPORTS | 0x8000, 0xf001, AKS_OSK | 0x8000,
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x41, 0x46, 0x5f, 0x5a, 0x5b, 0x5c, 0x5d,
+	0x42, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x44, 0x3d, 0x3e, 0x3f, 0x4a,
+	0x63, 0x62, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x4c, 0x2d, 0x2e, 0x2f, 0x5e,
+	0x60, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x61, 0x4f, 0x4d, 0x4e, 0x1d, 0x1e, 0x1f, 0x43,
+	0x64, 0x66, 0x40, 0x67, 0x64, 0x0f, 0x3c,
+	0
+};
+
+static void draw_key(HDC hdc, void *bm, int bmw, int bmh, struct extoverlay *eo, float sx, float sy, const TCHAR *key, int len, int fw, int fh)
+{
+	SetBkMode(hdc, OPAQUE);
+	BitBlt(hdc, 0, 0, bmw, bmh, NULL, 0, 0, BLACKNESS);
+	TextOut(hdc, 10, 10, key, len);
+	int offsetx = 10;
+	int offsety = 10 - 1;
+	for (int y = 0; y < fh + 2; y++) {
+		uae_u8 *src = (uae_u8 *)bm + (y + offsety) * bmw + offsetx;
+		uae_u8 *dst = eo->data + (int)(sx + 0.5f) * 4 + ((int)(sy + 0.5f) + y) * eo->width * 4;
+		for (int x = 0; x < bmw; x++) {
+			uae_u8 b = *src++;
+			if (b == 2) {
+				drawpixel(dst, OSD_KB_COLOR, OSD_KB_TRANSPARENCY);
+			}
+			dst += 4;
+		}
+	}
+}
+
+static bool draw_keyboard(HDC hdc, HFONT *fonts, void *bm, int bmw, int bmh, struct extoverlay *eo, int fw, int fh)
+{
+	int num = 0, knum = 0;
+	int maxcols = 240;
+
+	float space = (float)eo->width / maxcols;
+	float colwidth = (float)eo->width / maxcols;
+	float rowheight = colwidth * 7.5f;
+
+	int theight = (int)((rowheight + space) * 6 + 2 * space);
+	if (eo->height < theight) {
+		eo->height = theight;
+	}
+	eo->data = xcalloc(uae_u8, eo->width * eo->height * 4);
+	if (!eo->data) {
+		return false;
+	}
+
+	for (int y = 0; y < eo->height; y++) {
+		uae_u8 *p = eo->data + y * eo->width * 4;
+		for (int x = 0; x < eo->width; x++) {
+			p[3] = OSD_KB_TRANSPARENCY;
+			p += 4;
+		}
+	}
+
+	float y = 2.0f * space;
+	float x = 2.0f * space;
+	const uae_s16 *lp = layout;
+	const TCHAR **ll = key_labels;
+	while (*lp) {
+		uae_s16 v = *lp++;
+		float w = (abs(v) & 255) * colwidth - space;
+		float h = rowheight;
+		if ((abs(v) >> 8) > 0) {
+			h += rowheight;
+			h += space;
+		}
+		if (v > 0) {
+			const TCHAR *lab = key_labels[knum];
+			if (lab) {
+				float kx = x;
+				float ky = y;
+				int i = 0;
+				bool esc = false;
+				TCHAR out[10];
+				TCHAR *outp = out;
+				bool italic = false;
+				for (;;) {
+					bool skip = false;
+					TCHAR c = lab[i];
+					TCHAR cn = lab[i + 1];
+					if (c == '\\' && cn != '\\' && !esc) {
+						esc = true;
+					} else if (c == 'i' && esc) {
+						italic = true;
+						esc = false;
+					} else if (c == '|' && esc) {
+						*outp++ = c;
+						esc = false;
+						skip = true;
+					} else if (c != '|' && c) {
+						*outp++ = c;
+						esc = false;
+					}
+					if ((c == '|' && !esc && !skip) || c == 0) {
+						SelectObject(hdc, italic ? fonts[1] : fonts[0]);
+						draw_key(hdc, bm, bmw, bmh, eo, kx + space, ky + space, out, addrdiff(outp, out), fw, fh);
+						ky += fh + 2;
+						outp = out;
+						italic = false;
+					}
+					if (!c) {
+						break;
+					}
+					i++;
+				}
+			}
+			if (key_labels[knum] != NULL || key_labels[knum + 1] != NULL) {
+				knum++;
+			}
+
+			struct osd_kb *kb = &osd_kb_data[num];
+			kb->x = (int)(x + 0.5f);
+			kb->y = (int)(y + 0.5f);
+			kb->w = (int)(w + 0.5f);
+			kb->h = (int)(h + 0.5f);
+			kb->code = key_codes[num];
+
+			drawline(eo, kb->x, kb->y, kb->x + kb->w, kb->y);
+			drawline(eo, kb->x, kb->y + 1, kb->x + kb->w, kb->y + 1);
+
+			drawline(eo, kb->x, kb->y + kb->h, kb->x + kb->w, kb->y + kb->h);
+			drawline(eo, kb->x, kb->y + kb->h - 1, kb->x + kb->w, kb->y + kb->h - 1);
+
+			drawline(eo, kb->x, kb->y, kb->x, kb->y + kb->h);
+			drawline(eo, kb->x + 1, kb->y, kb->x + 1, kb->y + kb->h);
+
+			drawline(eo, kb->x + kb->w, kb->y, kb->x + kb->w, kb->y + kb->h);
+			drawline(eo, kb->x + kb->w - 1, kb->y, kb->x + kb->w - 1, kb->y + kb->h);
+
+			if (num == osd_kb_selected) {
+				highlight(eo, kb, true);
+			}
+			num++;
+		}
+		x += w + space;
+
+		if (*lp == 0) {
+			y += rowheight + space;
+			x = 2 * space;
+			lp++;
+		}
+	}
+
+	return true;
+}
+
+static const TCHAR *ab = _T("_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+
+static bool drawkeys(HWND parent, struct extoverlay *eo)
+{
+	bool ret = false;
+	HDC hdc;
+	LPLOGPALETTE lp;
+	HPALETTE hpal;
+	BITMAPINFO *bi;
+	BITMAPINFOHEADER *bih;
+	HBITMAP bitmap = NULL;
+	int width = 128;
+	int height = 128;
+	void *bm;
+	int fsize = eo->height / 30;
+
+	if (fsize < 4) {
+		return false;
+	}
+
+	hdc = CreateCompatibleDC(NULL);
+	if (hdc) {
+		int y = getdpiforwindow(parent);
+		int fontsize = -MulDiv(fsize, y, 72);
+		fontsize = fontsize * statusline_get_multiplier(0) / 100;
+		lp = (LOGPALETTE *)xcalloc(uae_u8, sizeof(LOGPALETTE) + 3 * sizeof(PALETTEENTRY));
+		if (lp) {
+			lp->palNumEntries = 4;
+			lp->palVersion = 0x300;
+			lp->palPalEntry[1].peBlue = lp->palPalEntry[1].peGreen = lp->palPalEntry[0].peRed = 0x10;
+			lp->palPalEntry[2].peBlue = lp->palPalEntry[2].peGreen = lp->palPalEntry[2].peRed = 0xff;
+			lp->palPalEntry[3].peBlue = lp->palPalEntry[3].peGreen = lp->palPalEntry[3].peRed = 0x7f;
+			hpal = CreatePalette(lp);
+			if (hpal) {
+				SelectPalette(hdc, hpal, FALSE);
+				bi = (BITMAPINFO *)xcalloc(uae_u8, sizeof(BITMAPINFOHEADER) + 4 * sizeof(RGBQUAD));
+				if (bi) {
+					bih = &bi->bmiHeader;
+					bih->biSize = sizeof(BITMAPINFOHEADER);
+					bih->biWidth = width;
+					bih->biHeight = -height;
+					bih->biPlanes = 1;
+					bih->biBitCount = 8;
+					bih->biCompression = BI_RGB;
+					bih->biClrUsed = 4;
+					bih->biClrImportant = 4;
+					bi->bmiColors[1].rgbBlue = bi->bmiColors[1].rgbGreen = bi->bmiColors[1].rgbRed = 0x10;
+					bi->bmiColors[2].rgbBlue = bi->bmiColors[2].rgbGreen = bi->bmiColors[2].rgbRed = 0xff;
+					bi->bmiColors[3].rgbBlue = bi->bmiColors[3].rgbGreen = bi->bmiColors[3].rgbRed = 0x7f;
+					bitmap = CreateDIBSection(hdc, bi, DIB_RGB_COLORS, &bm, NULL, 0);
+					if (bitmap) {
+						SelectObject(hdc, bitmap);
+						RealizePalette(hdc);
+						HFONT fonts[3] = { 0, 0, 0 };
+						fonts[0] = CreateFont(fontsize, 0,
+							0, 0,
+							FW_BOLD,
+							FALSE,
+							FALSE,
+							FALSE,
+							DEFAULT_CHARSET,
+							OUT_TT_PRECIS,
+							CLIP_DEFAULT_PRECIS,
+							PROOF_QUALITY,
+							FIXED_PITCH | FF_DONTCARE,
+							_T("Lucida Console"));
+						fonts[1] = CreateFont(fontsize, 0,
+							0, 0,
+							FW_BOLD,
+							TRUE,
+							FALSE,
+							FALSE,
+							DEFAULT_CHARSET,
+							OUT_TT_PRECIS,
+							CLIP_DEFAULT_PRECIS,
+							PROOF_QUALITY,
+							FIXED_PITCH | FF_DONTCARE,
+							_T("Lucida Console"));
+						if (fonts[0] && fonts[1]) {
+							SelectObject(hdc, fonts[0]);
+							SetTextColor(hdc, PALETTEINDEX(2));
+							SetBkColor(hdc, PALETTEINDEX(1));
+
+							TEXTMETRIC tm;
+							GetTextMetrics(hdc, &tm);
+							int w = 0;
+							int h = tm.tmAscent + 2;
+							for (int i = 0; i < ab[i]; i++) {
+								SIZE sz;
+								if (GetTextExtentPoint32(hdc, &ab[i], 1, &sz)) {
+									if (sz.cx > w)
+										w = sz.cx;
+								}
+							}
+							w += 1;
+
+							if (draw_keyboard(hdc, fonts, bm, width, height, eo, w, h)) {
+								ret = true;
+							}
+						}
+						if (fonts[0]) {
+							DeleteObject(fonts[0]);
+						}
+						if (fonts[1]) {
+							DeleteObject(fonts[1]);
+						}
+						DeleteObject(bitmap);
+					}
+					xfree(bi);
+				}
+				DeleteObject(hpal);
+			}
+			xfree(lp);
+		}
+		ReleaseDC(NULL, hdc);
+	}
+	return ret;
+}
+
+void target_osk_control(int x, int y, int button, int buttonstate)
+{
+	if (button == 2) {
+		if (buttonstate) {
+			struct osd_kb *kb = &osd_kb_data[osd_kb_selected];
+			kb->pressed = kb->pressed ? 0 : 1;
+			highlight(&osd_kb_eo, kb, false);
+			D3D_extoverlay(&osd_kb_eo, 0);
+			if ((kb->code & 0xf000) != 0xf000) {
+				if (kb->pressed) {
+					record_key((kb->code << 1) | 0, true);
+				} else {
+					record_key((kb->code << 1) | 1, true);
+				}
+			}
+		}
+		return;
+	}
+	if (button == 1) {
+		struct osd_kb *kb = &osd_kb_data[osd_kb_selected];
+		if (kb->pressed) {
+			kb->pressed = 0;
+			highlight(&osd_kb_eo, kb, true);
+			D3D_extoverlay(&osd_kb_eo, 0);
+			if (kb->code != 0x62) {
+				record_key((kb->code << 1) | 1, true);
+			}
+		}
+		if (buttonstate) {
+			kb->pressed = -1;
+			highlight(&osd_kb_eo, kb, false);
+			D3D_extoverlay(&osd_kb_eo, 0);
+		}
+
+		if (kb->code & 0x8000) {
+			if ((kb->code & 0xf000) != 0xf000) {
+				inputdevice_add_inputcode(kb->code & 0x7fff, buttonstate, NULL);
+			} else {
+				int c = kb->code & 0xfff;
+				if (c == 1) {
+					if (buttonstate) {
+						struct AmigaMonitor *amon = &AMonitors[0];
+						if (osd_kb_eo.ypos == 0) {
+							osd_kb_eo.ypos = (amon->amigawin_rect.bottom - amon->amigawin_rect.top) - osd_kb_eo.height;
+						} else {
+							osd_kb_eo.ypos = 0;
+						}
+						D3D_extoverlay(&osd_kb_eo, 0);
+					}
+				}
+			}
+		} else {
+			// capslock?
+			if (kb->code == 0x62) {
+				if (buttonstate) {
+					int capsstate = getcapslockstate();
+					capsstate = capsstate ? 0 : 1;
+					record_key((kb->code << 1) | capsstate, true);
+					setcapslockstate(capsstate);
+				}
+			} else {
+				if (buttonstate) {
+					record_key((kb->code << 1) | 0, true);
+				} else {
+					record_key((kb->code << 1) | 1, true);
+				}
+			}
+		}
+		return;
+	}
+
+	if (x > 1) {
+		x = 1;
+	}
+	if (x < -1) {
+		x = -1;
+	}
+	if (y > 1) {
+		y = 1;
+	}
+	if (y < -1) {
+		y = -1;
+	}
+
+	if (x || y) {
+		for (int i = 0; osd_kb_data[i].w; i++) {
+			struct osd_kb *kb = &osd_kb_data[i];
+			if (kb->pressed < 0) {
+				return;
+			}
+		}
+	}
+
+	int max = 1000;
+	while (x || y) {
+		osd_kb_x += x * 5;
+		osd_kb_y += y * 5;
+		if (osd_kb_x < 0) {
+			for (int i = 0; osd_kb_data[i].w; i++) {
+				struct osd_kb *kb = &osd_kb_data[i];
+				if (kb->x + kb->w > osd_kb_x) {
+					osd_kb_x = kb->x + kb->w;
+				}
+			}
+		}
+		if (osd_kb_y < 0) {
+			for (int i = 0; osd_kb_data[i].w; i++) {
+				struct osd_kb *kb = &osd_kb_data[i];
+				if (kb->y + kb->h > osd_kb_y) {
+					osd_kb_y = kb->y + kb->h;
+				}
+			}
+		}
+		int xmax = 0, ymax = 0;
+		int i;
+		for (i = 0; osd_kb_data[i].w; i++) {
+			struct osd_kb *kb = &osd_kb_data[i];
+			if (osd_kb_x > kb->x + kb->w) {
+				xmax++;
+			}
+			if (osd_kb_y > kb->y + kb->h) {
+				ymax++;
+			}
+			if (i != osd_kb_selected) {
+				if (kb->x <= osd_kb_x && kb->x + kb->w >= osd_kb_x && kb->y <= osd_kb_y && kb->y + kb->h >= osd_kb_y) {
+					highlight(&osd_kb_eo, &osd_kb_data[osd_kb_selected], false);
+					highlight(&osd_kb_eo, kb, true);
+					osd_kb_selected = i;
+					D3D_extoverlay(&osd_kb_eo, 0);
+					return;
+				}
+			}
+		}
+		if (xmax >= i) {
+			osd_kb_x = 0;
+		}
+		if (ymax >= i) {
+			osd_kb_y = 0;
+		}
+		max--;
+		if (max < 0) {
+			highlight(&osd_kb_eo, &osd_kb_data[osd_kb_selected], false);
+			osd_kb_selected = 0;
+			highlight(&osd_kb_eo, &osd_kb_data[osd_kb_selected], true);
+			D3D_extoverlay(&osd_kb_eo, 0);
+			return;
+		}
+	}
+
+}
+
+int on_screen_keyboard;
+
+bool target_osd_keyboard(int show)
+{
+	struct AmigaMonitor *amon = &AMonitors[0];
+	static bool first;
+
+#ifdef RETROPLATFORM
+	if (rp_isactive() && !on_screen_keyboard) {
+		return false;
+	}
+#endif
+
+	xfree(osd_kb_data);
+	osd_kb_data = NULL;
+	osd_kb_eo.idx = 0x7f7f0000;
+	if (!show) {
+		osd_kb_eo.width = -1;
+		osd_kb_eo.height = -1;
+		D3D_extoverlay(&osd_kb_eo, 0);
+		return true;
+	}
+
+	int w = amon->amigawin_rect.right - amon->amigawinclip_rect.left;
+	int h = amon->amigawin_rect.bottom - amon->amigawinclip_rect.top;
+
+	if (w > h * 4 / 3) {
+		w = h * 4 / 3;
+	}
+	osd_kb_eo.width = w;
+	osd_kb_eo.height = w * 10 / 44;
+	osd_kb_data = xcalloc(struct osd_kb, 120);
+	if (osd_kb_data) {
+		if (!drawkeys(amon->hAmigaWnd, &osd_kb_eo)) {
+			return false;
+		}
+	}
+	if (!first) {
+		osd_kb_eo.ypos = (amon->amigawin_rect.bottom - amon->amigawin_rect.top) - osd_kb_eo.height;
+	}
+	if (osd_kb_eo.ypos) {
+		osd_kb_eo.ypos = (amon->amigawin_rect.bottom - amon->amigawin_rect.top) - osd_kb_eo.height;
+	}
+	osd_kb_eo.xpos = ((amon->amigawin_rect.right - amon->amigawinclip_rect.left) - w) / 2;
+	if (!osd_kb_eo.data) {
+		return false;
+	}
+	if (!D3D_extoverlay(&osd_kb_eo, 0)) {
+		return false;
+	}
+
+	first = true;
+	return true;
 }

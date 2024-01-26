@@ -270,3 +270,14 @@ bool frame_drawn (int monid)
 {
     return false;
 }
+
+bool target_osd_keyboard(int show)
+{
+    STUB("");
+	return true;
+}
+
+void target_osk_control(int x, int y, int button, int buttonstate)
+{
+    STUB("");
+}

@@ -309,6 +309,10 @@ libuae_a_SOURCES = \
 	src/dongle.cpp \
 	src/drawing.cpp \
 	src/driveclick.cpp \
+	src/dsp3210/dsp_glue.cpp \
+	src/dsp3210/dsp_glue.h \
+	src/dsp3210/DSP3210_emulation.cpp \
+	src/dsp3210/DSP3210_emulation.h \
 	src/enforcer.cpp \
 	src/ethernet.cpp \
 	src/events.cpp \

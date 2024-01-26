@@ -50,7 +50,7 @@ typedef wchar_t * LPCWSTR;
 #define WINUAEBETA _T("")
 #endif
 
-#define WINUAEDATE MAKEBD(2023, 5, 31)
+#define WINUAEDATE MAKEBD(2023, 12, 19)
 
 //#define WINUAEEXTRA _T("AmiKit Preview")
 //#define WINUAEEXTRA _T("Amiga Forever Edition")
@@ -100,6 +100,7 @@ extern void updatemouseclip(struct AmigaMonitor*);
 extern void updatewinrect(struct AmigaMonitor*, bool);
 int getdpiformonitor(HMONITOR mon);
 int getdpiforwindow(HWND hwnd);
+void InitializeDarkMode(int v);
 
 extern bool resumepaused (int priority);
 extern bool setpaused (int priority);

@@ -23,6 +23,7 @@ int disk_debug_track = -1;
 #define REVOLUTION_DEBUG 0
 #define MFM_VALIDATOR 0
 #define FLOPPYBRIDGE 1
+#define DISK_DEBUG_X 0
 
 #include "uae.h"
 #include "options.h"
@@ -122,20 +123,20 @@ static uae_u8 writesecheadbuffer[16 * MAX_SECTORS];
 
 #define DISK_INDEXSYNC 1
 #define DISK_WORDSYNC 2
-#define DISK_REVOLUTION 4 /* 8,16,32,64 */
+#define DISK_DMAEND 4
+#define DISK_REVOLUTION 8 /* 8,16,32,64 */
 
 #define DSKREADY_UP_TIME 18
 #define DSKREADY_DOWN_TIME 24
 
 #define DSKDMA_OFF 0
-#define DSKDMA_INIT 1
 #define DSKDMA_READ 2
 #define DSKDMA_WRITE 3
 
-static int dskdmaen, dsklength, dsklength2, dsklen;
+static int dskdmaen, dsklength, dsklength2, dsklen, dsklen2;
 static uae_u16 dskbytr_val, dskbytr_val_prev;
 static bool dskbytr_delay;
-static uae_u32 dskpt;
+static uae_u32 dskpt, dskpt_start;
 static bool fifo_filled;
 static uae_u16 fifo[3];
 static int fifo_inuse[3];
@@ -143,7 +144,7 @@ static int dma_enable, bitoffset, syncoffset;
 static uae_u16 word, dsksync;
 static bool dsksync_on;
 /* Always carried through to the next line.  */
-int disk_hpos;
+static int disk_hpos;
 static int disk_jitter;
 static int indexdecay;
 static uae_u8 prev_data;
@@ -151,6 +152,7 @@ static int prev_step;
 static bool initial_disk_statusline;
 static struct diskinfo disk_info_data = { 0 };
 static bool amax_enabled;
+static bool disk_strobe;
 
 typedef enum { TRACK_AMIGADOS, TRACK_RAW, TRACK_RAW1, TRACK_PCDOS, TRACK_DISKSPARE, TRACK_NONE } image_tracktype;
 typedef struct {
@@ -3487,6 +3489,9 @@ static void disk_insert_2 (int num, const TCHAR *name, bool forced, bool forcedw
 	} else if (!drive_empty(drv) || drv->dskchange_time > 0) {
 		// delay eject so that it is always called when emulation is active
 		drv->dskeject = true;
+	} else if (drv->dskchange) {
+		// eject + insert without exiting GUI
+		drv->dskeject = true;
 	} else {
 		setdskchangetime (drv, 1 * 312);
 	}
@@ -3980,9 +3985,9 @@ void dumpdisk (const TCHAR *name)
 		side, dskdmaen, bitoffset, word, dskpt, dsklen, dskbytr_val, adkcon, dsksync);
 }
 
-static void disk_dmafinished (void)
+static void disk_dmafinished(void)
 {
-	INTREQ_INT(1, 0);
+	INTREQ_INT(1, 1);
 	if (floppy_writemode > 0)
 		floppy_writemode = 0;
 	dskdmaen = DSKDMA_OFF;
@@ -3990,11 +3995,18 @@ static void disk_dmafinished (void)
 	dsklen = 0;
 	if (disk_debug_logging > 0) {
 		int dr;
-		write_log (_T("disk dma finished %08X MFMpos="), dskpt);
+		write_log (_T("disk dma finished %08X-%08X (%04X, %d) MFMpos="), dskpt_start, dskpt, (dskpt - dskpt_start) / 2, (dskpt - dskpt_start) / 2);
 		for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++)
 			write_log (_T("%d%s"), floppy[dr].mfmpos, dr < MAX_FLOPPY_DRIVES - 1 ? _T(",") : _T(""));
 		write_log (_T("\n"));
 	}
+	for (int i = 0; i < 3; i++) {
+		fifo_inuse[i] = false;
+	}
+	fifo_filled = 0;
+#if DISK_DEBUG_X
+	write_log("dma finished %d %08x\n", floppy[0].mfmpos, M68K_GETPC);
+#endif
 }
 
 static void fetchnextrevolution (drive *drv)
@@ -4036,6 +4048,56 @@ static void fetchnextrevolution (drive *drv)
 	}
 }
 
+STATIC_INLINE bool iswrite(void)
+{
+	return dskdmaen == DSKDMA_WRITE;
+}
+
+void DSKDAT(uae_u16 v)
+{
+	if (fifo_inuse[2]) {
+		write_log(_T("DSKDAT: FIFO overflow!\n"));
+		return;
+	}
+	fifo_inuse[2] = fifo_inuse[1];
+	fifo[2] = fifo[1];
+	fifo_inuse[1] = fifo_inuse[0];
+	fifo[1] = fifo[0];
+	fifo_inuse[0] = iswrite() ? 2 : 1;
+	fifo[0] = v;
+	fifo_filled = 1;
+	disk_strobe = false;
+}
+
+uae_u16 DSKDATR(int slot)
+{
+	int i;
+	uae_u16 v = 0;
+
+	for (i = 2; i >= 0; i--) {
+		if (fifo_inuse[i]) {
+			fifo_inuse[i] = 0;
+			v = fifo[i];
+			break;
+		}
+	}
+
+#if DISK_DEBUG_X > 1
+	write_log("datr %d %d\n", dsklength, floppy[0].mfmpos);
+#endif
+
+	if (i < 0) {
+		write_log(_T("DSKDATR: FIFO underflow!\n"));
+	} else 	if (dskdmaen == DSKDMA_READ && dsklength == 0) {
+		// len==0 and (all slots empty or last slot read and one slot in use)
+		if (disk_fifostatus() < 0 || (slot == 2 && fifo_inuse[0] && !fifo_inuse[1] && !fifo_inuse[2])) {
+			disk_dmafinished();
+		}
+	}
+	disk_strobe = false;
+	return v;
+}
+
 static void do_disk_index (void)
 {
 #if REVOLUTION_DEBUG
@@ -4050,26 +4112,13 @@ static void do_disk_index (void)
 void event_DISK_handler(uae_u32 data)
 {
 	int flag = data & 255;
-	int disk_sync_cycle = data >> 8;
 	int hpos = current_hpos();
 
-	DISK_update(disk_sync_cycle);
-	if (!dskdmaen) {
-		if (flag & (DISK_REVOLUTION << 0))
-			fetchnextrevolution(&floppy[0]);
-		if (flag & (DISK_REVOLUTION << 1))
-			fetchnextrevolution(&floppy[1]);
-		if (flag & (DISK_REVOLUTION << 2))
-			fetchnextrevolution(&floppy[2]);
-		if (flag & (DISK_REVOLUTION << 3))
-			fetchnextrevolution(&floppy[3]);
-	}
-	if (flag & DISK_WORDSYNC) {
-		INTREQ_INT(12, 0);
-	}
-	if (flag & DISK_INDEXSYNC) {
-		do_disk_index();
-	}
+#if DISK_DEBUG_X > 0
+	write_log("disk event %02x %d %d\n", flag, hpos, disk_hpos >> 8);
+#endif
+	DISK_update(hpos);
+	DISK_update_predict();
 }
 
 static void loaddskbytr(int bits, int speed)
@@ -4095,7 +4144,7 @@ static bool canloaddskbytr(void)
 	return (bitoffset & 7) == 7;
 }
 
-static void disk_doupdate_write(int floppybits, int trackspeed)
+static int disk_doupdate_write(int floppybits, int trackspeed)
 {
 	int dr;
 	int drives[4];
@@ -4133,11 +4182,11 @@ static void disk_doupdate_write(int floppybits, int trackspeed)
 						dskpt += 2;
 					}
 				}
-				if (disk_fifostatus () >= 0) {
+				if (disk_fifostatus() >= 0) {
 #ifdef FLOPPYBRIDGE
 					bool wasBridge = false;
 #endif
-					uae_u16 w = DSKDATR ();
+					uae_u16 w = DSKDATR(0);
 					for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 						drive *drv2 = &floppy[dr];
 						if (drives[dr]) {
@@ -4184,6 +4233,7 @@ static void disk_doupdate_write(int floppybits, int trackspeed)
 		}
 		floppybits -= trackspeed;
 	}
+	return floppybits;
 }
 
 static void update_jitter (void)
@@ -4216,35 +4266,41 @@ static void updatetrackspeed (drive *drv, int mfmpos)
 	}
 }
 
-static void disk_doupdate_predict (int startcycle)
+void DISK_update_predict(void)
 {
 	int finaleventcycle = maxhpos << 8;
 	int finaleventflag = 0;
 	bool noselected = true;
 
+	int startcycle = disk_hpos;
+
 	for (int dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 		drive *drv = &floppy[dr];
+
 		if (drv->motoroff)
 			continue;
 		if (!drv->trackspeed)
 			continue;
 		if ((selected | disabled) & (1 << dr))
 			continue;
+
 		bool isempty = drive_empty(drv);
 		bool isunformatted = unformatted(drv);
 		int mfmpos = drv->mfmpos;
-		bool dsksync_on2 = dsksync_on;
+		bool tdsksync_on = dsksync_on;
 		if (drv->tracktiming[0])
 			updatetrackspeed (drv, mfmpos);
 		int diskevent_flag = 0;
 		uae_u32 tword = word;
 		noselected = false;
 		int countcycle = startcycle;
+		int tdsklength = dsklength;
+		int tbitoffset = bitoffset;
+
 		while (countcycle < (maxhpos << 8)) {
 			int inc = nextbit(drv);
 			if (drv->tracktiming[0])
 				updatetrackspeed (drv, mfmpos);
-			countcycle += drv->trackspeed;
 			if (dskdmaen != DSKDMA_WRITE || (dskdmaen == DSKDMA_WRITE && !dma_enable)) {
 				tword <<= 1;
 				if (!isempty) {
@@ -4254,11 +4310,11 @@ static void disk_doupdate_predict (int startcycle)
 						tword |= getonebit(drv, drv->bigmfmbuf, mfmpos, &inc);
 				}
 				if ((tword & 0xffff) != dsksync) {
-					dsksync_on2 = false;
+					tdsksync_on = false;
 				}
-				if (dskdmaen != DSKDMA_READ && (tword & 0xffff) == dsksync && !dsksync_on2) {
+				if ((tword & 0xffff) == dsksync && !tdsksync_on) {
 					diskevent_flag |= DISK_WORDSYNC;
-					dsksync_on2 = true;
+					tdsksync_on = true;
 				}
 			}
 			int pmfmpos = mfmpos;
@@ -4283,6 +4339,37 @@ static void disk_doupdate_predict (int startcycle)
 					}
 				}
 			}
+
+			bool skipbit = false;
+			// MSBSYNC
+			if (adkcon & 0x200) {
+				if ((tword & 0x0001) == 0 && tbitoffset == 0) {
+					tword = 0;
+					skipbit = true;
+				}
+				if ((tword & 0x0001) == 0 && tbitoffset == 8) {
+					tword >>= 1;
+					skipbit = true;
+				}
+			}
+
+			if (!skipbit) {
+				tbitoffset++;
+				tbitoffset &= 15;
+
+				if (dmaen(DMA_DISK) && tbitoffset == 0 && dskdmaen == DSKDMA_READ) {
+					tdsklength--;
+					if (tdsklength == 0) {
+#if DISK_DEBUG_X
+						write_log("word skip predicted %d %d->%d %d %d\n", countcycle >> 8, drv->mfmpos, mfmpos, tdsklength, disk_fifostatus());
+#endif
+						diskevent_flag |= DISK_DMAEND;
+					}
+				}
+			}
+
+			countcycle += drv->trackspeed;
+
 			if (diskevent_flag)
 				break;
 		}
@@ -4294,7 +4381,10 @@ static void disk_doupdate_predict (int startcycle)
 		}
 	}
 	if (finaleventflag && (finaleventcycle >> 8) < maxhpos) {
-		event2_newevent_x_replace((finaleventcycle - startcycle) >> 8, ((finaleventcycle >> 8) << 8) | finaleventflag, event_DISK_handler);
+		int dist = (finaleventcycle - startcycle) >> 8;
+		if (dist > 0) {
+			event2_newevent_x_replace(dist, finaleventflag, event_DISK_handler);
+		}
 	}
 }
 
@@ -4307,32 +4397,31 @@ int disk_fifostatus (void)
 	return 0;
 }
 
-static int doreaddma (void)
+static int doreaddma(void)
 {
-	if (dmaen(DMA_DISK) && dmaen(DMA_MASTER) && bitoffset == 15 && dma_enable && dskdmaen == DSKDMA_READ && dsklength >= 0) {
+	if (dmaen(DMA_DISK) && bitoffset == 15 && dma_enable && dskdmaen == DSKDMA_READ && dsklength >= 0) {
 		if (dsklength > 0) {
-			// DSKLEN == 1: finish without DMA transfer.
-			if (dsklength == 1 && dsklength2 == 1) {
-				disk_dmafinished ();
-				return 0;
-			}
 			// fast disk modes, just flush the fifo
 			if (currprefs.floppy_speed > 100 && fifo_inuse[0] && fifo_inuse[1] && fifo_inuse[2]) {
 				while (fifo_inuse[0]) {
-					uae_u16 w = DSKDATR ();
+					uae_u16 w = DSKDATR(0);
 					chipmem_wput_indirect (dskpt, w);
 					dskpt += 2;
 				}
 			}
-			if (disk_fifostatus () > 0) {
+			if (disk_fifostatus() > 0) {
 				return -1;
 			} else {
-				DSKDAT (word);
 				dsklength--;
-#if 0
-				if (dsklength < 1 && (adkcon & 0x200))
-					activate_debugger();
+				// Paula bug: when dsklength reaches zero, FIFO status is checked too early.
+				if (disk_fifostatus() < 0 && dsklength == 0) {
+					disk_dmafinished();
+				} else {
+					DSKDAT(word);
+#if DISK_DEBUG_X > 1
+					write_log("buffer load %d %d\n", floppy[0].mfmpos, dsklength);
 #endif
+				}
 			}
 		}
 		return 1;
@@ -4342,8 +4431,16 @@ static int doreaddma (void)
 
 static void wordsync_detected(bool startup)
 {
+	if (!dsksync_on) {
+		INTREQ_INT(12, 0);
+		dsksync_on = true;
+	}
 	if (dskdmaen != DSKDMA_OFF) {
-		if (disk_debug_logging && dma_enable == 0) {
+		int prev_dma_enabled = dma_enable;
+		if (!startup) {
+			dma_enable = 1;
+		}
+		if (disk_debug_logging) {
 			int pos = -1;
 			for (int i = 0; i < MAX_FLOPPY_DRIVES; i++) {
 				drive *drv = &floppy[i];
@@ -4352,15 +4449,10 @@ static void wordsync_detected(bool startup)
 					break;
 				}
 			}
-			write_log(_T("Sync match %04x mfmpos %d enable %d wordsync %d\n"), dsksync, pos, dma_enable, (adkcon & 0x0400) != 0);
+			write_log(_T("Sync match %04x mfmpos %d enable %d->%d bcnt %d ADKCON %04x PC=%08x\n"),
+				dsksync, pos, prev_dma_enabled, dma_enable, bitoffset, adkcon, M68K_GETPC);
 			if (disk_debug_logging > 1)
 				dumpdisk(_T("SYNC"));
-		}
-		if (!startup)
-			dma_enable = 1;
-		if (!dsksync_on) {
-			INTREQ_INT(12, 0);
-			dsksync_on = true;
 		}
 	}
 	if (adkcon & 0x0400) { // WORDSYNC
@@ -4438,7 +4530,7 @@ static void disk_doupdate_read_nothing(int floppybits)
 	}
 }
 
-static void disk_doupdate_read (drive *drv, int floppybits)
+static int disk_doupdate_read(drive *drv, int floppybits)
 {
 	/*
 	uae_u16 *mfmbuf = drv->bigmfmbuf;
@@ -4458,6 +4550,7 @@ static void disk_doupdate_read (drive *drv, int floppybits)
 	mfmbuf[6] = 0x4444;
 	mfmbuf[7] = 0x4444;
 	*/
+
 	bool isempty = drive_empty(drv);
 	bool isunformatted = unformatted(drv);
 	while (floppybits >= drv->trackspeed) {
@@ -4477,9 +4570,9 @@ static void disk_doupdate_read (drive *drv, int floppybits)
 		}
 
 		//write_log (_T("%08X bo=%d so=%d mfmpos=%d dma=%d\n"), (word & 0xffffff), bitoffset, syncoffset, drv->mfmpos, dma_enable);
-		if (doreaddma () < 0) {
+		if (doreaddma() < 0) {
 			word >>= 1;
-			return;
+			return floppybits;
 		}
 		int pmfmpos = drv->mfmpos;
 		drv->mfmpos += inc;
@@ -4536,6 +4629,9 @@ static void disk_doupdate_read (drive *drv, int floppybits)
 		}
 		if (!(adkcon & 0x200) && word == dsksync) {
 			wordsync_detected(false);
+#if DISK_DEBUG_X
+			write_log("%d %d %08x\n", dskdmaen, drv->mfmpos, M68K_GETPC);
+#endif
 		}
 
 		if (!skipbit) {
@@ -4545,6 +4641,7 @@ static void disk_doupdate_read (drive *drv, int floppybits)
 
 		floppybits -= drv->trackspeed;
 	}
+	return floppybits;
 }
 
 static void disk_dma_debugmsg (void)
@@ -4560,6 +4657,7 @@ uae_u16 DSKBYTR(int hpos)
 	uae_u16 v;
 
 	DISK_update(hpos);
+	DISK_update_predict();
 	if (dskbytr_delay) {
 		v = dskbytr_val_prev;
 		dskbytr_val_prev &= ~0x8000;
@@ -4573,7 +4671,7 @@ uae_u16 DSKBYTR(int hpos)
 			dumpdisk(_T("DSKBYTR SYNC"));
 		}
 	}
-	if (dskdmaen != DSKDMA_OFF && dmaen(DMA_DISK) && dmaen(DMA_MASTER))
+	if (dskdmaen != DSKDMA_OFF && dmaen(DMA_DISK))
 		v |= 0x4000;
 	if (dsklen & 0x4000)
 		v |= 0x2000;
@@ -4617,6 +4715,7 @@ static void DISK_start(void)
 		fifo_inuse[i] = false;
 	}
 	fifo_filled = 0;
+	dskpt_start = dskpt;
 
 	if (dskdmaen == DSKDMA_WRITE) {
 		word = 0;
@@ -4628,6 +4727,10 @@ static void DISK_start(void)
 		if (!((selected | disabled) & (1 << dr))) {
 			int tr = drv->cyl * 2 + side;
 			trackid *ti = drv->trackdata + tr;
+
+#if DISK_DEBUG_X
+			write_log("DMA start %d %08x %08x\n", drv->mfmpos, dskpt, M68K_GETPC);
+#endif
 
 			if (drv->dskchange_time == -1) {
 				drv->dskchange_time = -2;
@@ -4731,15 +4834,18 @@ void DISK_hsync (void)
 
 
 	}
-	if (indexdecay)
+	if (indexdecay) {
 		indexdecay--;
+	}
 	if (linecounter) {
 		linecounter--;
-		if (! linecounter)
-			disk_dmafinished ();
+		if (! linecounter) {
+			disk_dmafinished();
+		}
 		return;
 	}
 	DISK_update (maxhpos);
+	DISK_update_predict();
 
 	// show insert disk in df0: when booting
 	if (initial_disk_statusline) {
@@ -4759,12 +4865,6 @@ void DISK_update (int tohpos)
 	}
 
 	cycles = (tohpos << 8) - disk_hpos;
-#if 0
-	if (tohpos == 228)
-		write_log (_T("x"));
-	if (tohpos != maxhpos || cycles / 256 != maxhpos)
-		write_log (_T("%d %d %d\n"), tohpos, cycles / 256, disk_hpos / 256);
-#endif
 	if (cycles <= 0) {
 		return;
 	}
@@ -4773,6 +4873,7 @@ void DISK_update (int tohpos)
 	if (disk_hpos >= (maxhpos << 8)) {
 		disk_hpos %= 1 << 8;
 	}
+
 	dskbytr_delay = false;
 
 	for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
@@ -4812,12 +4913,11 @@ void DISK_update (int tohpos)
 		}
 		/* write dma and wordsync enabled: read until wordsync match found */
 		if (dskdmaen == DSKDMA_WRITE && dma_enable) {
-			disk_doupdate_write(drv->floppybitcounter, drv->trackspeed);
+			drv->floppybitcounter = disk_doupdate_write(drv->floppybitcounter, drv->trackspeed);
 		} else {
-			disk_doupdate_read(drv, drv->floppybitcounter);
+			drv->floppybitcounter = disk_doupdate_read(drv, drv->floppybitcounter);
 		}
 
-		drv->floppybitcounter %= drv->trackspeed;
 		didaccess = 1;
 	}
 	if (!didaccess) {
@@ -4838,39 +4938,38 @@ void DISK_update (int tohpos)
 			}
 		}
 	}
-
-	/* instantly finish dma if dsklen==0 and wordsync detected */
-	if (dskdmaen != DSKDMA_OFF && dma_enable && dsklength2 == 0 && dsklength == 0)
-		disk_dmafinished ();
-
 	if (!done_jitter) {
 		update_jitter();
 		done_jitter = true;
 	}
-	disk_doupdate_predict (disk_hpos);
 }
 
-void DSKLEN (uae_u16 v, int hpos)
+static void DSKLEN_2(uae_u16 v, int hpos)
 {
 	int dr;
-	int prevlen = dsklen;
+	int prevlen = dsklen2;
 	int prevdatalen = dsklength;
 	int noselected = 0;
 	int motormask;
+	bool weirddma = false;
 
-	DISK_update (hpos);
-
-	dsklen = v;
+	dsklen2 = dsklen = v;
 	dsklength2 = dsklength = dsklen & 0x3fff;
 
+	if ((v & 0x8000) && !(prevlen & 0x8000)) {
+		//bitoffset = 15;
+	}
 	if ((v & 0x8000) && (prevlen & 0x8000)) {
 		if (dskdmaen == DSKDMA_READ && !(v & 0x4000)) {
 			// update only currently active DMA length, don't change DMA state
-			write_log(_T("warning: Disk read DMA length rewrite %d -> %d. (%04x) PC=%08x\n"), prevlen & 0x3fff, v & 0x3fff, v, M68K_GETPC);
+			if ((prevlen & 0x3fff) != (v & 0x3fff)) {
+				write_log(_T("warning: Disk read DMA length rewrite %d -> %d. (%04x) PC=%08x\n"), prevlen & 0x3fff, v & 0x3fff, v, M68K_GETPC);
+			}
 			return;
 		}
 		dskdmaen = DSKDMA_READ;
 		DISK_start ();
+		weirddma = dsklength < 544 * 11 * 2;
 	}
 	if (!(v & 0x8000)) {
 		if (dskdmaen != DSKDMA_OFF) {
@@ -4895,7 +4994,7 @@ void DSKLEN (uae_u16 v, int hpos)
 		return;
 
 	if (dsklength == 0 && dma_enable) {
-		disk_dmafinished ();
+		disk_dmafinished();
 		return;
 	}
 
@@ -4903,7 +5002,7 @@ void DSKLEN (uae_u16 v, int hpos)
 		if (dsklength == 0)
 			return;
 		if (dsklength == 1) {
-			disk_dmafinished ();
+			disk_dmafinished();
 			return;
 		}
 		if (dskdmaen == DSKDMA_WRITE) {
@@ -4960,12 +5059,14 @@ void DSKLEN (uae_u16 v, int hpos)
 	}
 	if (dr == 4) {
 		if (!amax_enabled) {
+			write_log("\n");
 			write_log (_T("disk %s DMA started, drvmask=%x motormask=%x PC=%08x\n"),
 				dskdmaen == DSKDMA_WRITE ? _T("write") : _T("read"), selected ^ 15, motormask, M68K_GETPC);
 		}
 		noselected = 1;
 	} else {
 		if (disk_debug_logging > 0) {
+			write_log("\n");
 			write_log (_T("disk %s DMA started, drvmask=%x track %d mfmpos %d dmaen=%d PC=%08X\n"),
 				dskdmaen == DSKDMA_WRITE ? _T("write") : _T("read"), selected ^ 15,
 				floppy[dr].cyl * 2 + side, floppy[dr].mfmpos, dma_enable, M68K_GETPC);
@@ -5018,6 +5119,8 @@ void DSKLEN (uae_u16 v, int hpos)
 #endif
 				continue;
 			if (selected & (1 << dr))
+				continue;
+			if (drv->useturbo && weirddma)
 				continue;
 
 			pos = drv->mfmpos & ~15;
@@ -5142,6 +5245,13 @@ void DSKLEN (uae_u16 v, int hpos)
 	}
 }
 
+void DSKLEN(uae_u16 v, int hpos)
+{
+	DISK_update(hpos);
+	DSKLEN_2(v, hpos);
+	DISK_update_predict();
+}
+
 void DISK_update_adkcon (int hpos, uae_u16 v)
 {
 	uae_u16 vold = adkcon;
@@ -5156,8 +5266,8 @@ void DISK_update_adkcon (int hpos, uae_u16 v)
 
 void DSKSYNC(int hpos, uae_u16 v)
 {
+	DISK_update(hpos);
 	if (v != dsksync) {
-		DISK_update(hpos);
 		dsksync = v;
 		dsksync_on = false;
 	}
@@ -5165,45 +5275,7 @@ void DSKSYNC(int hpos, uae_u16 v)
 		INTREQ_INT(12, 0);
 		dsksync_on = true;
 	}
-}
-
-STATIC_INLINE bool iswrite(void)
-{
-	return dskdmaen == DSKDMA_WRITE;
-}
-
-void DSKDAT(uae_u16 v)
-{
-	if (fifo_inuse[2]) {
-		write_log(_T("DSKDAT: FIFO overflow!\n"));
-		return;
-	}
-	fifo_inuse[2] = fifo_inuse[1];
-	fifo[2] = fifo[1];
-	fifo_inuse[1] = fifo_inuse[0];
-	fifo[1] = fifo[0];
-	fifo_inuse[0] = iswrite() ? 2 : 1;
-	fifo[0] = v;
-	fifo_filled = 1;
-}
-
-uae_u16 DSKDATR(void)
-{
-	int i;
-	uae_u16 v = 0;
-	for (i = 2; i >= 0; i--) {
-		if (fifo_inuse[i]) {
-			fifo_inuse[i] = 0;
-			v = fifo[i];
-			break;
-		}
-	}
-	if (i < 0) {
-		write_log(_T("DSKDATR: FIFO underflow!\n"));
-	} else 	if (dskdmaen > 0 && dskdmaen < 3 && dsklength <= 0 && disk_fifostatus() < 0) {
-		disk_dmafinished();
-	}
-	return v;
+	DISK_update_predict();
 }
 
 uae_u16 disk_dmal(void)
@@ -5227,6 +5299,7 @@ uae_u16 disk_dmal(void)
 			dmal = 16 * (fifo_inuse[0] ? 1 : 0) + 4 * (fifo_inuse[1] ? 1 : 0) + 1 * (fifo_inuse[2] ? 1 : 0);
 		}
 	}
+	disk_strobe = true;
 	return dmal;
 }
 

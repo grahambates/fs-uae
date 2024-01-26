@@ -62,7 +62,7 @@ void (*D3D_clear)(int);
 int (*D3D_canshaders)(void);
 int (*D3D_goodenough)(void);
 bool (*D3D_setcursor)(int, int x, int y, int width, int height, float mx, float my, bool visible, bool noscale);
-uae_u8 *(*D3D_setcursorsurface)(int, int *pitch);
+uae_u8 *(*D3D_setcursorsurface)(int, bool, int *pitch);
 float (*D3D_getrefreshrate)(int);
 void(*D3D_restore)(int, bool);
 void(*D3D_resize)(int, int);
@@ -205,6 +205,7 @@ struct d3d11sprite
 	bool screenlimit;
 	uae_u8 *texbuf;
 	bool updated;
+	bool empty;
 };
 
 struct d3doverlay
@@ -1929,6 +1930,7 @@ static bool allocsprite(struct d3d11struct *d3d, struct d3d11sprite *s, int widt
 	s->alpha = alpha;
 	s->rotation = rotation;
 	s->screenlimit = screenlimit;
+	s->empty = true;
 
 	if (screenlimit) {
 		s->texbuf = xcalloc(uae_u8, width * height * 4);
@@ -3357,7 +3359,7 @@ static void do_present(struct d3d11struct *d3d)
 	UINT syncinterval = d3d->vblankintervals;
 	// only if no vsync or low latency vsync
 	if (d3d->m_tearingSupport && (d3d->swapChainDesc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) && (!vsync || apm->gfx_vsyncmode)) {
-		if (apm->gfx_vsyncmode || d3d->num > 0 || currprefs.turbo_emulation || currprefs.gfx_variable_sync) {
+		if (apm->gfx_vsyncmode || d3d->num > 0 || currprefs.turbo_emulation || (currprefs.gfx_variable_sync > 0 || (isfs(d3d) <= 0) && currprefs.gfx_variable_sync >= 0)) {
 			presentFlags |= DXGI_PRESENT_ALLOW_TEARING;
 			syncinterval = 0;
 		}
@@ -3414,6 +3416,31 @@ static float xD3D_getrefreshrate(int monid)
 	return d3d->vblank;
 }
 
+static bool xD3D11_initvals(HWND ahwnd, int monid, int w_w, int w_h, int t_w, int t_h, int depth, int *freq, int mmulth, int mmultv, bool doalloc)
+{
+	struct d3d11struct *d3d = &d3d11data[monid];
+	bool changed = false;
+
+	if (d3d->m_screenWidth != w_w || d3d->m_screenHeight != w_h) {
+		changed = true;
+	}
+	if (doalloc && !changed && (d3d->m_bitmapWidth != t_w || d3d->m_bitmapHeight != t_h || d3d->dmultxh != mmulth || d3d->dmultxv != mmultv)) {
+		d3d->m_bitmapWidth = t_w;
+		d3d->m_bitmapHeight = t_h;
+		d3d->dmultxh = mmulth;
+		d3d->dmultxv = mmultv;
+		D3D_alloctexture(monid, t_w, t_h);
+	}
+	d3d->m_bitmapWidth = t_w;
+	d3d->m_bitmapHeight = t_h;
+	d3d->m_screenWidth = w_w;
+	d3d->m_screenHeight = w_h;
+	d3d->dmultxh = mmulth;
+	d3d->dmultxv = mmultv;
+
+	return changed;
+}
+
 static int xxD3D11_init2(HWND ahwnd, int monid, int w_w, int w_h, int t_w, int t_h, int depth, int *freq, int mmulth, int mmultv)
 {
 	struct d3d11struct *d3d = &d3d11data[monid];
@@ -3449,15 +3476,12 @@ static int xxD3D11_init2(HWND ahwnd, int monid, int w_w, int w_h, int t_w, int t
 		return 0;
 	}
 
-	d3d->m_bitmapWidth = t_w;
-	d3d->m_bitmapHeight = t_h;
-	d3d->m_screenWidth = w_w;
-	d3d->m_screenHeight = w_h;
+	xD3D11_initvals(ahwnd, monid, w_w, w_h, t_w, t_h, depth, freq, mmulth, mmultv, false);
+
 	d3d->ahwnd = ahwnd;
+
 	d3d->texformat = DXGI_FORMAT_B8G8R8A8_UNORM;
 	d3d->scrformat = DXGI_FORMAT_B8G8R8A8_UNORM;
-	d3d->dmultxh = mmulth;
-	d3d->dmultxv = mmultv;
 
 	HMONITOR winmon;
 	struct MultiDisplay *md = NULL;
@@ -4133,20 +4157,75 @@ static int xxD3D11_init(HWND ahwnd, int monid, int w_w, int w_h, int depth, int 
 
 static const TCHAR *xD3D11_init(HWND ahwnd, int monid, int w_w, int w_h, int depth, int *freq, int mmulth, int mmultv, int *errp)
 {
+	bool reset = false;
 	if (!can_D3D11(false)) {
 		*errp = 1;
 		return _T("D3D11 FAILED TO INIT");
 	}
-	int v = xxD3D11_init(ahwnd, monid, w_w, w_h, depth, freq, mmulth, mmultv);
-	if (v > 0) {
+	struct d3d11struct *d3d = &d3d11data[monid];
+	struct amigadisplay *ad = &adisplays[monid];
+	if (!D3D_isenabled(monid)) {
+		reset = true;
+	}
+	if (d3d->filterd3didx != ad->gf_index) {
+		struct gfx_filterdata *f1 = &currprefs.gf[d3d->filterd3didx];
+		if (!f1->enable) {
+			f1 = &currprefs.gf[0];
+		}
+		struct gfx_filterdata *f2 = &currprefs.gf[ad->gf_index];
+		if (!f2->enable) {
+			f2 = &currprefs.gf[0];
+		}
+		if (f1 != f2) {
+			if (f1->gfx_filter != f2->gfx_filter) {
+				reset = true;
+			}
+			for (int i = 0; i < MAX_FILTERSHADERS * 2 + 1; i++) {
+				if (_tcsicmp(f1->gfx_filtershader[i], f2->gfx_filtershader[i])) {
+					reset = true;
+				}
+				if (_tcsicmp(f1->gfx_filtermask[i], f2->gfx_filtermask[i])) {
+					reset = true;
+				}
+			}
+			if (_tcsicmp(f1->gfx_filteroverlay, f2->gfx_filteroverlay)) {
+				reset = true;
+			}
+			if (f1->gfx_filter_scanlines != f2->gfx_filter_scanlines) {
+				reset = true;
+			}
+			if (f1->gfx_filter_scanlineratio != f2->gfx_filter_scanlineratio) {
+				reset = true;
+			}
+			if (f1->gfx_filter_scanlinelevel != f2->gfx_filter_scanlinelevel) {
+				reset = true;
+			}
+			if (f1->gfx_filter_scanlineoffset != f2->gfx_filter_scanlineoffset) {
+				reset = true;
+			}
+		}
+	}
+	if (reset) {
+		xD3D11_free(monid, true);
+		int v = xxD3D11_init(ahwnd, monid, w_w, w_h, depth, freq, mmulth, mmultv);
+		if (v > 0) {
+			return NULL;
+		}
+		xD3D11_free(monid, true);
+		*errp = 1;
+		if (v <= 0) {
+			return _T("");
+		}
+		return _T("D3D11 INITIALIZATION ERROR");
+	} else {
+		struct d3d11struct *d3d = &d3d11data[monid];
+		if (xD3D11_initvals(ahwnd, monid, w_w, w_h, w_w, w_h, depth, freq, mmulth, mmultv, true)) {
+			d3d->fsresizedo = true;
+		} else {
+			*errp = -1;
+		}
 		return NULL;
 	}
-	xD3D11_free(monid, true);
-	*errp = 1;
-	if (v <= 0) {
-		return _T("");
-	}
-	return _T("D3D11 INITIALIZATION ERROR");
 }
 
 static void setpsbuffer(struct d3d11struct *d3d, ID3D11Buffer *psbuffer)
@@ -4958,10 +5037,15 @@ static bool xD3D11_alloctexture(int monid, int w, int h)
 	struct d3d11struct *d3d = &d3d11data[monid];
 	bool v;
 
+	if (w < 0 || h < 0) {
+		return d3d->texture2d != NULL;
+	}
+
 	recheck(d3d, monid);
 
 	if (d3d->invalidmode)
 		return false;
+
 	d3d->m_bitmapWidth = w;
 	d3d->m_bitmapHeight = h;
 	d3d->m_bitmapWidth2 = d3d->m_bitmapWidth;
@@ -5262,6 +5346,7 @@ static void updatecursorsurface(int monid)
 	}
 
 	sp->updated = false;
+	sp->empty = false;
 	D3D11_MAPPED_SUBRESOURCE map;
 	HRESULT hr = d3d->m_deviceContext->Map(sp->texture, 0, D3D11_MAP_WRITE_DISCARD, 0, &map);
 	if (SUCCEEDED(hr)) {
@@ -5343,16 +5428,20 @@ static bool xD3D_setcursor(int monid, int x, int y, int width, int height, float
 	return true;
 }
 
-static uae_u8 *xD3D_setcursorsurface(int monid, int *pitch)
+static uae_u8 *xD3D_setcursorsurface(int monid, bool query, int *pitch)
 {
 	struct d3d11struct *d3d = &d3d11data[monid];
-	if (!d3d->hwsprite.texbuf)
+	d3d->hwsprite.updated = false;
+	if (query) {
+		return d3d->hwsprite.empty ? NULL : d3d->hwsprite.texbuf;
+	}
+	if (!d3d->hwsprite.texbuf) {
 		return NULL;
+	}
 	if (pitch) {
 		*pitch = d3d->hwsprite.width * 4;
 		return d3d->hwsprite.texbuf;
 	}
-	d3d->hwsprite.updated = false;
 	return NULL;
 }
 
@@ -5412,8 +5501,6 @@ static bool xD3D11_extoverlay(struct extoverlay *ext, int monid)
 		ov = ov->next;
 	}
 
-	write_log(_T("extoverlay %d: x=%d y=%d %d*%d data=%p ovl=%p\n"), ext->idx, ext->xpos, ext->ypos, ext->width, ext->height, ext->data, ov);
-
 	if (!s && (ext->width <= 0 || ext->height <= 0))
 		return false;
 
@@ -5471,8 +5558,24 @@ static bool xD3D11_extoverlay(struct extoverlay *ext, int monid)
 
 	hr = d3d->m_deviceContext->Map(s->texture, 0, D3D11_MAP_WRITE_DISCARD, 0, &map);
 	if (SUCCEEDED(hr)) {
-		for (int y = 0; y < s->height; y++) {
-			memcpy((uae_u8*)map.pData + y * map.RowPitch, ext->data + y * ext->width * 4, ext->width * 4);
+		if (d3d->hdr) {
+			for (int y = 0; y < s->height; y++) {
+				uae_u32 *dp = (uae_u32*)((uae_u8 *)map.pData + y * map.RowPitch);
+				uae_u32 *sp = (uae_u32*)(ext->data + y * ext->width * 4);
+				for (int x = 0; x < s->width; x++) {
+					uae_u32 v = *sp++;
+					uae_u16 t = (v >> 24) * 10 / 7;
+					if (t > 255) {
+						t = 255;
+					}
+					*dp++ = (v & 0xffffff) | (t << 24);
+				}
+			}
+
+		} else {
+			for (int y = 0; y < s->height; y++) {
+				memcpy((uae_u8*)map.pData + y * map.RowPitch, ext->data + y * ext->width * 4, ext->width * 4);
+			}
 		}
 		d3d->m_deviceContext->Unmap(s->texture, 0);
 	}

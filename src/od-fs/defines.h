@@ -5,6 +5,13 @@
 #include <Windows.h>
 #endif
 
+#ifndef WINDOWS
+#define _istdigit isdigit
+#define _istxdigit isxdigit
+#define _byteswap_ulong uae_bswap_32
+#define _byteswap_ushort uae_bswap_16
+#endif
+
 // #include "tchar.h"
 // rename init_audio to make init_audio available
 

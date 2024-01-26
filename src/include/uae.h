@@ -29,7 +29,7 @@ extern int sleep_resolution;
 
 extern void uae_reset (int, int);
 extern void uae_quit (void);
-extern void uae_restart (int, const TCHAR*);
+extern void uae_restart(struct uae_prefs*, int, const TCHAR*);
 extern void target_reset (void);
 extern void target_addtorecent (const TCHAR*, int);
 extern void target_run (void);
@@ -50,6 +50,11 @@ extern bool target_isrelativemode(void);
 extern uae_u32 getlocaltime (void);
 extern bool isguiactive(void);
 extern bool is_mainthread(void);
+extern void fpu_reset(void);
+extern void fpux_save(int*);
+extern void fpux_restore(int*);
+extern bool target_osd_keyboard(int);
+extern void target_osk_control(int, int, int, int);
 
 extern int quit_program;
 extern bool console_emulation;
@@ -86,9 +91,10 @@ extern void fetch_inputfilepath(TCHAR *out, int size);
 extern void fetch_datapath(TCHAR *out, int size);
 extern void fetch_rompath(TCHAR *out, int size);
 extern void fetch_videopath(TCHAR *out, int size);
-extern uae_u32 uaerand (void);
-extern uae_u32 uaesrand (uae_u32 seed);
-extern uae_u32 uaerandgetseed (void);
+extern uae_u32 uaerand(void);
+extern uae_u32 uaesetrandseed(uae_u32 seed);
+extern uae_u32 uaerandgetseed(void);
+extern void uaerandomizeseed(void);
 
 /* the following prototypes should probably be moved somewhere else */
 
