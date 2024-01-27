@@ -1,3 +1,12 @@
+Branch contains WIP of reapplying upstream WinUAE changes on top of last 
+stable 3.x FS-UAE version. The idea is that this won't include incomplete 
+UI changes, and also this time I'm applying upstream changes incrementally, 
+not as one giant diff.
+
+Not usable yet though...
+
+--------------------------------------------------------------------------------
+
 FS-UAE README
 =============
 
