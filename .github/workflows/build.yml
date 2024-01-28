@@ -98,7 +98,7 @@ jobs:
       - name: Make
         run: |
           ./bootstrap
-          ./configure
+          ./configure --disable-jit --disable-x86
           make -j2 CC=clang CXX=clang++
 
       - name: Dist
