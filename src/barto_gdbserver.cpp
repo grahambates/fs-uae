@@ -262,6 +262,53 @@ namespace barto_gdbserver {
 	}
 */
 
+/*	#pragma comment(lib, "Bcrypt.lib")
+	#ifndef NT_SUCCESS
+		#define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
+	#endif
+	std::array<uint8_t, 32> sha256(const void* addr, size_t size) {
+		std::array<uint8_t, 32> hash{};
+
+		BCRYPT_ALG_HANDLE AlgHandle = nullptr;
+		BCRYPT_HASH_HANDLE HashHandle = nullptr;
+		if(NT_SUCCESS(BCryptOpenAlgorithmProvider(&AlgHandle, BCRYPT_SHA256_ALGORITHM, nullptr, BCRYPT_HASH_REUSABLE_FLAG))) {
+			DWORD HashLength = 0;
+			DWORD ResultLength = 0;
+			if(NT_SUCCESS(BCryptGetProperty(AlgHandle, BCRYPT_HASH_LENGTH, (PBYTE)&HashLength, sizeof(HashLength), &ResultLength, 0)) && HashLength == hash.size()) {
+				if(NT_SUCCESS(BCryptCreateHash(AlgHandle, &HashHandle, nullptr, 0, nullptr, 0, 0))) {
+					(void)BCryptHashData(HashHandle, kickmem_bank.baseaddr, kickmem_bank.allocated_size, 0);
+					(void)BCryptFinishHash(HashHandle, hash.data(), (ULONG)hash.size(), 0);
+					BCryptDestroyHash(HashHandle);
+				}
+			}
+			BCryptCloseAlgorithmProvider(AlgHandle, 0);
+		}
+
+		return hash;
+	}
+
+	std::array<uint8_t, 16> sha1(const void* addr, size_t size) {
+		std::array<uint8_t, 16> hash{};
+
+		BCRYPT_ALG_HANDLE AlgHandle = nullptr;
+		BCRYPT_HASH_HANDLE HashHandle = nullptr;
+		if(NT_SUCCESS(BCryptOpenAlgorithmProvider(&AlgHandle, BCRYPT_SHA1_ALGORITHM, nullptr, BCRYPT_HASH_REUSABLE_FLAG))) {
+			DWORD HashLength = 0;
+			DWORD ResultLength = 0;
+			if(NT_SUCCESS(BCryptGetProperty(AlgHandle, BCRYPT_HASH_LENGTH, (PBYTE)&HashLength, sizeof(HashLength), &ResultLength, 0)) && HashLength == hash.size()) {
+				if(NT_SUCCESS(BCryptCreateHash(AlgHandle, &HashHandle, nullptr, 0, nullptr, 0, 0))) {
+					(void)BCryptHashData(HashHandle, kickmem_bank.baseaddr, kickmem_bank.allocated_size, 0);
+					(void)BCryptFinishHash(HashHandle, hash.data(), (ULONG)hash.size(), 0);
+					BCryptDestroyHash(HashHandle);
+				}
+			}
+			BCryptCloseAlgorithmProvider(AlgHandle, 0);
+		}
+
+		return hash;
+	}
+*/
+
 	std::thread connect_thread;
 	SOCKET gdbsocket{ INVALID_SOCKET };
 	SOCKET gdbconn{ INVALID_SOCKET };
@@ -1371,11 +1418,13 @@ namespace barto_gdbserver {
 				buf[result] = '\0';
 				barto_log("GDBSERVER: received %d bytes: >>%s<<\n", result, buf);
 				std::string request{ buf }, ack{}, response;
-				if(request[0] == '+') {
-					request = request.substr(1);
-				} else if(request[0] == '-') {
-					barto_log("GDBSERVER: client non-ack'd our last packet\n");
-					request = request.substr(1);
+				while(!request.empty() && (request[0] == '+' || request[0] == '-')) {
+					if(request[0] == '+') {
+						request = request.substr(1);
+					} else if(request[0] == '-') {
+						barto_log("GDBSERVER: client non-ack'd our last packet\n");
+						request = request.substr(1);
+					}
 				}
 				if(!request.empty() && request[0] == 0x03) {
 					// Ctrl+C
@@ -1504,6 +1553,8 @@ namespace barto_gdbserver {
 								}
 								else if (request[0] == 'M') { // read memory
 									response += handle_write_memory(request);
+								} else {
+									response += "E01";
 								}
 							} else
 								barto_log("GDBSERVER: packet checksum mismatch: got %c%c, want %c%c\n", tolower(request[end + 1]), tolower(request[end + 2]), hex[cksum >> 4], hex[cksum & 0xf]);
@@ -1664,7 +1715,7 @@ start_profile:
 			}
 			if(last_idle & 0x80000000)
 				idle_cycles += profile_end_cycles - max(profile_start_cycles, (last_idle & 0x7fffffff));
-			//barto_log("GDBSERVER: idle_cycles: %d\n", idle_cycles);
+			//barto_log("idle_cycles: %d\n", idle_cycles);
 
 			// Custom Regs
 			int custom_len = (int)profile_custom_regs_size;
@@ -1703,7 +1754,6 @@ start_profile:
 			int profile_count = get_cpu_profiler_output_count();
 			fwrite(&profile_count, sizeof(int), 1, profile_outfile);
 			fwrite(get_cpu_profiler_output(), sizeof(uae_u32), profile_count, profile_outfile);
-
 			// write screenshot
 			redraw_frame();
 			auto frame = uae_fsvideo_getframe();
@@ -1803,6 +1853,11 @@ start_profile:
 			return false;
 
 		fsemu_action_process_command_in_main(FSEMU_ACTION_WARP, 0);
+		//cfgfile_modify(-1, _T("warp false"), 0, nullptr, 0);
+		//cfgfile_modify(-1, _T("cpu_speed real"), 0, nullptr, 0);
+		//cfgfile_modify(-1, _T("cpu_cycle_exact true"), 0, nullptr, 0);
+		//cfgfile_modify(-1, _T("cpu_memory_cycle_exact true"), 0, nullptr, 0);
+		//cfgfile_modify(-1, _T("blitter_cycle_exact true"), 0, nullptr, 0);
 
 		// break at start of process
 		if(debugger_state == state::inited) {
@@ -1938,6 +1993,13 @@ start_profile:
 			}
 
 			std::string response{ "S05" };
+			stop_signal = "S05";
+			if (debug_copper & 8) {
+				// copper debugging
+				debug_copper &= ~8;
+				response = "T05swbreak:;thread:" + hex8(THREAD_ID_COPPER);
+				goto send_response;
+			}
 
 			// Check storaged exception code
 			if (exception_no > 0) {
@@ -1995,21 +2057,25 @@ start_profile:
 					// see binutils-gdb/include/gdb/signals.def for number of signals
 					if(pc == Trap7) {
 						response = "S07"; // TRAP#7 -> SIGEMT
+						stop_signal = "S07";
 						// unwind PC & stack for better debugging experience (otherwise we're probably just somewhere in Kickstart)
 						regs.pc = regs.instruction_pc_user_exception - 2;
 						m68k_areg(regs, A7 - A0) = regs.usp;
 					} else if(pc == AddressError) {
 						response = "S0A"; // AddressError -> SIGBUS
+						stop_signal = "S0A";
 						// unwind PC & stack for better debugging experience (otherwise we're probably just somewhere in Kickstart)
 						regs.pc = regs.instruction_pc_user_exception; // don't know size of opcode that caused exception
 						m68k_areg(regs, A7 - A0) = regs.usp;
 					} else if(pc == IllegalError) {
 						response = "S04"; // AddressError -> SIGILL
+						stop_signal = "S04";
 						// unwind PC & stack for better debugging experience (otherwise we're probably just somewhere in Kickstart)
 						regs.pc = regs.instruction_pc_user_exception; // don't know size of opcode that caused exception
 						m68k_areg(regs, A7 - A0) = regs.usp;
 					} else {
 						response = "T05swbreak:;";
+						stop_signal = "S05";
 					}
 					goto send_response;
 				}
